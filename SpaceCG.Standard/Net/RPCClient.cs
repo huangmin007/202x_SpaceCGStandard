@@ -7,13 +7,16 @@ using System.Threading.Tasks;
 
 namespace SpaceCG.Net
 {
+    /// <summary>
+    /// <see cref="TcpClient"/> 扩展方法。
+    /// </summary>
     public static class TcpClientExtensions
     {
         /// <summary>
-        /// <see cref="TcpClient"/> 连接状态
+        /// 检查 <see cref="TcpClient"/> 是否处于已连接状态。
         /// </summary>
-        /// <param name="tcpClient"></param>
-        /// <returns></returns>
+        /// <param name="tcpClient">要检查的 TCP 客户端。</param>
+        /// <returns>如果连接正常返回 <c>true</c>；如果已断开或客户端为 <c>null</c> 则返回 <c>false</c>。</returns>
         public static bool IsConnected(this TcpClient tcpClient)
         {
             if (tcpClient == null || tcpClient.Client == null) return false;
@@ -21,6 +24,10 @@ namespace SpaceCG.Net
         }
     }
 
+    /// <summary>
+    /// RPC 客户端，用于向服务端发送远程调用请求。
+    /// <para>（功能尚未实现）</para>
+    /// </summary>
     public class RPCClient
     {
     }

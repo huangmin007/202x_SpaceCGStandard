@@ -25,12 +25,12 @@ namespace Z_TestWpfApp
     /// </summary>
     public partial class MainWindow : Window
     {
-        RPCServer rpcServer;
+        RPCServerBase rpcServer;
         public MainWindow()
         {
             InitializeComponent();
 
-            rpcServer = new RPCServer(2000);
+            rpcServer = new RPCServer4X(2000);
             rpcServer.Start();
         }
         protected override void OnClosing(CancelEventArgs e)

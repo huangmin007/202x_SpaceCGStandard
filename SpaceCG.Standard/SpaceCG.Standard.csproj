@@ -10,8 +10,4 @@
     <Company>SpaceCG.CN</Company>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Folder Include="Net\" />
-  </ItemGroup>
-
 </Project>
