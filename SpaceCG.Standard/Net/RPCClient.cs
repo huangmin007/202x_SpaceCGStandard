@@ -20,7 +20,16 @@ namespace SpaceCG.Net
         public static bool IsConnected(this TcpClient tcpClient)
         {
             if (tcpClient == null || tcpClient.Client == null) return false;
-            return !((tcpClient.Client.Poll(1000, SelectMode.SelectRead) && (tcpClient.Client.Available == 0)) || !tcpClient.Client.Connected);
+            //return !((tcpClient.Client.Poll(1000, SelectMode.SelectRead) && (tcpClient.Client.Available == 0)) || !tcpClient.Client.Connected);
+            try
+            {
+                // 0 微秒表示立即返回，不阻塞
+                return !(tcpClient.Client.Poll(0, SelectMode.SelectRead) && tcpClient.Client.Available == 0) && tcpClient.Client.Connected;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,6 +23,7 @@ namespace SpaceCG.Net
     /// <list type="bullet">
     /// <item>子类继承实现 <see cref="ParseInvokeMessage"/> 和 <see cref="ResponseInvokeMessage"/> 以支持不同的消息协议</item>
     /// <item>通过 <see cref="ClientMessageInvoking"/> 事件可拦截、取消客户端调用消息的执行</item>
+    /// <item>基类通数据行进行分组，子类可以将一个消息放在一行，或将多个消息放在一行</item>
     /// </list>
     /// </para>
     /// </summary>
@@ -71,13 +72,23 @@ namespace SpaceCG.Net
         /// </summary>
         public readonly List<string> MethodFilters = new List<string>(16) { "*.Dispose", "*.Close" };
 
+        /// <summary> 方法过滤器的 <see cref="HashSet{T}"/> 版本，用于 O(1) 快速查找。 </summary>
+        private readonly HashSet<string> _methodFilterSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "*.Dispose", "*.Close"
+        };
+
         /// <summary> 客户端调用消息队列，服务端可从该队列中获取客户端的调用消息，并执行调用。 </summary>
         private readonly ConcurrentQueue<InvokeMessage> InvokeMessages = new ConcurrentQueue<InvokeMessage>();
         /// <summary> 注册的对象实例集合 </summary>
         private readonly ConcurrentDictionary<string, object> RegisterObjects = new ConcurrentDictionary<string, object>();
         /// <summary> 历史调用过的唯一方法，无歧义的方法  </summary>
-        private readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
-        
+        //private readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
+        /// <summary> 
+        /// 实例的缓存方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预注册在此。
+        /// </summary>
+        private readonly ConcurrentDictionary<string, MethodInfo> InstanceCacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
+
         /// <summary>
         /// 使用指定的 IP 地址和端口号初始化 <see cref="RPCServerBase"/> 类的新实例。
         /// </summary>
@@ -125,6 +136,77 @@ namespace SpaceCG.Net
 
             if (!RegisterObjects.TryAdd(objectName, objectInstance))
                 throw new ArgumentException($"注册对象 {objectName} 实例  {objectInstance} 失败");
+
+            CacheInstanceMethods(objectName, objectInstance);
+        }
+
+        /// <summary>
+        /// 缓存实例的公共方法和公共扩展方法
+        /// </summary>
+        /// <param name="objectName"></param>
+        /// <param name="objectInstance"></param>
+        private void CacheInstanceMethods(string objectName, object objectInstance)
+        {
+            if (InstanceCacheMethodInfos.ContainsKey(objectName)) return;
+
+            var instanceType = objectInstance.GetType();
+            // 实例的公共方法
+            foreach (var method in instanceType.GetMethods())
+            {
+                if (!method.IsPublic) continue;
+                if (method.IsVirtual || method.IsSpecialName) continue;
+
+                var parameters = method.GetParameters();
+                var paramsKey = string.Join(",", parameters.Select(p => TypeExtensions.GetParameterKey(p.ParameterType)));
+
+                if (paramsKey.Contains("REF")) continue;
+                var objectMethodKey = $"{objectName}.{method.Name}({paramsKey})";
+
+                var count = 0;
+                var objectMethodKeyClone = objectMethodKey;
+                while (InstanceCacheMethodInfos.ContainsKey(objectMethodKeyClone))
+                {
+                    objectMethodKeyClone = $"{objectMethodKey}_{count++}";
+                }
+
+                Debug.WriteLine($"{objectMethodKeyClone}");
+                InstanceCacheMethodInfos.TryAdd(objectMethodKeyClone, method);
+            }
+            Debug.WriteLine($"-----------------------------------");
+            // 实例的公共扩展方法
+            var extensionType = typeof(ExtensionAttribute);
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (assembly.GlobalAssemblyCache) continue;
+                foreach (var type in assembly.GetExportedTypes())
+                {
+                    if (!type.IsSealed || type.IsGenericType || type.IsNested || !type.IsAbstract) continue;
+                    foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly))
+                    {
+                        if (!method.IsDefined(extensionType, false)) continue;
+
+                        var parameters = method.GetParameters();
+                        if (parameters == null || parameters.Length == 0) continue;
+
+                        // 类型相同，或是父级类
+                        if (parameters[0].ParameterType == instanceType || instanceType.IsSubclassOf(parameters[0].ParameterType))
+                        {
+                            var paramsKey = string.Join(",", parameters.Select(p => TypeExtensions.GetParameterKey(p.ParameterType)));
+                            var objectMethodKey = $"{objectName}.{method.Name}({paramsKey})(Ext)";
+
+                            var count = 0;
+                            var objectMethodKeyClone = objectMethodKey;
+                            while (InstanceCacheMethodInfos.ContainsKey(objectMethodKeyClone))
+                            {
+                                objectMethodKeyClone = $"{objectMethodKey}_{count++}";
+                            }
+
+                            Debug.WriteLine($"{objectMethodKeyClone}");
+                            InstanceCacheMethodInfos.TryAdd(objectMethodKeyClone, method);
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -239,7 +321,7 @@ namespace SpaceCG.Net
 
         /// <summary>
         /// 处理单个 TCP 客户端连接的读取循环。
-        /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔消息帧，通过 <see cref="ParseInvokeMessage"/> 解析消息。</para>
+        /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔行消息，通过 <see cref="ParseInvokeMessage"/> 解析消息。</para>
         /// </summary>
         /// <param name="client">已接受的 TCP 客户端连接。</param>
         /// <param name="cancelToken">用于取消读取操作的取消令牌。</param>
@@ -259,7 +341,7 @@ namespace SpaceCG.Net
             Trace.TraceInformation($"客户端 {remoteEndPoint} 已连接");
 
             // 环形缓冲（Ring Buffer）设计
-            // 如果读取的数据全部分析完或刚好分析完一个完整的数据帧后，可以将 offset 设置 0
+            // 如果读取的数据全部分析完或刚好分析完一个完整的数据行后，可以将 offset 设置 0
             var bufferSize = client.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];    
 
@@ -270,7 +352,7 @@ namespace SpaceCG.Net
             try
             {
                 var stream = client.GetStream();
-                while (!cancelToken.IsCancellationRequested && client.IsConnected())
+                while (!cancelToken.IsCancellationRequested && client.Connected)
                 {
                     var count = await stream.ReadAsync(clientBuffer, offset, bufferSize - offset, cancelToken);
                     if (count == 0) break;  // 客户端已断开了连接
@@ -279,19 +361,19 @@ namespace SpaceCG.Net
                     offset += count;
                     length += count;
 
-                    #region 扫描缓冲区中所有完整的消息帧
+                    #region 扫描缓冲区中所有完整的行消息
                     while (position < length)
                     {
                         var index = clientBuffer.IndexOf(NewLine, position, length - position);
                         if (index < 0) break;
 
-                        // 提取完整的消息帧（不含 NewLine 本身）
+                        // 提取完整的行消息（不含 NewLine 本身）
                         var messageLine = new ArraySegment<byte>(clientBuffer, position, index - position);
 
                         // 移动读指针，跳过已消费的消息和换行符
                         position = index + NewLine.Length;
 
-                        // 解析客户端的消息
+                        // 解析客户端的行消息
                         var invokeMessages = ParseInvokeMessage(messageLine, remoteEndPoint);
                         if (invokeMessages != null && invokeMessages.Any())
                         {
@@ -390,9 +472,9 @@ namespace SpaceCG.Net
         /// 解析客户端发送的完整消息行（以 CRLF 作为结束符的一行消息数据）。
         /// <para>子类继承重写该方法，实现不同协议的消息解析逻辑。</para>
         /// </summary>
-        /// <param name="messageLine">客户端的消息帧字节数据（不含尾部的 CRLF）。</param>
+        /// <param name="messageLine">客户端的行消息字节数据（不含尾部的 CRLF）。</param>
         /// <param name="remoteEndPoint">发送消息的客户端远程端点地址。</param>
-        /// <returns>解析成功返回一条或多条 <see cref="InvokeMessage"/>；失败返回空集合。</returns>
+        /// <returns>解析成功返回一条或多条 <see cref="InvokeMessage"/>；过滤、失败则返回空集合。</returns>
         protected abstract IEnumerable<InvokeMessage> ParseInvokeMessage(ArraySegment<byte> messageLine, IPEndPoint remoteEndPoint);
 
         /// <summary>
@@ -415,12 +497,14 @@ namespace SpaceCG.Net
             {
                 if (InvokeMessages.IsEmpty)
                 {
+                    //Thread.Sleep(1);
                     await Task.Delay(1, cancelToken).ConfigureAwait(false);
                     continue;
                 }
 
                 if (!InvokeMessages.TryDequeue(out var invokeMessage))
                 {
+                    //Thread.Sleep(1);
                     await Task.Delay(1, cancelToken).ConfigureAwait(false);
                     continue;
                 }
@@ -430,12 +514,12 @@ namespace SpaceCG.Net
                 // 执行响应客户端调用结果
                 if (invokeResult == null) continue;
                 if (invokeMessage.TcpClient == null) continue;
-                if (!invokeMessage.TcpClient.IsConnected()) continue;
+                if (!invokeMessage.TcpClient.Connected) continue;
 
                 try
                 {
                     var responseBytes = ResponseInvokeMessage(invokeResult, invokeMessage.ClientEndPoint);
-                    if (responseBytes?.Length > 0 && invokeMessage.TcpClient.IsConnected())
+                    if (responseBytes?.Length > 0)
                     {
                         var stream = invokeMessage.TcpClient.GetStream();
                         await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancelToken).ConfigureAwait(false);
@@ -511,11 +595,13 @@ namespace SpaceCG.Net
             for (int i = 0; i < paramsLength; i++)
             {
                 var destinationType = methodParameters[i + offset].ParameterType;
-                //if (!SpaceCG.Extensions.TypeExtensions.ConvertFrom(invokeMessage.Parameters[i], destinationType, out object convertValue))
+                if (!TypeExtensions.TryConvertParameter(invokeMessage.Parameters[i], destinationType, out object convertValue))
                 {
-                    //return InvokeResult.Create(invokeMessage, -4, $"Object method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' parameter {i} convert from {invokeMessage.Parameters[i]?.GetType()} to {destinationType} failed");
+                    invokeResult = InvokeResult.Create(invokeMessage, -4, $"Object method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' parameter {i} convert from {invokeMessage.Parameters[i]?.GetType()} to {destinationType} failed");
+                    return false;
                 }
-                //convertParameters[i + offset] = convertValue;
+
+                convertParameters[i + offset] = convertValue;
             }
 
             // 消息分派到指定的上下文
@@ -569,67 +655,22 @@ namespace SpaceCG.Net
         {
             if (instanceType == null || invokeMessage == null) return Array.Empty<MethodInfo>();
 
+            var paramsKey = "";
             var paramsLength = invokeMessage.Parameters?.Length ?? 0;
-            var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}.{paramsLength}";
-            if (CacheMethodInfos.TryGetValue(methodCacheKey, out var methodInfo)) return new[] { methodInfo };
-
-            // Get Instance Methods
-            var methodInfos = from method in instanceType.GetMethods(BindingFlags.Public)   // 这里需要考虑继承的公共方法
-                              where method.Name == invokeMessage.MethodName && method.GetParameters().Length == paramsLength
-                              select method;
-
-            var extensionType = typeof(ExtensionAttribute);
-            if (!methodInfos.Any())
-            {
-                //Get Extension Methods                
-                methodInfos = from assembly in AppDomain.CurrentDomain.GetAssemblies()
-                              where !assembly.GlobalAssemblyCache
-                              from type in assembly.GetExportedTypes()
-                              where type.IsSealed && !type.IsGenericType && !type.IsNested && type.IsAbstract
-                              from method in type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly)
-                              where method.Name == invokeMessage.MethodName && method.IsDefined(extensionType, false)
-                              let methodParams = method.GetParameters()
-                              where methodParams?.Length == (paramsLength + 1) && methodParams[0].ParameterType == instanceType
-                              select method;
-                Debug.WriteLine($"Get Extension Methods Count: {methodInfos?.Count()}");
+            if (paramsLength > 0)
+            {                
+                paramsKey = string.Join(",", invokeMessage.Parameters.Select(p => TypeExtensions.GetParameterKey(p.GetType(), "SVT")));
             }
 
-            var methodCount = methodInfos.Count();
-            if (methodCount == 0) return Array.Empty<MethodInfo>();
-            if (methodCount == 1)   // 只有一个方法，不存在歧义，记录，下次不用重复查询
-            {
-                CacheMethodInfos.TryAdd(methodCacheKey, methodInfos.First());
-                return methodInfos;
-            }
-            if (paramsLength == 0) return null;
+            var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsKey})";
+            Trace.WriteLine($"methodCacheKey:{methodCacheKey}");
 
-            // 有多个方法(参数数量一致)，存在歧义，对比参数类型
-            var stringType = typeof(string);
-            var methodList = methodInfos.ToList();
-            var inputParamTypes = invokeMessage.Parameters.Select(p => p?.GetType() ?? stringType).ToArray(); // ["0","1","12"],"1.5","1","-1",[["0","2"],["1","3"]]
-            for (int i = 0; i < methodList.Count; i++)
-            {
-                var offset = methodList[i].IsDefined(extensionType, false) ? 1 : 0;
-                var methodParamTypes = methodList[i].GetParameters().Select(p => p.ParameterType).ToArray();
+            if (InstanceCacheMethodInfos.TryGetValue(methodCacheKey, out var methodInfo)) return new[] { methodInfo };
 
-                for (int k = 0; i < paramsLength; k++)
-                {
-                    var inputParamType = inputParamTypes[k];
-                    var methodParamType = methodParamTypes[k + offset];
 
-                    if ((inputParamType == methodParamType) || (inputParamType == stringType && methodParamType.IsValueType) ||
-                        (inputParamType.IsArray && methodParamType.IsArray) || (inputParamType.IsArray && methodParamType.IsGenericType))
-                    {
-                        continue;
-                    }
-
-                    methodList.RemoveAt(i--);
-                    break;
-                }
-            }
-
-            return methodList;
+            return Array.Empty<MethodInfo>();
         }
+
 
         /// <inheritdoc/> 
         public void Dispose()
@@ -644,8 +685,164 @@ namespace SpaceCG.Net
                 InvokeMessages.TryDequeue(out _);
             }
         }
+    }
 
+    internal static partial class TypeExtensions
+    {
+        internal static readonly ConcurrentDictionary<Type, Type[]> CacheTypeInterfaces = new ConcurrentDictionary<Type, Type[]>();
 
+        /// <summary>
+        /// 获取参数的标志信息
+        /// </summary>
+        /// <param name="paramType"></param>
+        /// <returns></returns>
+        internal static string GetParameterKey(Type paramType)
+        {
+            Trace.WriteLine($"paramType:{paramType}");
+            if (paramType == null) return "";
+            if (paramType.IsEnum || paramType.IsValueType || paramType == typeof(string)) return "SVT";
+
+            //Trace.WriteLine($"IsArray:{paramType.IsArray} IsGenericType:{paramType.IsGenericType}");
+            if (paramType.IsArray) return $"[{GetParameterKey(paramType.GetElementType())}]";
+            if (paramType.IsGenericType && paramType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                var genericArgs = paramType.GetGenericArguments();
+                if (genericArgs.Length == 1) return $"[{GetParameterKey(genericArgs[0])}]";
+                else return $"[({genericArgs.Length},REF)]";
+            }
+
+            return "REF";
+        }
+
+        /// <summary>
+        /// 获取参数的标志信息
+        /// </summary>
+        /// <param name="paramType"></param>
+        /// <param name="returnFlag"></param>
+        /// <returns></returns>
+        internal static string GetParameterKey(Type paramType, string returnFlag)
+        {
+            Trace.WriteLine($"paramType:{paramType}");
+            if (paramType == null) return "";
+            if (paramType.IsEnum || paramType.IsValueType || paramType == typeof(string)) return "SVT";
+
+            //Trace.WriteLine($"IsArray:{paramType.IsArray} IsGenericType:{paramType.IsGenericType}");
+            if (paramType.IsArray) return $"[{GetParameterKey(paramType.GetElementType(), returnFlag)}]";
+            if (paramType.IsGenericType && paramType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                var genericArgs = paramType.GetGenericArguments();
+                if (genericArgs.Length == 1) return $"[{GetParameterKey(genericArgs[0], returnFlag)}]";
+                else return $"[({genericArgs.Length},REF)]";
+            }
+
+            return returnFlag;
+        }
+
+        /// <summary>
+        /// 判断类型是否实现 IEnumerable&lt;T&gt;
+        /// </summary>
+        /// <param name="type"></param>
+        internal static bool ImplementsIEnumerable(Type type)
+        {
+            if (type == null) return false;
+
+            Type iEnumerableType = typeof(IEnumerable<>);
+            var typeInterfaces = CacheTypeInterfaces.GetOrAdd(type, t => t.GetInterfaces());
+
+            // 检查类型是否直接实现 IEnumerable<T>
+            foreach (var interfaceType in typeInterfaces)
+            {
+                if (interfaceType.IsGenericType && interfaceType.GetGenericTypeDefinition() == iEnumerableType)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 尝试将调用参数值转换为目标方法参数类型。
+        /// <para>支持标量值类型、字符串、数组和 IEnumerable&lt;T&gt; 多层集合类型的递归转换。</para>
+        /// </summary>
+        /// <param name="value">原始参数值（来自 <see cref="StringExtensions.ToObjectArray"/> 输出，叶子节点均为 <see cref="string"/>）。</param>
+        /// <param name="targetType">目标参数类型。</param>
+        /// <param name="conversionValue">输出的转换后值。</param>
+        /// <returns>转换成功返回 <c>true</c>；否则返回 <c>false</c>。</returns>
+        internal static bool TryConvertParameter(object value, Type targetType, out object conversionValue)
+        {
+            conversionValue = null;
+            if (targetType == null) return false;
+            if (value == null || targetType == typeof(void)) return true;
+
+            Type valueType = value.GetType();
+            // 类型兼容检查（含接口实现关系）
+            if (!targetType.IsArray && (valueType == targetType || targetType.IsAssignableFrom(valueType)))
+            {
+                conversionValue = value;
+                return true;
+            }
+            // 标量：值类型 & 字符串 转换
+            if ((targetType.IsValueType || targetType == typeof(string)) && (valueType.IsValueType || valueType == typeof(string)))
+            {
+                if (value is string stringValue && stringValue.TryConvertTo(targetType, out var targetValue)) conversionValue = targetValue;
+                else conversionValue = value;
+                return true;
+            }
+
+            // 数组：元素类型相同 → 直接赋值
+            if (targetType.IsArray && valueType.IsArray && targetType.GetElementType() == valueType.GetElementType())
+            {
+                conversionValue = value;
+                return true;
+            }
+            // 数组：元素类型不同 → 递归转换每个元素
+            if (targetType.IsArray && valueType.IsArray && targetType.GetElementType() != valueType.GetElementType())
+            {
+                return TryConvertToArray((Array)value, targetType.GetElementType(), out conversionValue);
+            }
+
+            // 目标类型是：System.Collections.IEnumerable<T> 或实现、继承 IEnumerable<T> 接口的子类
+            if (targetType.IsGenericType && valueType.IsArray && targetType.GetGenericArguments()?.Length == 1)
+            {
+                var genericTypeDefinition = targetType.GetGenericTypeDefinition();
+                if (genericTypeDefinition == typeof(IEnumerable<>) || ImplementsIEnumerable(genericTypeDefinition))
+                {
+                    return TryConvertToArray((Array)value, targetType.GetGenericArguments()[0], out conversionValue);
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 将 object[] 转换为强类型数组，递归转换每个元素。
+        /// <para>单个元素转换失败时，使用元素类型的默认值填充，不终止整个数组的转换。</para>
+        /// </summary>
+        /// <param name="valueArray">源 object[] 数组。</param>
+        /// <param name="elementType">目标元素类型。</param>
+        /// <param name="conversionValue">输出的强类型数组。</param>
+        /// <returns>始终返回 <c>true</c>（元素转换失败时填充默认值）。</returns>
+        internal static bool TryConvertToArray(Array valueArray, Type elementType, out object conversionValue)
+        {
+            conversionValue = null;
+            if (valueArray == null || elementType == null) return false;
+
+            Array instanceValue = Array.CreateInstance(elementType, valueArray.Length);
+
+            for (int i = 0; i < valueArray.Length; i++)
+            {
+                if (!TryConvertParameter(valueArray.GetValue(i), elementType, out object cValue))
+                {
+                    // 转换失败时填充元素类型的默认值
+                    cValue = elementType.IsValueType ? Activator.CreateInstance(elementType) : null;
+                }
+                instanceValue.SetValue(cValue, i);
+            }
+
+            conversionValue = instanceValue;
+            return true;
+        }
 
     }
 }

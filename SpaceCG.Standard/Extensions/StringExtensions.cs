@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -252,46 +253,188 @@ namespace SpaceCG.Extensions
         private static bool IsCloseBracket(char c) => c == ']' || c == ')' || c == '}';
 
         /// <summary>
-        /// 将字符串转换为指定类型的值。支持基本类型、枚举、结构体等。空字符串或 "null" 返回 null。
+        /// 尝试将字符串转换为指定类型的值，返回转换结果和是否成功的标志。支持基本类型、枚举、结构体等值类型转换。
         /// </summary>
         /// <param name="value"></param>
         /// <param name="targetType"></param>
+        /// <param name="targetValue"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        public static object ConvertTo(this string value, Type targetType)
+        public static bool TryConvertTo(this string value, Type targetType, out object targetValue)
         {
+            targetValue = null;
             if (targetType == null) throw new ArgumentNullException(nameof(targetType));
 
-            if (string.IsNullOrWhiteSpace(value) || !targetType.IsValueType) return null;
-            if (value.Trim().EndsWith("null", StringComparison.OrdinalIgnoreCase)) return null;
-
-            // 值类型转换
-            var converter = TypeConverterCache.GetOrAdd(targetType, type => TypeDescriptor.GetConverter(type));
-            if (converter != null && converter.CanConvertFrom(typeof(string)))
+            // 字符串类型直接返回
+            if (targetType == typeof(string))
             {
-                return converter.ConvertFromString(value);
+                targetValue = value;
+                return true;
+            }
+            // 只支持值类型转换，引用类型不支持(除字符本身)
+            if (!targetType.IsValueType) return false;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                targetValue = Activator.CreateInstance(targetType);
+                return true;
             }
 
-            return null;
+            if (targetType == typeof(bool))
+            {
+                if (bool.TryParse(value, out var boolValue))
+                {
+                    targetValue = boolValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(float))
+            {
+                if (float.TryParse(value, out var floatValue))
+                {
+                    targetValue = floatValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(double))
+            {
+                if (double.TryParse(value, out var doubleValue))
+                {
+                    targetValue = doubleValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType.IsEnum)
+            {
+                try
+                {
+                    var boolValue = Enum.Parse(targetType, value, true);
+                    targetValue = boolValue;
+                    return true;
+                }
+                catch { }
+                return false;
+            }
+
+            // byte,ushort,int,long
+            var valueTrim = value.Trim();
+            var isHexNumber = value.StartsWith("0X", StringComparison.OrdinalIgnoreCase);
+            var numberStyles = isHexNumber ? NumberStyles.HexNumber : NumberStyles.Integer;
+            if (isHexNumber) valueTrim = valueTrim.Substring(2);
+
+            if (targetType == typeof(byte))
+            {
+                if (byte.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var byteValue))
+                {
+                    targetValue = byteValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(sbyte))
+            {
+                if (sbyte.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var sbyteValue))
+                {
+                    targetValue = sbyteValue;
+                    return true;
+                }
+                return false;
+            }
+
+            if (targetType == typeof(short))
+            {
+                if (short.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var shortValue))
+                {
+                    targetValue = shortValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(ushort))
+            {
+                if (ushort.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var ushortValue))
+                {
+                    targetValue = ushortValue;
+                    return true;
+                }
+                return false;
+            }
+
+            if (targetType == typeof(int))
+            {
+                if (int.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var intValue))
+                {
+                    targetValue = intValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(uint))
+            {
+                if (uint.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var uintValue))
+                {
+                    targetValue = uintValue;
+                    return true;
+                }
+                return false;
+            }
+
+            if (targetType == typeof(long))
+            {
+                if (long.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var longValue))
+                {
+                    targetValue = longValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(ulong))
+            {
+                if (ulong.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var ulongValue))
+                {
+                    targetValue = ulongValue;
+                    return true;
+                }
+                return false;
+            }
+
+            // 通用性值类型转换
+            try
+            {
+                var converter = TypeConverterCache.GetOrAdd(targetType, type => TypeDescriptor.GetConverter(type));
+                if (converter != null && converter.CanConvertFrom(typeof(string)))
+                {
+                    targetValue = converter.ConvertFromString(value);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"将字符 '{value}' 转换为指定类型 {targetType} 异常：{ex.Message}");
+            }
+
+            return false;
         }
+
+
         /// <summary>
-        /// 尝试将字符串转换为指定类型的值，返回转换结果和是否成功的标志。支持基本类型、枚举、结构体等。空字符串或 "null" 返回 false。
+        /// 尝试将字符串转换为指定类型的值，返回转换结果和是否成功的标志。支持基本类型、枚举、结构体等值类型转换。
         /// </summary>
-        /// <typeparam name="T"></typeparam>
+        /// <typeparam name="T">值类型</typeparam>
         /// <param name="value"></param>
         /// <param name="targetValue"></param>
         /// <returns></returns>
         public static bool TryConvertTo<T>(this string value, out T targetValue) where T : struct
         {
-            try
+            targetValue = default;
+            if (string.IsNullOrWhiteSpace(value)) return true;
+
+            if (TryConvertTo(value, typeof(T), out object objectValue))
             {
-                targetValue = (T)value.ConvertTo(typeof(T));
+                targetValue = (T)objectValue;
                 return true;
-            }
-            catch (Exception ex)
-            {
-                targetValue = default;
-                Trace.TraceWarning($"将字符 '{value}' 转换为指定类型 {typeof(T)} 异常：{ex.Message}");
             }
 
             return false;
