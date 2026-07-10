@@ -4,10 +4,10 @@ using System.Reflection;
 namespace SpaceCG.Net
 {
     /// <summary>
-    /// 远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control) 的响应结果对象。
-    /// <para>封装方法反射调用后的返回结果，包括状态码、描述信息、返回值等。</para>
+    /// 远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control) 的响应消息对象。
+    /// <para>封装方法反射调用后的返回结果，包括状态码、描述信息、返回值等信息。</para>
     /// </summary>
-    public class InvokeResult
+    public class ResponseMessage
     {
         /// <summary>
         /// 消息唯一标识，对应请求 <see cref="InvokeMessage.Id"/>，用于请求与响应的匹配。
@@ -23,7 +23,7 @@ namespace SpaceCG.Net
         /// </summary>
         public string ObjectMethod { get; internal set; }
         /// <summary>
-        /// 调用结果的描述信息，如 "OK" 或错误原因。
+        /// 调用结果的描述信息，如 "OK" 或错误或异常原因等。
         /// </summary>
         public string Description { get; internal set; }
 
@@ -42,29 +42,42 @@ namespace SpaceCG.Net
         /// </summary>
         public DateTimeOffset Timestamp { get; internal set; }
         /// <summary>
-        /// 消息协议版本号。
+        /// 消息协议版本号，对应请求 <see cref="InvokeMessage.Version"/>。
         /// </summary>
         public Version Version { get; internal set; }
 
         /// <summary>
         /// 内部构造函数，实例由静态工厂方法创建。
         /// </summary>
-        internal InvokeResult() { }
+        internal ResponseMessage() { }
+
+        internal void ResetParams()
+        {
+            Id = 0;
+            Code = 0;
+            ObjectMethod = string.Empty;
+            Description = string.Empty;
+
+            ReturnType = null;
+            ReturnValue = null;
+
+            Timestamp = DateTimeOffset.UtcNow;
+        }
 
         /// <summary>
         /// 根据调用消息创建初始结果对象（状态码待填充）。
         /// </summary>
         /// <param name="invokeMessage">客户端调用消息。</param>
-        /// <returns>创建的 <see cref="InvokeResult"/> 实例。</returns>
-        internal static InvokeResult Create(InvokeMessage invokeMessage)
+        /// <returns>创建的 <see cref="ResponseMessage"/> 实例。</returns>
+        internal static ResponseMessage Create(InvokeMessage invokeMessage)
         {
             if (invokeMessage == null) return null;
 
-            return new InvokeResult()
+            return new ResponseMessage()
             {
                 Id = invokeMessage.Id,
-                Timestamp = DateTimeOffset.Now,
                 Version = invokeMessage.Version,
+                Timestamp = DateTimeOffset.UtcNow,
                 ObjectMethod = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}",
             };
         }
@@ -75,19 +88,19 @@ namespace SpaceCG.Net
         /// <param name="invokeMessage">客户端调用消息。</param>
         /// <param name="code">错误状态码（小于 0 表示失败）。</param>
         /// <param name="description">错误描述信息。</param>
-        /// <returns>创建的 <see cref="InvokeResult"/> 实例。</returns>
-        internal static InvokeResult Create(InvokeMessage invokeMessage, int code, string description)
+        /// <returns>创建的 <see cref="ResponseMessage"/> 实例。</returns>
+        internal static ResponseMessage Create(InvokeMessage invokeMessage, int code, string description)
         {
             if (invokeMessage == null) return null;
 
-            return new InvokeResult()
+            return new ResponseMessage()
             {
                 Code = code,
                 Id = invokeMessage.Id,
 
                 Description = description,
-                Timestamp = DateTimeOffset.Now,
                 Version = invokeMessage.Version,
+                Timestamp = DateTimeOffset.UtcNow,
                 ObjectMethod = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}",
             };
         }
@@ -97,7 +110,7 @@ namespace SpaceCG.Net
         /// </summary>
         public override string ToString()
         {
-            return $"[{nameof(InvokeResult)}](Id:{Id} Code:{Code} ObjectMethod:{ObjectMethod} Description:{Description} Version:{Version} Timestamp:{Timestamp})";
+            return $"[{nameof(ResponseMessage)}](Id:{Id} Code:{Code} ObjectMethod:{ObjectMethod} Description:{Description} Version:{Version} Timestamp:{Timestamp})";
         }
 
     }

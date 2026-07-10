@@ -27,7 +27,7 @@ namespace SpaceCG.Net
         /// <inheritdoc /> 
         public RPCServer4X(IPAddress ipAddress, int localPort) : base(ipAddress, localPort)
         {
-            InvokeResultProperties = typeof(InvokeResult).GetProperties(BindingFlags.Instance | BindingFlags.Public);
+            InvokeResultProperties = typeof(ResponseMessage).GetProperties(BindingFlags.Instance | BindingFlags.Public);
         }
 
         /// <summary>
@@ -75,8 +75,8 @@ namespace SpaceCG.Net
 
                     // 解析 Id
                     if (int.TryParse(element.Attribute("Id")?.Value, out var id)) invokeMessage.Id = id;
-                    // 解析 IsAsync
-                    if (bool.TryParse(element.Attribute("IsAsync")?.Value, out var isAsync)) invokeMessage.IsAsync = isAsync;
+                    // 解析 ResponseMode
+                    if (int.TryParse(element.Attribute("ResponseMode")?.Value, out var responseMode)) invokeMessage.ResponseMode = responseMode;
                     // 解析 Timestamp
                     if (DateTimeOffset.TryParse(element.Attribute("Timestamp")?.Value, out var timestamp)) invokeMessage.Timestamp = timestamp;
 
@@ -96,13 +96,13 @@ namespace SpaceCG.Net
         /// <para>如果函数返回类型为 void 类型，则不响应消息。</para>
         /// </summary>
         /// <inheritdoc /> 
-        protected override byte[] ResponseInvokeMessage(InvokeResult invokeResult, IPEndPoint remoteEndPoint)
+        protected override byte[] ConvertResponseMessage(ResponseMessage invokeResult, IPEndPoint remoteEndPoint)
         {
             if (invokeResult == null) return Array.Empty<byte>();
-            if (invokeResult.Code >= 0 && (invokeResult.ReturnType == null || invokeResult.ReturnType == typeof(void))) return Array.Empty<byte>();
+            //if (invokeResult.Code >= 0 && (invokeResult.ReturnType == null || invokeResult.ReturnType == typeof(void))) return Array.Empty<byte>();
 
-            var message = new XElement(nameof(InvokeResult));
-
+#if false
+            var message = new XElement(nameof(ResponseMessage));
             foreach (PropertyInfo property in InvokeResultProperties)
             {
                 if (!property.CanRead) continue;
@@ -111,9 +111,13 @@ namespace SpaceCG.Net
                 if (value == null) continue;
 
                 message.Add(new XAttribute(property.Name, value));
-            }
-            
+            }            
             return Encoding.UTF8.GetBytes($"{message}\r\n");
+#else
+            var builder = new StringBuilder(512);
+            builder.AppendLine($"<{nameof(ResponseMessage)} Id=\"{invokeResult.Id}\" Code=\"{invokeResult.Code}\" ObjectMethod=\"{invokeResult.ObjectMethod}\" ReturnValue=\"{invokeResult.ReturnValue}\" ReturnType=\"{invokeResult.ReturnType}\" Description=\"{invokeResult.Description}\" Version=\"{invokeResult.Version}\" Timestamp=\"{invokeResult.Timestamp}\" />");
+            return Encoding.UTF8.GetBytes(builder.ToString());
+#endif
         }
     }
 

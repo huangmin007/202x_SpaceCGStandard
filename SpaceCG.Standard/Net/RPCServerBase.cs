@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -18,12 +20,13 @@ namespace SpaceCG.Net
 {
     /// <summary>
     /// 远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control) 服务端抽象基类(协议数据抽象基类)。
-    /// <para>提供 TCP 客户端连接管理、消息接收解析、方法反射调用、结果响应等基础能力。</para>
+    /// <para>提供 TCP 客户端连接管理、数据接收解析(数据行)、方法反射调用、结果响应等基础能力。</para>
     /// <para>
     /// <list type="bullet">
-    /// <item>子类继承实现 <see cref="ParseInvokeMessage"/> 和 <see cref="ResponseInvokeMessage"/> 以支持不同的消息协议</item>
-    /// <item>通过 <see cref="ClientMessageInvoking"/> 事件可拦截、取消客户端调用消息的执行</item>
-    /// <item>基类通数据行进行分组，子类可以将一个消息放在一行，或将多个消息放在一行</item>
+    /// <item>基类是以数据行为单位进行分割，换行回车 CRLF, 0D0A, \r\n或是空行为</item>
+    /// <item>子类继承实现 <see cref="ParseInvokeMessage"/> 和 <see cref="ConvertResponseMessage"/> 以支持不同的消息协议</item>
+    /// <item>通过 <see cref="ClientMessageInvoking"/> 事件可拦截、取消、修改客户端调用消息的执行</item>
+    /// <item>基类通过数据行进行分组，子类可以将一个调用消息放在一行，或将多个调用消息放在一行，具体由子类决定</item>
     /// </list>
     /// </para>
     /// </summary>
@@ -43,13 +46,13 @@ namespace SpaceCG.Net
         /// <summary> 监听的本地 IP 地址和端口号。 </summary>
         public IPEndPoint LocalEndPoint { get; private set; }
 
-        /// <summary> 客户端连接事件。 </summary>
+        /// <summary> 客户端接入连接事件。 </summary>
         public event EventHandler<IPEndPoint> ClientConnected;
         /// <summary> 客户端断开连接事件。 </summary>
         public event EventHandler<IPEndPoint> ClientDisconnected;
         /// <summary>
-        /// 客户端调用消息接收事件。
-        /// <para>通过设置 <see cref="InvokeMessageEventArgs.Cancel"/> 为 <c>true</c> 可拦截取消客户端调用消息的执行。</para>
+        /// 客户端执行调用消息时事件。
+        /// <para>通过设置 <see cref="CancelEventArgs.Cancel"/> 为 <c>true</c> 可拦截、取消、或是修改客户端调用消息的执行。</para>
         /// </summary>
         public event EventHandler<InvokeMessageEventArgs> ClientMessageInvoking;
 
@@ -62,7 +65,7 @@ namespace SpaceCG.Net
         public int SendBufferSize { get; set; } = 1024 * 32;
         /// <summary> 获取或设置接收缓冲区大小，单位字节，默认 64KB。 </summary>
         public int ReceiveBufferSize { get; set; } = 1024 * 64;
-        /// <summary> 消息行分隔符字节数组，使用 CRLF（0x0D, 0x0A）作为新行标识符。 </summary>
+        /// <summary> 数据行分隔符字节数组，使用 CRLF（0x0D, 0x0A）作为新行标识符。 </summary>
         public static readonly byte[] NewLine = new byte[] { 0x0D, 0x0A };
         
         /// <summary>
@@ -72,20 +75,12 @@ namespace SpaceCG.Net
         /// </summary>
         public readonly List<string> MethodFilters = new List<string>(16) { "*.Dispose", "*.Close" };
 
-        /// <summary> 方法过滤器的 <see cref="HashSet{T}"/> 版本，用于 O(1) 快速查找。 </summary>
-        private readonly HashSet<string> _methodFilterSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "*.Dispose", "*.Close"
-        };
-
         /// <summary> 客户端调用消息队列，服务端可从该队列中获取客户端的调用消息，并执行调用。 </summary>
         private readonly ConcurrentQueue<InvokeMessage> InvokeMessages = new ConcurrentQueue<InvokeMessage>();
         /// <summary> 注册的对象实例集合 </summary>
         private readonly ConcurrentDictionary<string, object> RegisterObjects = new ConcurrentDictionary<string, object>();
-        /// <summary> 历史调用过的唯一方法，无歧义的方法  </summary>
-        //private readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
         /// <summary> 
-        /// 实例的缓存方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预注册在此。
+        /// 实例的缓存方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预缓存在字典中。
         /// </summary>
         private readonly ConcurrentDictionary<string, MethodInfo> InstanceCacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
 
@@ -139,7 +134,6 @@ namespace SpaceCG.Net
 
             CacheInstanceMethods(objectName, objectInstance);
         }
-
         /// <summary>
         /// 缓存实例的公共方法和公共扩展方法
         /// </summary>
@@ -157,10 +151,10 @@ namespace SpaceCG.Net
                 if (method.IsVirtual || method.IsSpecialName) continue;
 
                 var parameters = method.GetParameters();
-                var paramsKey = string.Join(",", parameters.Select(p => TypeExtensions.GetParameterKey(p.ParameterType)));
+                var paramsSign = parameters.Select(p => p.ParameterType).GetTypesSignature();
 
-                if (paramsKey.Contains("REF")) continue;
-                var objectMethodKey = $"{objectName}.{method.Name}({paramsKey})";
+                if (paramsSign.Contains("REF")) continue;
+                var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
 
                 var count = 0;
                 var objectMethodKeyClone = objectMethodKey;
@@ -191,8 +185,8 @@ namespace SpaceCG.Net
                         // 类型相同，或是父级类
                         if (parameters[0].ParameterType == instanceType || instanceType.IsSubclassOf(parameters[0].ParameterType))
                         {
-                            var paramsKey = string.Join(",", parameters.Select(p => TypeExtensions.GetParameterKey(p.ParameterType)));
-                            var objectMethodKey = $"{objectName}.{method.Name}({paramsKey})(Ext)";
+                            var paramsSign = parameters.Skip(1).Select(p => p.ParameterType).GetTypesSignature();
+                            var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})_(Ext)";
 
                             var count = 0;
                             var objectMethodKeyClone = objectMethodKey;
@@ -243,7 +237,7 @@ namespace SpaceCG.Net
             _ = Task.Run(() => CallInvokeMessageAsync(invokeToken), invokeToken);
         }
         /// <summary>
-        /// 停止 RPC 服务端，取消所有待处理消息，断开所有客户端连接并释放监听器资源。
+        /// 停止 RPC 服务端，取消所有待处理消息数据，断开所有客户端连接并释放监听器资源。
         /// <para>如果服务未运行，则忽略本次调用。</para>
         /// </summary>
         public void Stop()
@@ -321,7 +315,7 @@ namespace SpaceCG.Net
 
         /// <summary>
         /// 处理单个 TCP 客户端连接的读取循环。
-        /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔行消息，通过 <see cref="ParseInvokeMessage"/> 解析消息。</para>
+        /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔数据行，通过 <see cref="ParseInvokeMessage"/> 解析数据行。</para>
         /// </summary>
         /// <param name="client">已接受的 TCP 客户端连接。</param>
         /// <param name="cancelToken">用于取消读取操作的取消令牌。</param>
@@ -336,12 +330,12 @@ namespace SpaceCG.Net
             //client.NoDelay = true; // 禁用 Nagle 算法（低延迟场景）
             //client.LingerState = new LingerOption(true, 3);
 
-            var remoteEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
-            ClientConnected?.Invoke(this, remoteEndPoint);
-            Trace.TraceInformation($"客户端 {remoteEndPoint} 已连接");
+            var clientEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
+            ClientConnected?.Invoke(this, clientEndPoint);
+            Trace.TraceInformation($"客户端 {clientEndPoint} 已连接");
 
             // 环形缓冲（Ring Buffer）设计
-            // 如果读取的数据全部分析完或刚好分析完一个完整的数据行后，可以将 offset 设置 0
+            // 如果读取的数据全部分析完或刚好分析完一个完整的数据行后，缓冲区后面没有可分析数据时，可以将 offset 指针设置 0
             var bufferSize = client.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];    
 
@@ -351,30 +345,30 @@ namespace SpaceCG.Net
 
             try
             {
-                var stream = client.GetStream();
+                var clientStream = client.GetStream();
                 while (!cancelToken.IsCancellationRequested && client.Connected)
                 {
-                    var count = await stream.ReadAsync(clientBuffer, offset, bufferSize - offset, cancelToken);
+                    var count = await clientStream.ReadAsync(clientBuffer, offset, bufferSize - offset, cancelToken);
                     if (count == 0) break;  // 客户端已断开了连接
-                    Debug.WriteLine($"收到来自 {remoteEndPoint} 的数据 {count} bytes ");
+                    Debug.WriteLine($"收到来自 {clientEndPoint} 的数据 {count} bytes ");
 
                     offset += count;
                     length += count;
-
-                    #region 扫描缓冲区中所有完整的行消息
+                    
+                    #region 扫描缓冲区中所有完整的数据行
                     while (position < length)
                     {
-                        var index = clientBuffer.IndexOf(NewLine, position, length - position);
-                        if (index < 0) break;
+                        var endIndex = clientBuffer.IndexOf(NewLine, position, length - position);
+                        if (endIndex < 0) break;
 
-                        // 提取完整的行消息（不含 NewLine 本身）
-                        var messageLine = new ArraySegment<byte>(clientBuffer, position, index - position);
+                        // 提取完整的数据行（不含 NewLine 本身）
+                        var messageLine = new ArraySegment<byte>(clientBuffer, position, endIndex - position);
 
-                        // 移动读指针，跳过已消费的消息和换行符
-                        position = index + NewLine.Length;
+                        // 移动读指针，跳过已消费的数据和换行符
+                        position = endIndex + NewLine.Length;
 
-                        // 解析客户端的行消息
-                        var invokeMessages = ParseInvokeMessage(messageLine, remoteEndPoint);
+                        // 解析客户端的数据行
+                        var invokeMessages = ParseInvokeMessage(messageLine, clientEndPoint);
                         if (invokeMessages != null && invokeMessages.Any())
                         {
                             foreach (var invokeMessage in invokeMessages)
@@ -382,17 +376,17 @@ namespace SpaceCG.Net
                                 // 客户端调用消息进入队列，等待处理
                                 if (ClientMessageInvoking != null)
                                 {
-                                    var eventArgs = new InvokeMessageEventArgs(invokeMessage, remoteEndPoint);
+                                    var eventArgs = new InvokeMessageEventArgs(invokeMessage, clientEndPoint);
                                     ClientMessageInvoking.Invoke(this, eventArgs);
                                     if (eventArgs.Cancel)
                                     {
-                                        Trace.TraceWarning($"客户端 {remoteEndPoint} 的调用消息被拦截取消: {invokeMessage}");
+                                        Trace.TraceWarning($"客户端 {clientEndPoint} 的调用消息被拦截取消: {invokeMessage}");
                                         continue;
                                     }
                                 }
 
                                 invokeMessage.TcpClient = client;
-                                invokeMessage.ClientEndPoint = remoteEndPoint;
+                                invokeMessage.ClientEndPoint = clientEndPoint;
                                 InvokeMessages.Enqueue(invokeMessage);
                             }
                         }
@@ -432,7 +426,7 @@ namespace SpaceCG.Net
                     {
                         var remaining = length - position;
                         Buffer.BlockCopy(clientBuffer, position, clientBuffer, 0, remaining);
-                        Trace.TraceInformation($"移动客户端 {remoteEndPoint} 缓冲区数据 {remaining} bytes");
+                        Trace.TraceInformation($"移动客户端 {clientEndPoint} 缓冲区数据 {remaining} bytes");
 
                         offset = remaining;
                         length = remaining;
@@ -442,7 +436,7 @@ namespace SpaceCG.Net
                     // 缓冲区已经满了，清空防止死锁
                     if (offset == bufferSize)
                     {
-                        Trace.TraceWarning($"客户端 {remoteEndPoint} 缓冲区已满且无完整消息，清空缓冲区 {length} bytes");
+                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满且无完整消息，清空缓冲区 {length} bytes");
                         offset = 0;
                         length = 0;
                         position = 0;
@@ -456,35 +450,35 @@ namespace SpaceCG.Net
             }            
             catch (Exception ex)
             {
-                Trace.TraceError($"处理客户端 {remoteEndPoint} 数据时异常: ({ex.GetType().Name}) {ex.Message}");
+                Trace.TraceError($"处理客户端 {clientEndPoint} 数据时异常: ({ex.GetType().Name}) {ex.Message}");
             }
             finally
             {
                 lock (_clients) { _clients.Remove(client); }
 
                 client.Dispose();
-                ClientDisconnected?.Invoke(this, remoteEndPoint);
-                Trace.TraceInformation($"客户端 {remoteEndPoint} 已断开");
+                ClientDisconnected?.Invoke(this, clientEndPoint);
+                Trace.TraceInformation($"客户端 {clientEndPoint} 已断开");
             }
         }
 
         /// <summary>
-        /// 解析客户端发送的完整消息行（以 CRLF 作为结束符的一行消息数据）。
-        /// <para>子类继承重写该方法，实现不同协议的消息解析逻辑。</para>
+        /// 解析客户端发送的完整数据行（以 CRLF 作为结束符的一数据行数据）。
+        /// <para>子类继承重写该方法，实现不同协议的数据解析逻辑。</para>
         /// </summary>
-        /// <param name="messageLine">客户端的行消息字节数据（不含尾部的 CRLF）。</param>
-        /// <param name="remoteEndPoint">发送消息的客户端远程端点地址。</param>
-        /// <returns>解析成功返回一条或多条 <see cref="InvokeMessage"/>；过滤、失败则返回空集合。</returns>
+        /// <param name="messageLine">客户端的数据行字节数据（不含尾部的 CRLF）。</param>
+        /// <param name="remoteEndPoint">发送数据的客户端远程端点地址。</param>
+        /// <returns>解析成功返回一条或多条 <see cref="InvokeMessage"/> 待调用的消息；可过滤、或失败则返回空集合。</returns>
         protected abstract IEnumerable<InvokeMessage> ParseInvokeMessage(ArraySegment<byte> messageLine, IPEndPoint remoteEndPoint);
 
         /// <summary>
         /// 将调用结果序列化为响应数据，用于发送回客户端。
         /// <para>子类继承重写该方法，实现不同协议的响应格式。</para>
         /// </summary>
-        /// <param name="invokeResult">调用结果对象。</param>
+        /// <param name="responseMessage">调用结果对象。</param>
         /// <param name="remoteEndPoint">目标客户端的远程端点地址。</param>
         /// <returns>序列化后的响应 UTF-8 字节数组；如果不响应则时返回空数组。 </returns>
-        protected abstract byte[] ResponseInvokeMessage(InvokeResult invokeResult, IPEndPoint remoteEndPoint);
+        protected abstract byte[] ConvertResponseMessage(ResponseMessage responseMessage, IPEndPoint remoteEndPoint);
 
         /// <summary>
         /// 从消息队列中取出客户端调用消息并执行反射调用，随后将结果响应回客户端。
@@ -497,17 +491,12 @@ namespace SpaceCG.Net
             {
                 if (InvokeMessages.IsEmpty)
                 {
-                    //Thread.Sleep(1);
-                    await Task.Delay(1, cancelToken).ConfigureAwait(false);
+                    //await Task.Delay(1).ConfigureAwait(false);
+                    //Trace.WriteLine("");
                     continue;
                 }
 
-                if (!InvokeMessages.TryDequeue(out var invokeMessage))
-                {
-                    //Thread.Sleep(1);
-                    await Task.Delay(1, cancelToken).ConfigureAwait(false);
-                    continue;
-                }
+                if (!InvokeMessages.TryDequeue(out var invokeMessage)) continue;
 
                 TryCallMethod(invokeMessage, out var invokeResult);
 
@@ -518,7 +507,7 @@ namespace SpaceCG.Net
 
                 try
                 {
-                    var responseBytes = ResponseInvokeMessage(invokeResult, invokeMessage.ClientEndPoint);
+                    var responseBytes = ConvertResponseMessage(invokeResult, invokeMessage.ClientEndPoint);
                     if (responseBytes?.Length > 0)
                     {
                         var stream = invokeMessage.TcpClient.GetStream();
@@ -543,6 +532,60 @@ namespace SpaceCG.Net
             }
         }
 
+        private readonly SemaphoreSlim InvokeMessageSemaphoreSlim = new SemaphoreSlim(60);
+
+        // CallMethodInvokeAsync();
+        protected async Task CallInvokeMessageAsync(InvokeMessage invokeMessage, CancellationToken cancelToken)
+        {
+            if (invokeMessage == null) return;
+
+            await InvokeMessageSemaphoreSlim.WaitAsync();
+
+            try
+            {
+                if (!RegisterObjects.TryGetValue(invokeMessage.ObjectName, out var objectInstance))
+                {
+                    var responseMessage = ResponseMessage.Create(invokeMessage, -1, $"Object '{invokeMessage.ObjectName}' not register");
+                    await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
+                    return;
+                }
+
+                var objectMetod = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}";
+                if (MethodFilters.IndexOf($"*.{invokeMessage.MethodName}") != -1 || MethodFilters.IndexOf(objectMetod) != -1)
+                {
+                    var responseMessage = ResponseMessage.Create(invokeMessage, -2, $"Object method '{objectMetod}' is not allowed to be invoked");
+                    await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
+                    return;
+                }
+
+
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"{ex.GetType().Name} {ex.Message}");
+            }
+            finally
+            {
+                InvokeMessageSemaphoreSlim.Release();
+            }
+
+        }
+
+        protected async Task WriteResponseMessageAsync(InvokeMessage invokeMessage, ResponseMessage responseMessage, CancellationToken cancelToken = default)
+        {
+            if (invokeMessage == null || responseMessage == null) return;
+            if (invokeMessage.ResponseMode == -1) return;
+            if (invokeMessage.TcpClient != null || !invokeMessage.TcpClient.Connected) return;
+
+            var responseBytes = ConvertResponseMessage(responseMessage, invokeMessage.ClientEndPoint);
+            if (responseBytes?.Length > 0)
+            {
+                var stream = invokeMessage.TcpClient.GetStream();
+                await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancelToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancelToken).ConfigureAwait(false);
+            }
+        }
+
         /// <summary>
         /// 尝试通过反射调用注册对象的公共实例方法或公共扩展方法。
         /// <para>支持方法过滤器检查、参数类型解析、扩展方法匹配。</para>
@@ -550,19 +593,21 @@ namespace SpaceCG.Net
         /// <param name="invokeMessage">客户端调用消息。</param>
         /// <param name="invokeResult">输出调用结果，包含状态码、描述信息和返回值。调用失败时返回错误码。</param>
         /// <returns>调用成功返回 <c>true</c>；否则返回 <c>false</c>。</returns>
-        public bool TryCallMethod(InvokeMessage invokeMessage, out InvokeResult invokeResult)
+        public bool TryCallMethod(InvokeMessage invokeMessage, out ResponseMessage invokeResult)
         {
             invokeResult = null;
             if (invokeMessage == null) return false;
             
             if (!RegisterObjects.TryGetValue(invokeMessage.ObjectName, out var objectInstance))
             {
-                invokeResult = InvokeResult.Create(invokeMessage, -1, $"Object '{invokeMessage.ObjectName}' not register");
+                invokeResult = ResponseMessage.Create(invokeMessage, -1, $"Object '{invokeMessage.ObjectName}' not register");
                 return false;
             }
-            if (MethodFilters.IndexOf($"*.{invokeMessage.MethodName}") != -1 || MethodFilters.IndexOf($"{invokeMessage.ObjectName}.{invokeMessage.MethodName}") != -1)
+
+            var objectMetod = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}";
+            if (MethodFilters.IndexOf($"*.{invokeMessage.MethodName}") != -1 || MethodFilters.IndexOf(objectMetod) != -1)
             {
-                invokeResult = InvokeResult.Create(invokeMessage, -2, $"Object method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' is not allowed to be invoked");
+                invokeResult = ResponseMessage.Create(invokeMessage, -2, $"Object method '{objectMetod}' is not allowed to be invoked");
                 return false;
             }
 
@@ -570,7 +615,7 @@ namespace SpaceCG.Net
             var methodInfos = GetInvokeMethods(instanceType, invokeMessage);
             if (methodInfos.Count() != 1)
             {
-                invokeResult = InvokeResult.Create(invokeMessage, -3, $"Object method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' has {methodInfos.Count()} same methods named '{invokeMessage.MethodName}'");
+                invokeResult = ResponseMessage.Create(invokeMessage, -3, $"Object method '{objectMetod}' has {methodInfos.Count()} same methods named '{invokeMessage.MethodName}'");
                 return false;
             }
 
@@ -597,7 +642,7 @@ namespace SpaceCG.Net
                 var destinationType = methodParameters[i + offset].ParameterType;
                 if (!TypeExtensions.TryConvertParameter(invokeMessage.Parameters[i], destinationType, out object convertValue))
                 {
-                    invokeResult = InvokeResult.Create(invokeMessage, -4, $"Object method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' parameter {i} convert from {invokeMessage.Parameters[i]?.GetType()} to {destinationType} failed");
+                    invokeResult = ResponseMessage.Create(invokeMessage, -4, $"Object method '{objectMetod}' parameter {i} convert from {invokeMessage.Parameters[i]?.GetType()} to {destinationType} failed");
                     return false;
                 }
 
@@ -605,25 +650,24 @@ namespace SpaceCG.Net
             }
 
             // 消息分派到指定的上下文
-            Action<SendOrPostCallback, object> dispatcher;
-            if (invokeMessage.IsAsync)
-                dispatcher = _syncContext.Post;
-            else dispatcher = _syncContext.Send;
+            Action<SendOrPostCallback, object> dispatcher = _syncContext.Post;
 
-            invokeResult = InvokeResult.Create(invokeMessage);
+            invokeResult = ResponseMessage.Create(invokeMessage);
             invokeResult.ReturnType = methodInfo.ReturnType;
 
             try
-            {                
+            {
                 dispatcher.Invoke(state =>
                 {
                     var result = methodInfo.Invoke(objectInstance, convertParameters);
 
-                    if (state is InvokeResult iResult)
+                    if (state is ResponseMessage iResult)
                     {
                         iResult.Code = methodInfo.ReturnType == typeof(void) ? 0 : 1;
                         iResult.Description = "OK";
                         iResult.ReturnValue = result;
+
+                        //await Task.Delay(0);
                     }
                 }, invokeResult);
                 return true;
@@ -631,7 +675,7 @@ namespace SpaceCG.Net
             catch (Exception ex)
             {
                 invokeResult.Code = -5;
-                invokeResult.Description = $"Object method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' invoke exception: ({ex.GetType().Name}) {ex.Message}";
+                invokeResult.Description = $"Object method '{objectMetod}' invoke exception: ({ex.GetType().Name}) {ex.Message}";
 
                 Trace.TraceWarning($"实例对象 {invokeMessage.ObjectName}({instanceType.FullName}) 的方法 {methodInfo.Name}({paramsLength}) 调用异常: {ex.Message}");
             }
@@ -655,18 +699,17 @@ namespace SpaceCG.Net
         {
             if (instanceType == null || invokeMessage == null) return Array.Empty<MethodInfo>();
 
-            var paramsKey = "";
+            var paramsSign = "";
             var paramsLength = invokeMessage.Parameters?.Length ?? 0;
             if (paramsLength > 0)
-            {                
-                paramsKey = string.Join(",", invokeMessage.Parameters.Select(p => TypeExtensions.GetParameterKey(p.GetType(), "SVT")));
+            {
+                paramsSign = invokeMessage.Parameters.GetParamsSignature();
             }
 
-            var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsKey})";
+            var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsSign})";
             Trace.WriteLine($"methodCacheKey:{methodCacheKey}");
 
             if (InstanceCacheMethodInfos.TryGetValue(methodCacheKey, out var methodInfo)) return new[] { methodInfo };
-
 
             return Array.Empty<MethodInfo>();
         }
@@ -687,162 +730,4 @@ namespace SpaceCG.Net
         }
     }
 
-    internal static partial class TypeExtensions
-    {
-        internal static readonly ConcurrentDictionary<Type, Type[]> CacheTypeInterfaces = new ConcurrentDictionary<Type, Type[]>();
-
-        /// <summary>
-        /// 获取参数的标志信息
-        /// </summary>
-        /// <param name="paramType"></param>
-        /// <returns></returns>
-        internal static string GetParameterKey(Type paramType)
-        {
-            Trace.WriteLine($"paramType:{paramType}");
-            if (paramType == null) return "";
-            if (paramType.IsEnum || paramType.IsValueType || paramType == typeof(string)) return "SVT";
-
-            //Trace.WriteLine($"IsArray:{paramType.IsArray} IsGenericType:{paramType.IsGenericType}");
-            if (paramType.IsArray) return $"[{GetParameterKey(paramType.GetElementType())}]";
-            if (paramType.IsGenericType && paramType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                var genericArgs = paramType.GetGenericArguments();
-                if (genericArgs.Length == 1) return $"[{GetParameterKey(genericArgs[0])}]";
-                else return $"[({genericArgs.Length},REF)]";
-            }
-
-            return "REF";
-        }
-
-        /// <summary>
-        /// 获取参数的标志信息
-        /// </summary>
-        /// <param name="paramType"></param>
-        /// <param name="returnFlag"></param>
-        /// <returns></returns>
-        internal static string GetParameterKey(Type paramType, string returnFlag)
-        {
-            Trace.WriteLine($"paramType:{paramType}");
-            if (paramType == null) return "";
-            if (paramType.IsEnum || paramType.IsValueType || paramType == typeof(string)) return "SVT";
-
-            //Trace.WriteLine($"IsArray:{paramType.IsArray} IsGenericType:{paramType.IsGenericType}");
-            if (paramType.IsArray) return $"[{GetParameterKey(paramType.GetElementType(), returnFlag)}]";
-            if (paramType.IsGenericType && paramType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            {
-                var genericArgs = paramType.GetGenericArguments();
-                if (genericArgs.Length == 1) return $"[{GetParameterKey(genericArgs[0], returnFlag)}]";
-                else return $"[({genericArgs.Length},REF)]";
-            }
-
-            return returnFlag;
-        }
-
-        /// <summary>
-        /// 判断类型是否实现 IEnumerable&lt;T&gt;
-        /// </summary>
-        /// <param name="type"></param>
-        internal static bool ImplementsIEnumerable(Type type)
-        {
-            if (type == null) return false;
-
-            Type iEnumerableType = typeof(IEnumerable<>);
-            var typeInterfaces = CacheTypeInterfaces.GetOrAdd(type, t => t.GetInterfaces());
-
-            // 检查类型是否直接实现 IEnumerable<T>
-            foreach (var interfaceType in typeInterfaces)
-            {
-                if (interfaceType.IsGenericType && interfaceType.GetGenericTypeDefinition() == iEnumerableType)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// 尝试将调用参数值转换为目标方法参数类型。
-        /// <para>支持标量值类型、字符串、数组和 IEnumerable&lt;T&gt; 多层集合类型的递归转换。</para>
-        /// </summary>
-        /// <param name="value">原始参数值（来自 <see cref="StringExtensions.ToObjectArray"/> 输出，叶子节点均为 <see cref="string"/>）。</param>
-        /// <param name="targetType">目标参数类型。</param>
-        /// <param name="conversionValue">输出的转换后值。</param>
-        /// <returns>转换成功返回 <c>true</c>；否则返回 <c>false</c>。</returns>
-        internal static bool TryConvertParameter(object value, Type targetType, out object conversionValue)
-        {
-            conversionValue = null;
-            if (targetType == null) return false;
-            if (value == null || targetType == typeof(void)) return true;
-
-            Type valueType = value.GetType();
-            // 类型兼容检查（含接口实现关系）
-            if (!targetType.IsArray && (valueType == targetType || targetType.IsAssignableFrom(valueType)))
-            {
-                conversionValue = value;
-                return true;
-            }
-            // 标量：值类型 & 字符串 转换
-            if ((targetType.IsValueType || targetType == typeof(string)) && (valueType.IsValueType || valueType == typeof(string)))
-            {
-                if (value is string stringValue && stringValue.TryConvertTo(targetType, out var targetValue)) conversionValue = targetValue;
-                else conversionValue = value;
-                return true;
-            }
-
-            // 数组：元素类型相同 → 直接赋值
-            if (targetType.IsArray && valueType.IsArray && targetType.GetElementType() == valueType.GetElementType())
-            {
-                conversionValue = value;
-                return true;
-            }
-            // 数组：元素类型不同 → 递归转换每个元素
-            if (targetType.IsArray && valueType.IsArray && targetType.GetElementType() != valueType.GetElementType())
-            {
-                return TryConvertToArray((Array)value, targetType.GetElementType(), out conversionValue);
-            }
-
-            // 目标类型是：System.Collections.IEnumerable<T> 或实现、继承 IEnumerable<T> 接口的子类
-            if (targetType.IsGenericType && valueType.IsArray && targetType.GetGenericArguments()?.Length == 1)
-            {
-                var genericTypeDefinition = targetType.GetGenericTypeDefinition();
-                if (genericTypeDefinition == typeof(IEnumerable<>) || ImplementsIEnumerable(genericTypeDefinition))
-                {
-                    return TryConvertToArray((Array)value, targetType.GetGenericArguments()[0], out conversionValue);
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// 将 object[] 转换为强类型数组，递归转换每个元素。
-        /// <para>单个元素转换失败时，使用元素类型的默认值填充，不终止整个数组的转换。</para>
-        /// </summary>
-        /// <param name="valueArray">源 object[] 数组。</param>
-        /// <param name="elementType">目标元素类型。</param>
-        /// <param name="conversionValue">输出的强类型数组。</param>
-        /// <returns>始终返回 <c>true</c>（元素转换失败时填充默认值）。</returns>
-        internal static bool TryConvertToArray(Array valueArray, Type elementType, out object conversionValue)
-        {
-            conversionValue = null;
-            if (valueArray == null || elementType == null) return false;
-
-            Array instanceValue = Array.CreateInstance(elementType, valueArray.Length);
-
-            for (int i = 0; i < valueArray.Length; i++)
-            {
-                if (!TryConvertParameter(valueArray.GetValue(i), elementType, out object cValue))
-                {
-                    // 转换失败时填充元素类型的默认值
-                    cValue = elementType.IsValueType ? Activator.CreateInstance(elementType) : null;
-                }
-                instanceValue.SetValue(cValue, i);
-            }
-
-            conversionValue = instanceValue;
-            return true;
-        }
-
-    }
 }

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,7 +34,7 @@ namespace Z_TestWpfApp
 
             rpcServer = new RPCServer4X(2000);
             rpcServer.RegisterObject("Demo", this);
-            rpcServer.RegisterObject("Window", this);
+            //rpcServer.RegisterObject("Window", this);
             rpcServer.Start();
         }
         protected override void OnClosing(CancelEventArgs e)
@@ -45,11 +46,6 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            var str = "0x01";
-            var res = int.TryParse(str, out var value);
-            float.TryParse(str, out var fvalue);
-            //Trace.WriteLine(str.ConvertTo(typeof(WindowState)));
-            
             var s0 = "0x01,True,32,False";
             var s1 = "0x01,3,[True,True,False]";
             var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
@@ -66,6 +62,43 @@ namespace Z_TestWpfApp
 
             Trace.WriteLine($"test");
 
+
+            var bytes = new byte[] {0x01,0x02 };
+            var type = bytes.GetType();
+            Trace.WriteLine(bytes.GetType());
+
+            F2(bytes);
+#if false
+            var type = this.GetType();
+            foreach(var method in type.GetMethods())
+            {
+                if (!method.IsPublic) continue;
+                if (method.IsVirtual || method.IsSpecialName) continue;
+
+                var parameters = method.GetParameters();
+                if (parameters == null || parameters.Length == 0) continue;
+
+                var paramsSings = parameters.Select(p => p.ParameterType).GetTypesSignature();
+                Trace.WriteLine($"This::{method.Name}::{paramsSings}");
+            }
+#endif
+
+#if false
+            //var types = string.Join(",", a4.Select(x => TypeExtensions.GetTypeSignature(x.GetType(), x)));
+            //Trace.WriteLine(types);
+
+            var paramsSings_1 = a4.GetParamsSignature();
+            var paramsSings_2 = a5.GetParamsSignature();
+            Trace.WriteLine($"Test11::{paramsSings_1}");
+            Trace.WriteLine($"Test22::{paramsSings_2}");
+            Trace.WriteLine($"Test::{paramsSings_2}");
+#endif
+        }
+
+        private string F2(ICollection<byte> b)
+        {
+            Trace.WriteLine(b.Count);
+            return b.Count.ToString();
         }
 
         public void Echo(string msg)
@@ -92,16 +125,25 @@ namespace Z_TestWpfApp
         public void SetColors(IEnumerable<IEnumerable<Color>> colors)
         {
             Trace.WriteLine($"IEnumerable<IEnumerable<Color>> colors");
-
         }
 
-        public void SetColors(IEnumerable<IEnumerable<Color>> colors, IEnumerable<int> widths)
+        public int SetColors(IEnumerable<IEnumerable<Color>> colors, IEnumerable<int> widths)
         {
-
+            Trace.WriteLine($"IEnumerable<IEnumerable<Color>> colors, IEnumerable<int> widths");
+            return 12;
         }
-        public void SetColors(IEnumerable<IEnumerable<Color>> colors, IReadOnlyList<int> widths)
-        {
 
+        public int SetColors(IEnumerable<IEnumerable<IEnumerable<Color>>> colors, IEnumerable<int> widths)
+        {
+            Trace.WriteLine($"IEnumerable<IEnumerable<IEnumerable<Color>>> colors, IEnumerable<int> widths");
+            return 16;
+        }
+
+        public int SetColors2(IReadOnlyList<IReadOnlyList<Color>> colors, IEnumerable<int> widths)
+        {
+            byte[] array = new byte[colors.Count];
+            Trace.WriteLine($"IEnumerable<IEnumerable<IEnumerable<Color>>> colors, IEnumerable<int> widths");
+            return 16;
         }
     }
 
