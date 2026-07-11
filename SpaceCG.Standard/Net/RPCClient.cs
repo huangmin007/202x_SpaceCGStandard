@@ -9,6 +9,7 @@ namespace SpaceCG.Net
 {
     /// <summary>
     /// <see cref="TcpClient"/> 扩展方法。
+    /// <para>提供非阻塞的连接状态检查，用于读写循环中的快速健康探测。</para>
     /// </summary>
     public static class TcpClientExtensions
     {
@@ -34,8 +35,8 @@ namespace SpaceCG.Net
     }
 
     /// <summary>
-    /// RPC 客户端，用于向服务端发送远程调用请求。
-    /// <para>（功能尚未实现）</para>
+    /// RPC 客户端，用于向服务端发送远程调用请求并接收响应。
+    /// <para>（当前版本为占位类，具体功能待后续实现。可参考 <see cref="RPCServer4X"/> 的 XML 消息格式自行构建客户端。）</para>
     /// </summary>
     public class RPCClient
     {

@@ -51,7 +51,7 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <param name="paramValue"></param>
         /// <returns></returns>
-        internal static string GetParamSignature(object paramValue)
+        internal static string GetParameterSignature(object paramValue)
         {
             if (paramValue == null) return "";
             var valueType = paramValue.GetType();
@@ -59,14 +59,14 @@ namespace SpaceCG.Extensions
             if (valueType.IsEnum || valueType.IsValueType || valueType == typeof(string)) return "SVT";
             if (valueType.IsArray)
             {
-                if (paramValue is object[] array) return $"[{GetParamSignature(array.GetValue(0))}]";
-                else return $"[{GetParamSignature(valueType.GetElementType())}]";
+                if (paramValue is object[] array) return $"[{GetParameterSignature(array.GetValue(0))}]";
+                else return $"[{GetParameterSignature(valueType.GetElementType())}]";
             }
 
             return "REF";
         }
-        /// <inheritdoc cref="GetParamSignature(object)"/> 
-        internal static string GetParamsSignature(this IEnumerable<object> paramValues) => string.Join(",", paramValues.Select(t => GetParamSignature(t)));
+        /// <inheritdoc cref="GetParameterSignature(object)"/> 
+        internal static string GetParametersSignature(this IEnumerable<object> paramValues) => string.Join(",", paramValues.Select(t => GetParameterSignature(t)));
 
         /// <summary>
         /// 判断类型是否实现 IEnumerable&lt;T&gt;

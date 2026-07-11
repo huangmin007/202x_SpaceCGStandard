@@ -7,10 +7,10 @@ namespace SpaceCG.Net
     /// 远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control) 的响应消息对象。
     /// <para>封装方法反射调用后的返回结果，包括状态码、描述信息、返回值等信息。</para>
     /// </summary>
-    public class ResponseMessage
+    public class ResponseMessage : IRPCMessage
     {
         /// <summary>
-        /// 消息唯一标识，对应请求 <see cref="InvokeMessage.Id"/>，用于请求与响应的匹配。
+        /// 消息唯一标识，对应请求 <see cref="InvokeMessage.Id"/>，用于 请求-响应 的匹配。
         /// </summary>
         public int Id { get; internal set; }
         /// <summary>
@@ -51,7 +51,13 @@ namespace SpaceCG.Net
         /// </summary>
         internal ResponseMessage() { }
 
-        internal void ResetParams()
+        /// <inheritdoc cref="Reset" /> 
+        void IRPCMessage.Reset() => Reset();
+        
+        /// <summary>
+        /// 重置消息属性为默认值，用于对象池复用时清空上一次调用的遗留数据。
+        /// </summary>
+        internal void Reset()
         {
             Id = 0;
             Code = 0;

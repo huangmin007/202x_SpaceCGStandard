@@ -2,39 +2,64 @@
 using System.ComponentModel;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.RegularExpressions;
 using SpaceCG.Extensions;
 
 namespace SpaceCG.Net
 {
     /// <summary>
+    /// RPC 消息类型接口
+    /// </summary>
+    internal interface IRPCMessage
+    {
+        /// <summary> 
+        /// 消息唯一标识，用于 请求-响应 消息的匹配。 
+        /// </summary>
+        int Id { get; }
+
+        /// <summary> 
+        /// 消息描述信息说明，或是异常信息说明。 
+        /// </summary>
+        string Description { get; }
+
+        /// <summary>
+        /// 消息时间戳，使用 ISO8601 标准格式。
+        /// <para>用于调试分析、延迟统计、日志追踪、超时判断等场景。</para>
+        /// </summary>
+        DateTimeOffset Timestamp { get; }
+
+        /// <summary>
+        /// 重置参数重置，用于重用消息实例。
+        /// </summary>
+        void Reset();
+    }
+
+
+    /// <summary>
     /// 远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control) 的请求消息对象。
     /// <para>封装客户端调用请求的所有信息，包括已注册的目标对象、方法、参数等。</para>
     /// </summary>
-    public class InvokeMessage
+    public class InvokeMessage : IRPCMessage
     {
-        /// <summary>  消息协议版本号，当前版本为 1.5.0。  </summary>
-        public static readonly Version VERSION = new Version(1, 5, 0);
-        /// <summary> 对象名称或方法名称的命名规则正则表达式，引用 <see cref="RPCServerBase.NamedRegex"/>。 </summary>
-        public static readonly Regex NamedRegex = RPCServerBase.NamedRegex;
+        /// <summary>  消息协议版本号，当前版本为 2.0.0。  </summary>
+        public static readonly Version DefaultProtocolVersion = new Version(2, 0, 0);
 
         /// <summary> 
-        /// 消息唯一标识，用于请求与响应消息的匹配。 
+        /// 消息唯一标识，用于 请求-响应 消息的匹配。 
         /// </summary>
         public int Id { get; set; }
 
         /// <summary> 
         /// 接收或处理消息的已注册对象名称。 
         /// </summary>
-        public string ObjectName { get; private set; }
+        public string ObjectName { get; internal set; }
         /// <summary> 
         /// 接收或处理消息的已注册对象的公共方法的名称。 
         /// </summary>
-        public string MethodName { get; private set; }
+        public string MethodName { get; internal set; }
         /// <summary> 
         /// 公共方法 <see cref="MethodName"/> 的参数列表。 
         /// </summary>
-        public object[] Parameters { get; private set; }
+        public object[] Parameters { get; internal set; }
 
         /// <summary>
         /// 响应模式，默认为 0 即按服务端设计的默认规则响应。
@@ -47,35 +72,38 @@ namespace SpaceCG.Net
         public int ResponseMode { get; set; } = 0;
         
         /// <summary> 
-        /// 当前消息描述信息。 
+        /// 消息描述信息。 
         /// </summary>
         public string Description { get; set; } = string.Empty;
         /// <summary>
-        /// 消息创建/发送时间戳，使用 ISO8601 标准格式。
+        /// 消息时间戳，使用 ISO8601 标准格式。
         /// <para>用于调试分析、延迟统计、日志追踪、超时判断等场景。</para>
         /// </summary>
         public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
 
-        /// <summary> 发送该消息的客户端 <see cref="TcpClient"/>，服务端内部使用，用于后续响应。 </summary>
+        /// <summary> 发送该消息的客户端 <see cref="TcpClient"/>，服务端内部使用，用于后续响应写入。 </summary>
         internal TcpClient TcpClient { get; set; }
 
-        /// <summary> 发送该消息的客户端远程端点地址，服务端内部使用。 </summary>
+        /// <summary> 发送该消息的客户端远程 IP 端点地址，服务端内部使用，用于日志追踪和连接标识。 </summary>
         internal IPEndPoint ClientEndPoint { get; set; }
 
         /// <summary> 
         /// 消息协议版本信息。 
         /// </summary>
-        public Version Version => VERSION;
+        public Version Version => DefaultProtocolVersion;
 
         /// <summary>
         /// 内部构造函数，实例由静态工厂方法 <see cref="Create(string, string)"/> 等创建。
         /// </summary>
         internal InvokeMessage() { }
 
+        /// <inheritdoc cref="Reset" /> 
+        void IRPCMessage.Reset() => Reset();
+        
         /// <summary>
         /// 重置参数列表，用于重用消息实例。
         /// </summary>
-        internal void ResetParams()
+        internal void Reset()
         {
             TcpClient = null;
             ClientEndPoint = null;
@@ -114,19 +142,20 @@ namespace SpaceCG.Net
         /// <summary>
         /// 创建一个带对象参数列表的 <see cref="InvokeMessage"/> 实例。
         /// </summary>
-        /// <param name="objectName">目标对象名称，需符合 <see cref="RPCServerBase.NamedRegex"/> 命名规则。</param>
-        /// <param name="methodName">目标方法名称，需符合 <see cref="RPCServerBase.NamedRegex"/> 命名规则。</param>
+        /// <param name="objectName">目标对象名称，需符合 <see cref="RPCServerBase.IdentifierPattern"/> 命名规则。</param>
+        /// <param name="methodName">目标方法名称，需符合 <see cref="RPCServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="parameters">可变参数列表。</param>
         /// <returns>创建的消息实例。</returns>
         public static InvokeMessage Create(string objectName, string methodName, params object[] parameters)
         {
-            if (string.IsNullOrWhiteSpace(objectName) || !RPCServerBase.NamedRegex.IsMatch(objectName))
+            if (string.IsNullOrWhiteSpace(objectName) || !RPCServerBase.IdentifierPattern.IsMatch(objectName))
                 throw new ArgumentException(nameof(objectName), "对象名称不能为空或命名格式不正确");
-            if (string.IsNullOrWhiteSpace(methodName) || !RPCServerBase.NamedRegex.IsMatch(methodName))
+            if (string.IsNullOrWhiteSpace(methodName) || !RPCServerBase.IdentifierPattern.IsMatch(methodName))
                 throw new ArgumentException(nameof(methodName), "方法名称不能为空或命名格式不正确");
 
             return new InvokeMessage() { ObjectName = objectName, MethodName = methodName, Parameters = parameters };
         }
+
     }
 
     /// <summary>

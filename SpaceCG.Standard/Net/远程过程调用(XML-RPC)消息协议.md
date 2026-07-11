@@ -1,171 +1,344 @@
-﻿# 时空 DEMO 程序远程过程调用(XML-RPC)消息协议 v1.3
+﻿# 远程过程调用(XML-RPC)消息协议 v2.0
 
-***
+> **文档定位**：面向第三方团队或公司的通信接口参考文档。
+>
+> 本文档描述 `RPCServer4X` 服务的 XML 消息协议，第三方开发人员可依据本文档实现兼容的 RPC 客户端。
+>
+> `RPCServer4X` 是 SpaceCG.Net RPC 框架中基于 XML 协议的服务端实现，继承自 `RPCServerBase`。
 
-|发布版本|发布日期|说明|
+---
+
+| 发布版本 | 发布日期 | 说明 |
 |:---|:---|:----|
-|1.0|2023-11-13|初版|
-|1.1|2025-04-26|增加响应超时状态，细节优化|
-|1.2|2026-06-00|优化协议，移除支持多消息 InvokeMessages 格式|
+| 1.0 | 2023-11 | 初版 |
+| 1.1 | 2025-04 | 增加响应超时状态，细节优化 |
+| 1.2 | 2026-06 | 优化协议，移除多消息 InvokeMessages 格式 |
+| 2.0 | 2026-07 | 重构：数据行层与消息层分离，明确一行数据可含多条消息 |
 
-> XML-RPC协议：远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control)
->
-> 需求场景：DEMO 交互控制，PC 端应用程序控制
->
-> 交互特点：局域网络交互，数据量小，传输频率低(30fps以下)，属于指令、控制类型数据，对消息加密没有特别要求
->
-> 分析：
->
-> 1.  XML 格式可读性高，比较友好，对编辑软件没能特别要求
->
-> 2.  本地应用程序配置文件一般都是使用 XML 格式
->
-> 3.  C# 应用(包括Unit3D, .NET应用)，支持 LINQ(语言集成查询) to XML，操作、解析方便
->
-> 4.  未来可扩展，增加指令列表的描述定义文件(文件中包含UI描述，层级描述，指令描述)，自动传输至各控制端，控制端跟据描述信息自动解析，生成UI、连接、控制按扭等
+---
 
-## 协议核心原则
-* 强调可读性，可编辑性，可直接使用第三方工具调试
-* 单消息单请求模式，一条消息打包为一行文本内容，换行回车('\r\n', 0D0A)结束
-* 强类型与弱类型兼容：支持通过 XML 节点显式声明强类型（@Type），也支持通过属性隐式推断弱类型（自动类型转换）。
-* 同步/异步机制：协议本身为同步请求-响应模型。若需异步执行，服务端应在收到请求后立即返回 StatusCode="0" (Success)，后续通过其他通道（如回调或状态推送）通知执行结果。
-* 调用模式：同步/异步，响应/不响应
+## 1. 协议总览
 
-## XML 消息控制格式
+### 1.1 分层模型
 
-```XML
-<InvokeMessage ObjectName="" MethodName="" Parameters="" Comment="" >
-	<Parameter Type="System.Int32">12</Parameter>
-	<Parameter Type="System.String">play</Parameter>
-	<Parameter Type="System.String"><![CDATA[hello,world.如果存在特殊符号字符请使用 CDATA ]]></Parameter>
-	<Parameter Type="System.Byte[]">8,9,10,A,B,C</Parameter>
-</InvokeMessage>
+```
+┌─────────────────────────────────┐
+│         消息层（Message）        │  ← XML 自闭合元素（以 XML '/>' 结束，不可以有子节点）
+│   每条消息为一个独立的方法调用    │
+├─────────────────────────────────┤
+│          数据行层（Line）        │  ← 以 CRLF（\r\n, 0x0D 0x0A）为行结束符
+│     一行可包含 1~N 条消息        │
+├─────────────────────────────────┤
+│        传输层（Transport）       │  ← TCP 字节流，UTF-8 编码
+└─────────────────────────────────┘
 ```
 
-| <div style="width:90pt;">**节点/@属性名称**</div> | **说明**                                                                                                                                          | <div style="width:40pt;">**值类型**</div> | <div style="width:50pt;">**必要** |
-| :------------------------------------------ | :----------------------------------------------------------------------------------------------------------------------- | :------------------------------------- | :------------------------------ |
-| **InvokeMessage**                           | 调用远程方法或函数的消息对象，单个调用消息                                                                                                                           |                                        | 是                               |
-| @ObjectName                                 | 需要控制的实例或对象的名称                                                                                                                                   | String                                 | 是                               |
-| @MethodName                                 | 实例或对象的方法或函数名称                                                                                                                                   | String                                 | 是                               |
-| @Parameters                                 | 节点 **Parameter** 的简单形式，**优先级低于 Parameter 节点**，所有参数将按匹配的函数参数强制类型转换；<br />示例：Parameters="12,play,'hello,world.',\[0x08,0x09,0x10,0x0A,0x0B,0x0C]" | String                                 | 否                               |
-| @Comment                                    | 该条控制消息说明、注释或描述信息；也可以预留未来给控制端做 Label 使用                                                                                                          | String                                 | 否，保留                            |
-| @RequestId                                   |消息的唯一标识，可用于请求与响应进行准确匹配                                                                                                | Guid/String                                 | 否，保留                            |
-| @Timestamp                                   |消息生成或是发送的时间戳，建议使用 ISO8601 标准；调试分析，延迟统计，日志追踪，超时判断等                                                                                               | DateTime/String                                 | 否，保留                            |
-| @Version                                   |协议版本号                                                                                           | Number/String                                 | 否，保留                            |
-| @Mode                                     |调用模式，Sync:同步调用，Async:异步调用，Notify:只发送不响应                                                                                          | Number/String                                 | 否，保留                            |
-| **Parameter**                               | 方法或函数的参数信息，跟据方法或函数是否存在参数而定义；<br />**优先级高于 @Parameters 属性**                                                                                      |                                        | 否                               |
-| @Type                                       | 参数的数据类型(为服务端的数据类型全名)，如果不明确指定数据类型，则会跟据方法对应的参数强制类型转换；<br />参考类型示例：[TypeCode 枚举](https://learn.microsoft.com/zh-cn/dotnet/api/system.typecode?view=net-7.0)         | String                                 | 否                               |
-| @扩展属性或节点                                    | 可在 InvokeMessage 根节点上扩展属性，或根节点之下扩展子节点(非Parameter节点)                                                                                             |                                        |                                 |
+**关键约定**：
 
-*   [x] **建议：手动输入消息编码使用 @Parameters 属性，代码封装或序列化使用 Parameter 节点；**
+- 服务端以 **CRLF** 为行边界，每次从 TCP 流中读取一个完整的数据行
+- 一行内以 `/>` 为消息分隔符，可包含多条 XML 自闭合消息元素
+- XML 自闭合元素不允许有子节点
+- 每条消息元素对应一次独立的方法调用请求
 
-> #### 控制消息示例：
->
-> ```XML
-> <InvokeMessage ObjectName="Window" MethodName="Show" /> 
-> <InvokeMessage ObjectName="Window" MethodName="Close" />
-> <InvokeMessage ObjectName="Demo" MethodName="GetCurrentPage" />
-> <InvokeMessage ObjectName="Demo" MethodName="OpenPage" Parameters="2,en-Us" />
-> <InvokeMessage ObjectName="Demo" MethodName="OpenPage">
-> 	<Parameter Type="System.Int32">2</Parameter>
-> 	<Parameter Type="System.Enum">en-Us</Parameter>
-> </InvokeMessage>
-> <InvokeMessage ObjectName="Video" MethodName="GetCurrentPosition" />
-> <InvokeMessage ObjectName="Video" MethodName="Play" />
-> <InvokeMessage ObjectName="Video" MethodName="Seek" Parameters="5.6"  />
-> <InvokeMessage ObjectName="Video" MethodName="Seek" >
-> 	<Parameter Type="System.Float">5.6</Parameter>
-> </InvokeMessage>
->
-> ```
+### 1.2 通信模式
 
-## XML 消息响应格式
+| 项目 | 说明 |
+|------|------|
+| 传输协议 | TCP（可靠字节流） |
+| 数据行定界 | CRLF `\r\n`（`0x0D 0x0A`）|
+| 消息分隔 | XML 自闭合元素标识 `/>`（`0x2F 0x3E`）|
+| 字符编码 | UTF-8 |
+| 连接模式 | 长连接，单连接可发送多行 |
+| 调用模式 | 请求-响应（同步），可通过 `ResponseMode` 控制是否响应 |
 
-```XML
-<InvokeResult StatusCode="" ExceptionMessage="" ObjectMethod="" ReturnType="" ReturnValue="">
-	<Return Type="System.Int32">6</Return>
-</InvokeResult>
+### 1.3 一行中的多条消息示例
+
+```
+<InvokeMessage ObjectName="Demo" MethodName="Show" /><InvokeMessage ObjectName="Video" MethodName="Play" />
 ```
 
-| <div style="width:110pt;">**节点/@属性名称**</div> | <div style="width:400pt;">**说明**  </div>                                                                                            | <div style="width:40pt;">**值类型**</div> | <div style="width:50pt;">**必要** |
-| :------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------- | :------------------------------ |
-| **InvokeResult**                             | 调用远程方法或函数的返回消息对象，单个响应消息                                                                                                             |                                        | 是                               |
-| @RequestId                                   |消息的唯一标识，可用于请求与响应进行准确匹配                                                                                                | Guid/String                                 | 否，保留                            |
-| @Timestamp                                   |消息生成或是发送的时间戳，建议使用 ISO8601 标准；调试分析，延迟统计，日志追踪，超时判断等                                                                                               | DateTime/String                                 | 否，保留                            |
-| @Version                                   |协议版本号                                                                                           | Number/String                                 | 否，保留                            |
-| @StatusCode                                  | 方法或函数执行的状态码，执行失败小于0，执行成功大于等于0；保留状态码：-2, -1, 0, 1                                                                                    | Int32                                  | 是                               |
-| @ObjectMethod                                | 远程对象或实例的方法或函数的完整名称，格式：{ObjectName}.{MethodName}；示例：ObjectMethod="Window\.Close"                                                     | String                                 | 是                               |
-| @ExceptionMessage                            | 方法或函数执行的异常信息，状态码为小于 0 的解释说明                                                                                                         | String                                 | 否                               |
-| @ReturnType                                  | 节点 Return 的简单形式，**优先级低于 Return 节点**                                                                                                 | String                                 | 否                               |
-| @ReturnValue                                 | 节点 Return 的简单形式，**优先级低于 Return 节点**                                                                                                 | String                                 | 否                               |
-| **Return**                                   | 方法或函数的返回值，**优先级高于@ReturnType,@ReturnValue**                                                                                         |                                        | 否                               |
-| @Type                                        | 返回的值类型(为服务端的数据类型全名)，如果为System.Void类型，则值为 null；<br /> 参考：[TypeCode 枚举](https://learn.microsoft.com/zh-cn/dotnet/api/system.typecode?view=net-7.0) | String                                 | 否                               |
-| @扩展属性或节点                                     | 可在 InvokeResult 根节点上扩展属性，或根节点之下扩展子节点(非Return节点)                                                                                     |                                        |                                 |
+> 以上为一个完整的数据行（以 CRLF 结尾），行内包含两条调用消息。服务端将依次处理并分别响应。
 
-| **执行状 @StatusCode** | **状态码**  | **函数执行状态**                                          | **是否有返回值** |
-| :------------------ | :------- | :-------------------------------------------------- | :--------- |
-| Unknown              | int.MinValue       | 未知状态，远程方法可能执行成功，也有可能执行失败，可能是在传输过程中出现不可预测的异常，或是消息读写超时等 |            |
-| Timeout              | -2       | 客户端发送消息，等待服务端响应超时                                              | 无          |
-| Failed              | -1       | 服务端接收到消息数据，但可能调用失败                                            | 无          |
-| Success             | 0        | 确认执行成功，函数无返回值为 System.Void 类型                       | 无          |
-| SuccessAndReturn    | 1        | 确认执行成功，函数有返回值(为非 System.Void 类型)                    | 有          |
-|                     | 其它自定义状态码 | 执行失败小于0，执行成功大于等于0                                   |            |
+---
 
-| 状态码  | 名称               | 说明      |
-| ---- | ------------------------ | --------------------------- |
-| -100 | ParseError       | 消息格式错误  |
-| -101 | InvalidObject    | 对象不存在   |
-| -102 | InvalidMethod    | 方法不存在   |
-| -103 | ParameterError   | 参数错误    |
-| -104 | AccessDenied     | 权限不足    |
-| -105 | NotSupported     | 功能不支持   |
-| -106 | ExecutionTimeout | 执行超时    |
-| -107 | InternalError    | 服务端内部异常 |
-| -2   | Timeout          | 客户端等待超时 |
-| -1   | Failed           | 调用失败    |
-| 0    | Success          | 成功，无返回值 |
-| 1    | SuccessAndReturn | 成功，有返回值 |
+## 2. 请求消息格式
 
-> #### 响应消息示例
->
-> ```XML
-> <InvokeResult StatusCode="0" ObjectMethod="Window.Show" /> 
-> <InvokeResult StatusCode="-1" ObjectMethod="Window.Close" ExceptionMessage="excption message content" />
-> <InvokeResult StatusCode="1" ObjectMethod="Demo.OpenPage" ReturnType="System.Boolean" ReturnValue="True" />
-> <InvokeResult StatusCode="1" ObjectMethod="Video.GetCurrentPosition">
-> 	<Return Type="System.Float">5.6</Return>
-> </InvokeResult>
->
-> ```
+### 2.1 基本格式
 
-## 属性 @Parameters 的约定(弱类型传参)
+```
+<InvokeMessage 属性列表 />
+```
 
-*   多个参数值以英文 ',' 符号间隔区分，不用明确值类型
-*   支持集合类型参数，在 '\[]' 符号内定义数据，元素类型为基本的值类型
-*   支持识别十六进制字符内容，以 '0x' 开头的字符
-*   支持字符串识别，以单引号或双引号包裹内的字符，字符串应控制在 256 长度，不包括特殊符号
-*   示例：Parameters="12,play,1024,\[0x01,0xA0,0xAA],'this is string content'"
-### 当使用 @Parameters 属性进行弱类型传参时，需遵循以下规则：
-* 分隔符：多个参数值以英文逗号 , 间隔区分，不用明确值类型。
-* 集合/数组类型：支持集合类型参数，在 [] 符号内定义数据，元素类型为基本的值类型。示例：[1,2,3]。
-* 十六进制识别：支持识别十六进制字符内容，必须以 0x 开头。示例：0x0A, 0xFF。
-* 字符串识别：以单引号 ' 或双引号 " 包裹的字符。
-	* 长度限制：建议字符串长度控制在 256 以内（不包括包裹符号）
-* 字节数组 (Byte[])：在 [] 内使用带 0x 前缀的十六进制表示。示例：[0x01, 0xA0, 0xAA]。
+消息为 **XML 自闭合元素**，以 `/>` 结束。**不支持**传统的成对开始/结束标签。
 
-## 属性 @ReturnValue 的解析
-* 返回值类型应是简单的值类型、少量的字符标识，或是数组
-* 与 @Parameters 一致
+### 2.2 属性定义
 
+| 属性 | 类型 | 必须 | 说明 |
+|------|------|:--:|------|
+| `ObjectName` | String | **是** | 目标对象名称，需符合命名规则 `^[a-zA-Z_][a-zA-Z0-9_]*$` |
+| `MethodName` | String | **是** | 目标方法名称，需符合命名规则 `^[a-zA-Z_][a-zA-Z0-9_]*$` |
+| `Id` | Int32 | 否 | 消息标识，用于请求与响应的匹配。默认值为 `0` |
+| `Parameters` | String | 否 | 方法参数，弱类型格式（见 §2.3）。无参调用可省略 |
+| `ResponseMode` | Int32 | 否 | 响应策略：`-1`=不响应，`0`=默认，`1`=强制响应。默认为 `0` |
+| `Description` | String | 否 | 消息注释或描述信息 |
+| `Timestamp` | DateTime | 否 | 消息时间戳，建议使用 ISO8601 格式（如 `2026-07-11T12:00:00Z`） |
 
-## 消息加密等级参考
+### 2.3 参数传递方式 `@Parameters` 属性（弱类型）
 
-| 等级      | 说明          | 参考算法               |
-| :------ | :---------- | :----------------- |
-| 0级 \[x] | 明码传输，不做任何处理 |                    |
-| 1级      | 隐藏，二次编码     | Base64, 其它自定义二进制序列 |
-| 2级      | 对称加密        | AES, DES 等         |
-| 3级      | 非对称加密       | RSA, DSA 等         |
+多个参数使用英文逗号 `,` 分隔，参数只支持 `值类型`、简单的 `字符类型` 和简单的 `集合类型`(元素必须是`值类型`或`字符类型`)，解析规则如下：
 
+| 数据类型 | 格式 | 示例 |
+|------|------|------|
+| 整数 | 直接书写 | `12` |
+| 浮点数 | 直接书写 | `5.6` |
+| 字符串 | 单引号 `'` 或双引号 `"` 包裹 | `'hello'` 或 `"world"` |
+| 布尔 | `true` / `false` | `true` |
+| 字节/十六进制 | `0x` 前缀 | `0xFF`、`0x0A` |
+| 数组 | `[]` 包裹，逗号分隔 | `[1,2,3]` `[[#FFFF0000,#FF00FFFF],[#FF0000FF,#FF0F0F0F]]` |
+| 字节数组 | `[]` 包裹，元素使用 `0x` 前缀 | `[0x08,0x09,0x0A]` |
 
+示例：
+```
+Parameters="12,play,1024,[0x01,0xA0,0xAA],'this is string'"
+Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
+```
 
+> **注意**：字符串内容不应包含未转义的逗号、引号，长度建议控制在 256 字符以内。
+
+### 2.4 响应策略（ResponseMode）
+
+`ResponseMode` 控制服务端是否回复响应消息：
+
+| 值 | 行为 | 适用场景 |
+|:--:|------|------|
+| `-1` | **不响应** | 单向通知（fire-and-forget），如日志上报、状态同步 |
+| `0` | **默认规则** | `void` 方法且执行成功时不响应；有返回值或失败时响应 |
+| `1` | **强制响应** | 无论调用结果如何都返回 `ResponseMessage` |
+
+---
+
+## 3. 响应消息格式
+
+### 3.1 基本格式
+
+```
+<ResponseMessage 属性列表 />
+```
+
+响应同样为 XML 自闭合元素，以 `/>` 结束，每条响应消息后紧跟 CRLF。
+
+### 3.2 属性定义
+
+| 属性 | 类型 | 必须 | 说明 |
+|------|------|:--:|------|
+| `Id` | Int32 | 否 | 对应请求消息的 `Id`，用于匹配 |
+| `Code` | Int32 | **是** | 执行状态码，见 §3.3 |
+| `ObjectMethod` | String | **是** | 被调用方法的完整名称，格式：`{ObjectName}.{MethodName}` |
+| `ReturnValue` | String | 否 | 返回值，`void` 方法不返回此属性 |
+| `ReturnType` | String | 否 | 返回值类型名称（如 `System.Float`） |
+| `Description` | String | 否 | 失败时为错误描述信息 |
+| `Version` | String | 否 | 协议版本号 |
+| `Timestamp` | DateTime | 否 | 响应生成时间戳（ISO8601） |
+
+### 3.3 状态码（Code）
+
+#### 响应端状态码（客户端收到的）
+
+| Code | 含义 | 说明 |
+|:----:|------|------|
+| **0** | 成功，无返回值 | 方法返回类型为 `void` |
+| **1** | 成功，有返回值 | 返回值见 `ReturnValue` / `ReturnType` |
+| **-1** | 目标对象未注册 | 服务端未找到 `ObjectName` 对应的注册对象 |
+| **-2** | 方法被禁止调用 | 方法名匹配了服务端配置的过滤规则 |
+| **-3** | 方法不存在 | 方法名或参数签名不匹配任何已注册方法 |
+| **-4** | 参数转换失败 | 传入的参数无法转换为目标方法要求的类型 |
+| **-5** | 方法执行异常 | 方法在服务端执行过程中抛出异常 |
+
+---
+
+## 4. 请求-响应 消息示例
+
+### 4.1 无参调用
+
+```
+→ <InvokeMessage ObjectName="Demo" MethodName="GetCurrentPage" Id="1" ResponseMode="1" />
+← <ResponseMessage Id="1" Code="1" ObjectMethod="Demo.GetCurrentPage" ReturnValue="/home" ReturnType="String" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:01Z" />
+```
+
+### 4.2 带参数调用
+
+```
+→ <InvokeMessage ObjectName="Video" MethodName="Seek" Id="2" Parameters="0.6" ResponseMode="1" />
+← <ResponseMessage Id="2" Code="0" ObjectMethod="Video.Seek" ReturnType="Void" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:02Z" />
+```
+
+### 4.3 单向通知（无响应）
+
+```
+→ <InvokeMessage ObjectName="Logger" MethodName="Log" Parameters="'app started'" ResponseMode="-1" />
+← （无响应）
+```
+
+### 4.4 错误场景
+
+```
+→ <InvokeMessage ObjectName="Unknown" MethodName="DoSomething" Id="3" />
+← <ResponseMessage Id="3" Code="-1" ObjectMethod="Unknown.DoSomething" Description="Object 'Unknown' not register" Version="2.0.0" Timestamp="..." />
+```
+
+### 4.5 一行多条消息
+
+```
+→ <InvokeMessage ObjectName="Demo" MethodName="Show" Id="10" ResponseMode="1" /><InvokeMessage ObjectName="Video" MethodName="Play" Id="11" ResponseMode="1" />
+← <ResponseMessage Id="10" Code="0" ObjectMethod="Demo.Show" ... />
+← <ResponseMessage Id="11" Code="0" ObjectMethod="Video.Play" ... />
+```
+
+> 服务端按行内从左到右的顺序依次处理每条消息并分别响应，响应的先后顺序取决于方法的执行时间。
+
+---
+
+## 5. 数据类型映射参考
+
+| .NET 类型 | `@Parameters` 表示示例 | 说明 |
+|------|------|------|
+| `System.Int32` | `42` | 整数 |
+| `System.Single` | `3.14` | 单精度浮点 |
+| `System.Double` | `2.71828` | 双精度浮点 |
+| `System.String` | `'hello'` 或 `"world"` | 需引号包裹 |
+| `System.Boolean` | `true` / `false` | 小写 |
+| `System.Byte` | `0xFF` | 十六进制 |
+| `System.Int32[]` | `[1,2,3]` | 数组 |
+| `System.Byte[]` | `[0x01,0x02,0x03]` | 字节数组 |
+| `System.Enum` | `'OptionA'` | 枚举值按名称解析 |
+
+---
+
+## 6. 集成开发注意事项
+
+### 6.1 客户端实现要点
+
+1. **数据行定界**：以 `CRLF`(`0D0A`，字符是`\r\n`) 拆分数据行。TCP 粘包/半包需自行处理，建议使用缓冲区拼接。
+2. **消息拆分**：在每行内以 `/>` 扫描拆分多条 XML 消息。
+3. **字符编码**：统一使用 UTF-8 编解码。
+4. **响应匹配**：通过 `Id` 字段进行 请求-响应 配对。建议客户端生成递增的正整数 `Id`。
+5. **超时处理**：建议设置合理的读写超时（如 3 秒），超时后可按 Code `-10` 处理。
+6. **连接保活**：TCP 长连接，闲置时无需发送心跳，服务端不会主动断开。
+7. **心跳策略**：建议每隔 3 秒调用一次服务端设计的心跳函数，消息响应模式 `ResponseMode` 设为 `1`。
+8. **重连策略**：建议在连接断开后按指数退避重连，避免频繁重连。
+
+### 6.2 支持的平台/语言
+
+协议基于 TCP + UTF-8 + XML，任何支持这些基础能力的语言均可实现客户端：
+
+- C# (.NET / Unity3D)
+- Java / Kotlin
+- Python
+- JavaScript / Node.js
+- C++（libxml2/tinyxml2 等）
+
+### 6.3 限制与约束
+
+| 限制项 | 说明 |
+|------|------|
+| 方法名格式 | 仅允许 `^[a-zA-Z_][a-zA-Z0-9_]*$`，不能含空格、中文、特殊符号 |
+| 参数数量 | 无硬性上限，但建议 ≤ 16 个 |
+| 字符串长度 | `@Parameters` 内字符串建议 ≤ 256 字符 |
+| 不支持 ref/out | 远程调用无法传递引用语义参数 |
+| 不支持重载歧义 | 若方法名相同、参数类型签名也相同，仅匹配第一个 |
+| 不支持属性/索引器 | 仅支持方法调用，不支持属性 get/set |
+
+### 6.4 安全与加密
+
+当前 `RPCServer4X` 为明码传输。如需安全传输，请在应用层自行实现加密包装：
+
+| 等级 | 说明 | 参考方案 |
+|:--:|------|------|
+| 0 | 明码（当前） | — |
+| 1 | 二次编码 | Base64 编码传输 |
+| 2 | 对称加密 | AES 加密后传输 |
+| 3 | 非对称加密 | RSA + AES 混合加密 |
+
+---
+
+## 7. 客户端参考实现（C#）
+
+```csharp
+using System;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading.Tasks;
+
+public class SimpleRPCClient
+{
+    private TcpClient _client;
+    private NetworkStream _stream;
+
+    public async Task ConnectAsync(string host, int port)
+    {
+        _client = new TcpClient();
+        await _client.ConnectAsync(host, port);
+        _stream = _client.GetStream();
+    }
+
+    /// <summary>发送一条调用消息</summary>
+    public async Task SendAsync(string objectName, string methodName,
+        string parameters = null, int id = 0, int responseMode = 0)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"<InvokeMessage ObjectName=\"{objectName}\" MethodName=\"{methodName}\"");
+        if (id != 0) sb.Append($" Id=\"{id}\"");
+        if (parameters != null) sb.Append($" Parameters=\"{parameters}\"");
+        if (responseMode != 0) sb.Append($" ResponseMode=\"{responseMode}\"");
+        sb.Append(" />\r\n");
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        await _stream.WriteAsync(bytes, 0, bytes.Length);
+        await _stream.FlushAsync();
+    }
+
+    /// <summary>读取响应（简化版，仅读一行）</summary>
+    public async Task<string> ReadResponseAsync()
+    {
+        var buffer = new byte[4096];
+        var sb = new StringBuilder();
+        while (true)
+        {
+            var count = await _stream.ReadAsync(buffer, 0, buffer.Length);
+            if (count == 0) break;
+            var text = Encoding.UTF8.GetString(buffer, 0, count);
+            sb.Append(text);
+            if (text.Contains("\n")) break;
+        }
+        return sb.ToString();
+    }
+
+    public void Close()
+    {
+        _stream?.Dispose();
+        _client?.Dispose();
+    }
+}
+
+// 使用示例
+var client = new SimpleRPCClient();
+await client.ConnectAsync("127.0.0.1", 8080);
+
+// 无参调用
+await client.SendAsync("Demo", "GetCurrentPage", id: 1, responseMode: 1);
+
+// 带参调用
+await client.SendAsync("Video", "Seek", parameters: "5.6", id: 2, responseMode: 1);
+
+// 单向通知
+await client.SendAsync("Logger", "Log", parameters: "'app started'", responseMode: -1);
+
+var response = await client.ReadResponseAsync();
+Console.WriteLine(response);
+
+client.Close();
+```
+
+---
+
+> 文档版本：v2.0  |  最后更新：2026-07-11  |  维护：SpaceCG 团队
