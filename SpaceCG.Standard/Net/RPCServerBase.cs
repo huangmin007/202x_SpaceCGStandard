@@ -23,13 +23,13 @@ namespace SpaceCG.Net
     /// <para>
     /// <list type="bullet">
     /// <item>基类是以数据行为单位进行分割，换行回车 CRLF, 0D0A, \r\n或是空行为一个单位进行数据行分割。</item>
-    /// <item>子类继承实现 <see cref="ParseInvokeMessage"/> 和 <see cref="SerializeResponseMessage"/> 以支持不同的消息协议</item>
+    /// <item>子类继承实现 <see cref="DeserializeInvokeMessage"/> 和 <see cref="SerializeResponseMessage"/> 以支持不同的消息协议</item>
     /// <item>通过 <see cref="ClientMessageInvoking"/> 事件可拦截、取消、修改客户端调用消息的执行</item>
-    /// <item>基类通过数据行进行分组，子类可以将一个调用消息放在一行，或将多个调用消息放在一行，具体由子类决定</item>
+    /// <item>基类以数据行为单位，每行对应一条调用消息，与客户端保持一致</item>
     /// </list>
     /// </para>
     /// </summary>
-    public abstract class RPCServerBase : IDisposable
+    public abstract class RpcServerBase : IDisposable
     {
         /// <summary> 数据行分隔符字节数组，使用 CRLF（0x0D, 0x0A）作为新行标识符。 </summary>
         public static readonly byte[] NewLine = new byte[] { 0x0D, 0x0A };
@@ -90,12 +90,12 @@ namespace SpaceCG.Net
         #endregion
 
         /// <summary>
-        /// 使用指定的 IP 地址和端口号初始化 <see cref="RPCServerBase"/> 类的新实例。
+        /// 使用指定的 IP 地址和端口号初始化 <see cref="RpcServerBase"/> 类的新实例。
         /// </summary>
         /// <param name="ipAddress">服务器绑定的本地 IP 地址，如 <see cref="IPAddress.Any"/> 表示监听所有网卡。</param>
         /// <param name="localPort">服务器监听的本地端口号，范围 1-65535。</param>
         /// <exception cref="ArgumentException">端口号不在 1-65535 范围内时抛出。</exception>
-        public RPCServerBase(IPAddress ipAddress, int localPort)
+        public RpcServerBase(IPAddress ipAddress, int localPort)
         {
             if (localPort < 1 || localPort > 65535)
                 throw new ArgumentException("端口号必须在 1-65535 之间");
@@ -104,10 +104,10 @@ namespace SpaceCG.Net
             _syncContext = SynchronizationContext.Current ?? new SynchronizationContext();
         }
         /// <summary>
-        /// 使用指定端口号初始化 <see cref="RPCServerBase"/> 类的新实例，监听所有网卡。
+        /// 使用指定端口号初始化 <see cref="RpcServerBase"/> 类的新实例，监听所有网卡。
         /// </summary>
         /// <param name="localPort">服务器监听的本地端口号，范围 1-65535。</param>
-        public RPCServerBase(int localPort) : this(IPAddress.Any, localPort) { }
+        public RpcServerBase(int localPort) : this(IPAddress.Any, localPort) { }
 
         /// <summary>
         /// 注册可被远程调用/访问的对象实例。
@@ -119,7 +119,7 @@ namespace SpaceCG.Net
         /// <exception cref="ArgumentException">对象类型不合法或名称已存在时抛出。</exception>
         public void RegisterObject(string objectName, object objectInstance)
         {
-            if (_isDisposed) throw new ObjectDisposedException(nameof(RPCServerBase));
+            if (_isDisposed) throw new ObjectDisposedException(nameof(RpcServerBase));
 
             if (string.IsNullOrWhiteSpace(objectName) || !IdentifierPattern.IsMatch(objectName))
                 throw new ArgumentNullException(nameof(objectName), "对象名称不能为空或命名格式不正确");
@@ -128,7 +128,7 @@ namespace SpaceCG.Net
                 throw new ArgumentNullException(nameof(objectInstance), "对象实例不能为空，也不能注册自身实例");
 
             var objectType = objectInstance.GetType();
-            if (objectType.IsValueType || objectType == typeof(RPCServerBase) /*|| objectType == typeof(RPCClient)*/)
+            if (objectType.IsValueType || objectType == typeof(RpcServerBase) /*|| objectType == typeof(RPCClient)*/)
                 throw new ArgumentException($"不能注册的对象实例类型 {objectType}");
 
             if (RegisterObjects.ContainsKey(objectName))
@@ -219,7 +219,7 @@ namespace SpaceCG.Net
         public void Start()
         {
             if (_isDisposed)
-                throw new ObjectDisposedException(nameof(RPCServerBase));
+                throw new ObjectDisposedException(nameof(RpcServerBase));
 
             if (IsRunning) return;
 
@@ -316,7 +316,7 @@ namespace SpaceCG.Net
 
         /// <summary>
         /// 处理单个 TCP 客户端连接的读取循环。
-        /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔数据行，通过 <see cref="ParseInvokeMessage"/> 解析数据行。</para>
+        /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔数据行，通过 <see cref="DeserializeInvokeMessage"/> 反序列化数据行。</para>
         /// </summary>
         /// <param name="client">已接受的 TCP 客户端连接。</param>
         /// <param name="cancelToken">用于取消读取操作的取消令牌。</param>
@@ -363,42 +363,39 @@ namespace SpaceCG.Net
                         if (endIndex < 0) break;
 
                         // 提取完整的数据行（不含 NewLine 本身）
-                        var messageLine = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
+                        var dataLine = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
 
                         // 移动读指针，跳过已消费的数据和换行符
                         readPosition = endIndex + NewLine.Length;
 
                         // 解析客户端的数据行
-                        IEnumerable<InvokeMessage> invokeMessages = null;
+                        InvokeMessage invokeMessage = null;
                         try
                         {
-                            invokeMessages = ParseInvokeMessage(messageLine, clientEndPoint);
+                            invokeMessage = DeserializeInvokeMessage(dataLine, clientEndPoint);
                         }
                         catch (Exception ex)
                         {
                             Trace.TraceWarning($"解析客户端消息异常：({ex.GetType().Name}) {ex.Message}");
                             continue;
                         }
-                        if (invokeMessages != null && invokeMessages.Any())
+                        if (invokeMessage != null)
                         {
-                            foreach (var invokeMessage in invokeMessages)
+                            if (ClientMessageInvoking != null)
                             {
-                                if (ClientMessageInvoking != null)
+                                var eventArgs = new InvokeMessageEventArgs(invokeMessage, clientEndPoint);
+                                ClientMessageInvoking.Invoke(this, eventArgs);
+                                if (eventArgs.Cancel)
                                 {
-                                    var eventArgs = new InvokeMessageEventArgs(invokeMessage, clientEndPoint);
-                                    ClientMessageInvoking.Invoke(this, eventArgs);
-                                    if (eventArgs.Cancel)
-                                    {
-                                        Trace.TraceWarning($"客户端 {clientEndPoint} 的调用消息被拦截取消: {invokeMessage}");
-                                        continue;
-                                    }
+                                    Trace.TraceWarning($"客户端 {clientEndPoint} 的调用消息被拦截取消: {invokeMessage}");
+                                    continue;
                                 }
-
-                                invokeMessage.ClientEndPoint = clientEndPoint;
-                                if (invokeMessage.ResponseMode >= 0) invokeMessage.TcpClient = client;
-
-                                _ = ProcessInvokeMessageAsync(invokeMessage, cancelToken);
                             }
+
+                            invokeMessage.ClientEndPoint = clientEndPoint;
+                            if (invokeMessage.ResponseMode >= 0) invokeMessage.TcpClient = client;
+
+                            _ = ProcessInvokeMessageAsync(invokeMessage, cancelToken);
                         }
                     }
                     #endregion
@@ -472,10 +469,10 @@ namespace SpaceCG.Net
         /// 解析客户端发送的完整数据行（以 CRLF 作为结束符的一数据行数据）。
         /// <para>子类继承重写该方法，实现不同协议的数据解析逻辑。</para>
         /// </summary>
-        /// <param name="messageLine">客户端的数据行字节数据（不含尾部的 CRLF）。</param>
+        /// <param name="dataLine">客户端的数据行字节数据（不含尾部的 CRLF）。</param>
         /// <param name="remoteEndPoint">发送数据的客户端远程端点地址。</param>
-        /// <returns>解析成功返回一条或多条 <see cref="InvokeMessage"/> 待调用的消息；可过滤、或失败则返回空集合。</returns>
-        protected abstract IEnumerable<InvokeMessage> ParseInvokeMessage(ArraySegment<byte> messageLine, IPEndPoint remoteEndPoint);
+        /// <returns>解析成功返回一条 <see cref="InvokeMessage"/> 待调用的消息；可过滤、修改、或解析失败则返回空。</returns>
+        protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> dataLine, IPEndPoint remoteEndPoint);
 
         /// <summary>
         /// 将调用结果序列化为响应数据，用于发送回客户端。

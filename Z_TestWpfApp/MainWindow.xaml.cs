@@ -32,15 +32,20 @@ namespace Z_TestWpfApp
     /// </summary>
     public partial class MainWindow : Window
     {
-        RPCServerBase rpcServer;
+        RpcServerBase rpcServer;
+
+        RpcClientBase rpcClient;
+
         public MainWindow()
         {
             InitializeComponent();
 
-            rpcServer = new RPCServer4X(2000);
+            rpcServer = new RpcServer4X(2000);
             rpcServer.RegisterObject("Demo", this);
             //rpcServer.RegisterObject("Window", this);
             rpcServer.Start();
+
+            rpcClient = new RpcClient4X("127.0.0.1", 2000);
         }
         protected override void OnClosing(CancelEventArgs e)
         {
@@ -50,11 +55,13 @@ namespace Z_TestWpfApp
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
-        {            
+        {
             //var xml = "<ResponseMessage Id=\"0\" Code=\"1\" ObjectMethod =\"Demo.SetColors\" ReturnValue =\"hello world, \\\"test\\\" hell.\" ReturnType=\"String\" Description=\"OK\" Version =\"2.0.0\" Timestamp=\"2026-07-12T06:11:39.7823568+00:00\" />";
             //Trace.WriteLine(xml);
 
             //var el = XElement.Parse(xml);
+
+            const string Dictionary = nameof(Dictionary);
 
             var s0 = "0x01,True,32,False";
             var s1 = "0x01,3,[True,True,False]";

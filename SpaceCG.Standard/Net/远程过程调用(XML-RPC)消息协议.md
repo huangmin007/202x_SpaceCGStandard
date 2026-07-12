@@ -1,10 +1,10 @@
-﻿# 远程过程调用(XML-RPC)消息协议 v2.0
+﻿# 远程过程调用(XML-RPC)消息协议 v3.0
 
 > **文档定位**：面向第三方团队或公司的通信接口参考文档。
 >
-> 本文档描述 `RPCServer4X` 服务的 XML 消息协议，第三方开发人员可依据本文档实现兼容的 RPC 客户端。
+> 本文档描述 `RpcServer4X` 服务的 XML 消息协议，第三方开发人员可依据本文档实现兼容的 RPC 客户端。
 >
-> `RPCServer4X` 是 SpaceCG.Net RPC 框架中基于 XML 协议的服务端实现，继承自 `RPCServerBase`。
+> `RpcServer4X` 是 SpaceCG.Net RPC 框架中基于 XML 协议的服务端实现，继承自 `RpcServerBase`（一行一条消息）。
 
 ---
 
@@ -13,7 +13,8 @@
 | 1.0 | 2023-11 | 初版 |
 | 1.1 | 2025-04 | 增加响应超时状态，细节优化 |
 | 1.2 | 2026-06 | 优化协议，移除多消息 InvokeMessages 格式 |
-| 2.0 | 2026-07 | 重构：数据行层与消息层分离，明确一行数据可含多条消息 |
+| 2.0 | 2026-07 | 重构：数据行层与消息层分离 |
+| 3.0 | 2026-07 | **突破性变更**：一行一消息，客户端与服务端保持对称一致，简化协议实现 |
 
 ---
 
@@ -24,10 +25,10 @@
 ```
 ┌─────────────────────────────────┐
 │         消息层（Message）        │  ← XML 自闭合元素（以 XML '/>' 结束，不可以有子节点）
-│   每条消息为一个独立的方法调用    │
+│   每行一条消息                   │
 ├─────────────────────────────────┤
 │          数据行层（Line）        │  ← 以 CRLF（\r\n, 0x0D 0x0A）为行结束符
-│     一行可包含 1~N 条消息        │
+│     一行一条消息                 │
 ├─────────────────────────────────┤
 │        传输层（Transport）       │  ← TCP 字节流，UTF-8 编码
 └─────────────────────────────────┘
@@ -36,7 +37,7 @@
 **关键约定**：
 
 - 服务端以 **CRLF** 为行边界，每次从 TCP 流中读取一个完整的数据行
-- 一行内以 `/>` 为消息分隔符，可包含多条 XML 自闭合消息元素
+- 一行对应一条 XML 自闭合消息（v3.0 起，一行一消息）
 - XML 自闭合元素不允许有子节点
 - 每条消息元素对应一次独立的方法调用请求
 
@@ -46,18 +47,18 @@
 |------|------|
 | 传输协议 | TCP（可靠字节流） |
 | 数据行定界 | CRLF `\r\n`（`0x0D 0x0A`）|
-| 消息分隔 | XML 自闭合元素标识 `/>`（`0x2F 0x3E`）|
+| 消息格式 | XML 自闭合元素（以 `/>` 结束），每行一条消息 |
 | 字符编码 | UTF-8 |
 | 连接模式 | 长连接，单连接可发送多行 |
 | 调用模式 | 请求-响应（同步），可通过 `ResponseMode` 控制是否响应 |
 
-### 1.3 一行中的多条消息示例
+### 1.3 消息行示例
 
 ```
-<InvokeMessage ObjectName="Demo" MethodName="Show" /><InvokeMessage ObjectName="Video" MethodName="Play" />
+<InvokeMessage ObjectName="Demo" MethodName="Show" />
 ```
 
-> 以上为一个完整的数据行（以 CRLF 结尾），行内包含两条调用消息。服务端将依次处理并分别响应。
+> 以上为一个完整的数据行（以 CRLF 结尾），行内包含一条调用消息。
 
 ---
 
@@ -125,7 +126,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 <ResponseMessage 属性列表 />
 ```
 
-响应同样为 XML 自闭合元素，以 `/>` 结束，每条响应消息后紧跟 CRLF。
+响应同样为 XML 自闭合元素，以 `/>` 结束，每条响应消息后紧跟 CRLF。一行一条响应。
 
 ### 3.2 属性定义
 
@@ -161,40 +162,41 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 ### 4.1 无参调用
 
 ```
-→ <InvokeMessage ObjectName="Demo" MethodName="GetCurrentPage" Id="1" ResponseMode="1" />
-← <ResponseMessage Id="1" Code="1" ObjectMethod="Demo.GetCurrentPage" ReturnValue="/home" ReturnType="String" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:01Z" />
+→ <InvokeMessage ObjectName="Demo" MethodName="GetCurrentPage" Id="1" ResponseMode="1" />\r\n
+← <ResponseMessage Id="1" Code="1" ObjectMethod="Demo.GetCurrentPage" ReturnValue="/home" ReturnType="String" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:01Z" />\r\n
 ```
 
 ### 4.2 带参数调用
 
 ```
-→ <InvokeMessage ObjectName="Video" MethodName="Seek" Id="2" Parameters="0.6" ResponseMode="1" />
-← <ResponseMessage Id="2" Code="0" ObjectMethod="Video.Seek" ReturnType="Void" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:02Z" />
+→ <InvokeMessage ObjectName="Video" MethodName="Seek" Id="2" Parameters="0.6" ResponseMode="1" />\r\n
+← <ResponseMessage Id="2" Code="0" ObjectMethod="Video.Seek" ReturnType="Void" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:02Z" />\r\n
 ```
 
 ### 4.3 单向通知（无响应）
 
 ```
-→ <InvokeMessage ObjectName="Logger" MethodName="Log" Parameters="'app started'" ResponseMode="-1" />
+→ <InvokeMessage ObjectName="Logger" MethodName="Log" Parameters="'app started'" ResponseMode="-1" />\r\n
 ← （无响应）
 ```
 
 ### 4.4 错误场景
 
 ```
-→ <InvokeMessage ObjectName="Unknown" MethodName="DoSomething" Id="3" />
-← <ResponseMessage Id="3" Code="-1" ObjectMethod="Unknown.DoSomething" Description="Object 'Unknown' not register" Version="2.0.0" Timestamp="..." />
+→ <InvokeMessage ObjectName="Unknown" MethodName="DoSomething" Id="3" />\r\n
+← <ResponseMessage Id="3" Code="-1" ObjectMethod="Unknown.DoSomething" Description="Object 'Unknown' not register" Version="2.0.0" Timestamp="..." />\r\n
 ```
 
-### 4.5 一行多条消息
+### 4.5 连续多条消息
 
 ```
-→ <InvokeMessage ObjectName="Demo" MethodName="Show" Id="10" ResponseMode="1" /><InvokeMessage ObjectName="Video" MethodName="Play" Id="11" ResponseMode="1" />
+→ <InvokeMessage ObjectName="Demo" MethodName="Show" Id="10" ResponseMode="1" />
+→ <InvokeMessage ObjectName="Video" MethodName="Play" Id="11" ResponseMode="1" />
 ← <ResponseMessage Id="10" Code="0" ObjectMethod="Demo.Show" ... />
 ← <ResponseMessage Id="11" Code="0" ObjectMethod="Video.Play" ... />
 ```
 
-> 服务端按行内从左到右的顺序依次处理每条消息并分别响应，响应的先后顺序取决于方法的执行时间。
+> 每行为一条独立的消息，服务端依次处理并响应。多条消息需分多行发送。
 
 ---
 
@@ -218,14 +220,13 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 
 ### 6.1 客户端实现要点
 
-1. **数据行定界**：以 `CRLF`(`0D0A`，字符是`\r\n`) 拆分数据行。TCP 粘包/半包需自行处理，建议使用缓冲区拼接。
-2. **消息拆分**：在每行内以 `/>` 扫描拆分多条 XML 消息。
-3. **字符编码**：统一使用 UTF-8 编解码。
-4. **响应匹配**：通过 `Id` 字段进行 请求-响应 配对。建议客户端生成递增的正整数 `Id`。
-5. **超时处理**：建议设置合理的读写超时（如 3 秒），超时后可按 Code `-10` 处理。
-6. **连接保活**：TCP 长连接，闲置时无需发送心跳，服务端不会主动断开。
-7. **心跳策略**：建议每隔 3 秒调用一次服务端设计的心跳函数，消息响应模式 `ResponseMode` 设为 `1`。
-8. **重连策略**：建议在连接断开后按指数退避重连，避免频繁重连。
+1. **数据行定界**：以 `CRLF`(`0D0A`，字符是`\r\n`) 拆分数据行。TCP 粘包/半包需自行处理，建议使用缓冲区拼接。**每行一条消息**。
+2. **字符编码**：统一使用 UTF-8 编解码。
+3. **响应匹配**：通过 `Id` 字段进行 请求-响应 配对。建议客户端生成递增的正整数 `Id`。
+4. **超时处理**：建议设置合理的读写超时（如 3 秒），超时后可按 Code `-10` 处理。
+5. **连接保活**：TCP 长连接，闲置时无需发送心跳，服务端不会主动断开。
+6. **心跳策略**：建议每隔 3 秒调用一次服务端设计的心跳函数，消息响应模式 `ResponseMode` 设为 `1`。
+7. **重连策略**：建议在连接断开后按指数退避重连，避免频繁重连。
 
 ### 6.2 支持的平台/语言
 
@@ -250,7 +251,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 
 ### 6.4 安全与加密
 
-当前 `RPCServer4X` 为明码传输。如需安全传输，请在应用层自行实现加密包装：
+当前 `RpcServer4X` 为明码传输。如需安全传输，请在应用层自行实现加密包装：
 
 | 等级 | 说明 | 参考方案 |
 |:--:|------|------|
@@ -262,6 +263,32 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 ---
 
 ## 7. 客户端参考实现（C#）
+
+### 7.1 使用 SpaceCG.Net 内置客户端（推荐）
+
+```csharp
+using SpaceCG.Net;
+using System.Net;
+
+// 使用 RpcClient4X（XML 协议实现）
+var client = new RpcClient4X(IPAddress.Loopback, 8080);
+await client.ConnectAsync();
+
+// 请求-响应调用
+var response = await client.InvokeAsync("Demo", "GetCurrentPage");
+if (response.Code >= 0)
+    Console.WriteLine(response.ReturnValue);
+
+// 带参调用
+var response2 = await client.InvokeAsync("Video", "Seek", new object[] { 5.6f });
+
+// 单向通知
+await client.NotifyAsync("Logger", "Log", new object[] { "'app started'" });
+
+client.Close();
+```
+
+### 7.2 手动实现简易客户端
 
 ```csharp
 using System;
@@ -281,7 +308,7 @@ public class SimpleRPCClient
         _stream = _client.GetStream();
     }
 
-    /// <summary>发送一条调用消息</summary>
+    /// <summary>发送一条调用消息（每行一条消息）</summary>
     public async Task SendAsync(string objectName, string methodName,
         string parameters = null, int id = 0, int responseMode = 0)
     {
@@ -341,4 +368,4 @@ client.Close();
 
 ---
 
-> 文档版本：v2.0  |  最后更新：2026-07-11  |  维护：SpaceCG 团队
+> 文档版本：v3.0  |  最后更新：2026-07-12  |  维护：SpaceCG 团队

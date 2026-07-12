@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -132,17 +133,26 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 将逗号分隔的参数列表字符串解析为 object[] 树结构。支持引号字符串、嵌套括号（[] / () / {}），叶子节点保留为原始字符串。
+        /// 将 RPC 参数文本解析为 <see cref="object"/>[] 树结构，是本转换流水线的入口。
+        /// <para>解析规则：</para>
+        /// <list type="bullet">
+        /// <item><b>逗号分隔</b>：顶层按逗号分割为多个元素。</item>
+        /// <item><b>引号保护</b>：单引号或双引号包裹的文本视为一个整体，其内部的逗号和括号被忽略；输出时自动剥离外层引号。</item>
+        /// <item><b>括号嵌套</b>：方括号/圆括号/花括号包裹的文本视为子数组，递归调用本方法解析内部内容。</item>
+        /// <item><b>叶子节点</b>：非引号且非括号的 token 作为原始字符串保留，后续由 <see cref="TryConvertTo(string, Type, out object)"/> 进行类型转换。</item>
+        /// </list>
+        /// <para>输出结构：顶层始终是 <c>object[]</c>；被括号包裹的部分是嵌套 <c>object[]</c>；叶子是 <c>string</c>。</para>
         /// <code>示例：
-        /// 输入字符串："0x01,True,32,False"，输出数组：["0x01","True","32","False"]
-        /// 输入字符串："0x01,3,[True,True,False]"，输出数组：["0x01","3",["True","True","False"]]
-        /// 输入字符串："0x01,[0,3,4,7],[True,True,False,True]"，输出数组：["0x01",["0","3","4","7"],["True","True","False","True"]]
-        /// 输入字符串："'hello,world',0x01,3,'ni?,hao,[aa,bb]', [True,True,False],['aaa,bb,c','ni,hao'],15,\"aa,aaa\",15"
-        /// 输出数组：["hello,world","0x01","3","ni?,hao,[aa,bb]",["True","True","False","True"],["aaa,bb,c","ni,hao"],"15","aa,aaa","15"]
+        /// "0x01,True,32,False"                        → ["0x01","True","32","False"]
+        /// "0x01,3,[True,True,False]"                  → ["0x01","3",["True","True","False"]]
+        /// "'hello,world',0x01,[True,False]"            → ["hello,world","0x01",["True","False"]]
+        /// "['aaa,bb','ni,hao'],15"                     → [["aaa,bb","ni,hao"],"15"]
         /// </code>
         /// </summary>
-        /// <param name="parameters">逗号分隔的参数列表字符串</param>
-        /// <returns>析后的 object 数组；空输入返回空数组</returns>
+        /// <param name="parameters">RPC 参数列表字符串，格式为逗号分隔的 token 序列。</param>
+        /// <returns>解析后的 object[] 树；<c>null</c> 或空白输入返回空数组。</returns>
+        /// <seealso cref="TryConvertTo(string, Type, out object)"/>
+        /// <seealso cref="ConvertToString"/>
         public static object[] ToObjectArray(this string parameters)
         {
             if (string.IsNullOrWhiteSpace(parameters)) return Array.Empty<object>();
@@ -248,14 +258,26 @@ namespace SpaceCG.Extensions
         private static bool IsCloseBracket(char c) => c == ']' || c == ')' || c == '}';
 
         /// <summary>
-        /// 将简单的字符串转换为指定类型的值，并返回转换结果和是否成功的标志。
-        /// <para>支持基本类型、枚举、结构体等值类型的转换。</para>
+        /// 将单个字符串标量转换为指定值类型，是流水线中负责做 "string→强类型值" 的标量转换器。
+        /// <para>被 <see cref="TypeExtensions.TryConvertTo"/> 调用，处理 <see cref="ToObjectArray"/> 产出的每个叶子节点字符串。</para>
+        /// <para>支持的类型：</para>
+        /// <list type="bullet">
+        /// <item>string  → 直接返回。</item>
+        /// <item>bool / float / double / decimal → 对应 TryParse。</item>
+        /// <item>byte / sbyte / short / ushort / int / uint / long / ulong → 支持十进制和 0x 十六进制前缀。</item>
+        /// <item>枚举 → Enum.Parse（忽略大小写）。</item>
+        /// <item>Guid / TimeSpan / DateTime / DateTimeOffset → 标准 TryParse。</item>
+        /// <item>其他值类型 → 通过 <see cref="TypeDescriptor.GetConverter(object)"/> 尝试转换。</item>
+        /// </list>
+        /// <para>空或空白字符串视为默认值，转换成功返回对应类型的默认实例。</para>
         /// </summary>
-        /// <param name="value"></param>
-        /// <param name="targetType"></param>
-        /// <param name="targetValue"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentNullException"></exception>
+        /// <param name="value">待转换的字符串（来自 <see cref="ToObjectArray"/> 的叶子节点）。</param>
+        /// <param name="targetType">目标值类型（必须为值类型或 string）。</param>
+        /// <param name="targetValue">转换成功时输出强类型值；否则为 <c>null</c>。</param>
+        /// <returns>转换成功返回 <c>true</c>；目标类型为引用类型（非 string）或转换失败返回 <c>false</c>。</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="targetType"/> 为 <c>null</c> 或 <c>void</c>。</exception>
+        /// <seealso cref="ToObjectArray"/>
+        /// <seealso cref="TypeExtensions.TryConvertTo"/>
         public static bool TryConvertTo(this string value, Type targetType, out object targetValue)
         {
             targetValue = null;
@@ -276,6 +298,18 @@ namespace SpaceCG.Extensions
                 return true;
             }
 
+            // 枚举类型
+            if (targetType.IsEnum)
+            {
+                try
+                {
+                    var boolValue = Enum.Parse(targetType, value, true);
+                    targetValue = boolValue;
+                    return true;
+                }
+                catch { }
+                return false;
+            }
             if (targetType == typeof(bool))
             {
                 if (bool.TryParse(value, out var boolValue))
@@ -285,6 +319,8 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
+
+            // float / double / decimal
             if (targetType == typeof(float))
             {
                 if (float.TryParse(value, out var floatValue))
@@ -312,24 +348,12 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
-            if (targetType.IsEnum)
-            {
-                try
-                {
-                    var boolValue = Enum.Parse(targetType, value, true);
-                    targetValue = boolValue;
-                    return true;
-                }
-                catch { }
-                return false;
-            }
-
-            // byte,ushort,int,long
+            
             var valueTrim = value.Trim();
             var isHexNumber = value.StartsWith("0X", StringComparison.OrdinalIgnoreCase);
             var numberStyles = isHexNumber ? NumberStyles.HexNumber : NumberStyles.Integer;
             if (isHexNumber) valueTrim = valueTrim.Substring(2);
-
+            // Integer
             if (targetType == typeof(byte))
             {
                 if (byte.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var byteValue))
@@ -348,7 +372,6 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
-
             if (targetType == typeof(short))
             {
                 if (short.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var shortValue))
@@ -367,7 +390,6 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
-
             if (targetType == typeof(int))
             {
                 if (int.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var intValue))
@@ -386,7 +408,6 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
-
             if (targetType == typeof(long))
             {
                 if (long.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var longValue))
@@ -461,6 +482,7 @@ namespace SpaceCG.Extensions
 
             return false;
         }
+
         /// <inheritdoc cref="TryConvertTo(string, Type, out object)"/>
         /// <typeparam name="T">值类型</typeparam>
         /// <param name="value"></param>
@@ -481,11 +503,22 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 将对象转换为字符串表示形式。只支持基本类型、枚举、结构体等值类型转换，包括集合类型(集合元素为值类型)。
-        /// <para><see cref="ToObjectArray"/>的反向操作</para>
+        /// 将对象序列化为字符串表示形式，是 <see cref="ToObjectArray"/> 的反向操作（”强类型值→可传输文本“）。
+        /// <para>转换规则：</para>
+        /// <list type="bullet">
+        /// <item><c>null</c> → 字符串 <c>"null"</c>。</item>
+        /// <item>string → 原样返回。</item>
+        /// <item>值类型 → 调用 <c>ToString()</c>。</item>
+        /// <item>数组 / IEnumerable&lt;T&gt; → 委托给 <see cref="ConvertEnumerableToString"/>，输出 <c>[elem1,elem2,...]</c> 格式。</item>
+        /// <item>其他引用类型 → 调用 <c>ToString()</c> 兜底。</item>
+        /// </list>
+        /// <para>注意：本方法不保证产物一定能被 <see cref="ToObjectArray"/> 无损还原（例如值内含逗号或括号的场景）。
+        /// 如需可靠往返，调用方应确保值内容不包含分隔符。</para>
         /// </summary>
-        /// <param name="value"></param>
-        /// <returns></returns>
+        /// <param name="value">要序列化的对象。</param>
+        /// <returns>字符串表示形式。</returns>
+        /// <seealso cref="ToObjectArray"/>
+        /// <seealso cref="TypeExtensions.TryConvertTo"/>
         public static string ConvertToString(object value)
         {
             if (value == null) return "null";
@@ -504,10 +537,13 @@ namespace SpaceCG.Extensions
             return value.ToString();
         }
         /// <summary>
-        /// 将 <see cref="System.Collections.IEnumerable"/> 集合递归转换为字符串表示形式。
-        /// <para>格式为 "[elem1,elem2,...]"，每个元素通过 <see cref="ConvertToString"/> 递归转换。</para>
+        /// 将 <see cref="IEnumerable"/> 集合序列化为括号包裹的逗号分隔字符串。
+        /// <para>由 <see cref="ConvertToString"/> 在处理数组或 IEnumerable&lt;T&gt; 时调用。</para>
+        /// <para>格式：<c>[elem1,elem2,...]</c>，每个元素通过 <see cref="ConvertToString"/> 递归转换，因此支持多层嵌套。</para>
         /// </summary>
-        private static string ConvertEnumerableToString(System.Collections.IEnumerable enumerable)
+        /// <param name="enumerable">要序列化的集合。</param>
+        /// <returns>如 <c>"[1,2,3]"</c> 或嵌套 <c>"[[1,2],[3,4]]"</c> 格式的字符串。</returns>
+        public static string ConvertEnumerableToString(IEnumerable enumerable)
         {
             if (enumerable == null) return "null";
 

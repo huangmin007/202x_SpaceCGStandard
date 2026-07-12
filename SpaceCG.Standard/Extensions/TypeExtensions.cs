@@ -100,13 +100,22 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 尝试将调用参数值转换为目标方法参数类型。
-        /// <para>支持标量值类型、字符串、数组和 IEnumerable&lt;T&gt; 多层集合类型的递归转换。</para>
+        /// 将 <see cref="StringExtensions.ToObjectArray"/> 产出的参数值转换为目标方法参数的强类型值，是本转换流水线的核心调度器。
+        /// <para>处理三种分支：</para>
+        /// <list type="number">
+        /// <item><b>类型兼容</b>：值类型与目标类型一致或可赋值 → 直接返回。</item>
+        /// <item><b>标量转换</b>：目标类型为值类型或 string → 委托给 <see cref="StringExtensions.TryConvertTo(string, Type, out object)"/> 将叶子 string 转为强类型值。</item>
+        /// <item><b>数组/集合转换</b>：目标类型为数组或 IEnumerable&lt;T&gt; → 委托给 <see cref="TryConvertToArray"/> 逐元素递归转换。</item>
+        /// </list>
+        /// <para>典型调用链：<c>TryConvertTo(element, targetType, out result)</c> → 对叶子 string 调 <c>TryConvertTo</c>，
+        /// 对嵌套数组调 <c>TryConvertToArray</c> → 内部再次调 <c>TryConvertTo</c> 处理每个子元素。</para>
         /// </summary>
-        /// <param name="value">原始参数值（来自 <see cref="StringExtensions.ToObjectArray"/> 输出，叶子节点均为 <see cref="string"/>）。</param>
-        /// <param name="targetType">目标参数类型。</param>
-        /// <param name="conversionValue">输出的转换后值。</param>
+        /// <param name="value">待转换的值（顶层来自 <see cref="StringExtensions.ToObjectArray"/> 的输出；叶子一定是 <see cref="string"/>）。</param>
+        /// <param name="targetType">目标方法参数类型。</param>
+        /// <param name="conversionValue">转换后的强类型值。</param>
         /// <returns>转换成功返回 <c>true</c>；否则返回 <c>false</c>。</returns>
+        /// <seealso cref="TryConvertToArray"/>
+        /// <seealso cref="StringExtensions.TryConvertTo(string, Type, out object)"/>
         public static bool TryConvertTo(object value, Type targetType, out object conversionValue)
         {
             conversionValue = null;
@@ -153,20 +162,24 @@ namespace SpaceCG.Extensions
             return false;
         }
 
+        [Obsolete("建议使用 TryConvertTo", false)]
         public static bool ConvertFrom(object value, Type destinationType, out object conversionValue) => TryConvertTo(value, destinationType, out conversionValue);
 
         //public static bool TryConvertParameters(IEnumerable<object> values, IEnumerable<ParameterInfo> parameters, out object[] conversionValues)
         //{        }
 
         /// <summary>
-        /// 将 object[] 转换为强类型数组，递归转换每个元素。
-        /// <para>单个元素转换失败时，使用元素类型的默认值填充，不终止整个数组的转换。</para>
+        /// 将 <c>object[]</c> 转换为指定元素类型的强类型数组，对每个元素递归调用 <see cref="TryConvertTo"/>。
+        /// <para>由 <see cref="TryConvertTo"/> 在检测到目标类型为数组或 IEnumerable&lt;T&gt; 时调用。</para>
+        /// <para>容错策略：单个元素转换失败时，不终止整个数组转换，而是用元素类型的默认值填充该位置，并继续处理后续元素。</para>
+        /// <para>支持多层嵌套数组：因为 <see cref="TryConvertTo"/> 在遇到嵌套数组时会再次调入本方法。</para>
         /// </summary>
-        /// <param name="valueArray">源 object[] 数组。</param>
-        /// <param name="elementType">目标元素类型。</param>
-        /// <param name="conversionValue">输出的强类型数组。</param>
-        /// <returns>始终返回 <c>true</c>（元素转换失败时填充默认值）。</returns>
-        private static bool TryConvertToArray(Array valueArray, Type elementType, out object conversionValue)
+        /// <param name="valueArray">源 object[] 数组（叶子是 string，嵌套子数组也是 object[]）。</param>
+        /// <param name="elementType">目标数组的元素类型。</param>
+        /// <param name="conversionValue">输出的强类型数组（如 <c>int[]</c>、<c>bool[][]</c>）。</param>
+        /// <returns>始终返回 <c>true</c>（失败元素填充默认值，不中断整体转换）。</returns>
+        /// <seealso cref="TryConvertTo"/>
+        public static bool TryConvertToArray(Array valueArray, Type elementType, out object conversionValue)
         {
             conversionValue = null;
             if (valueArray == null || elementType == null) return false;

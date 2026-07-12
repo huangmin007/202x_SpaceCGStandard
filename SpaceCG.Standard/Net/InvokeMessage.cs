@@ -66,7 +66,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 响应模式，默认为 0 即按服务端设计的默认规则响应。
         /// <list type="bullet">
-        /// <item>-1 表示要求服务端不需要要响应当前消息</item>
+        /// <item>-1 表示要求服务端不需要响应当前消息</item>
         /// <item>0 表示按服务端的默认规则响应即可</item>
         /// <item>1 表示要求服务端必须要响应当前消息</item>
         /// </list>
@@ -88,7 +88,6 @@ namespace SpaceCG.Net
 
         /// <summary> 发送该消息的客户端远程 IP 端点地址，服务端内部使用，用于日志追踪和连接标识。 </summary>
         internal IPEndPoint ClientEndPoint { get; set; }
-
         /// <summary> 
         /// 消息协议版本信息。 
         /// </summary>
@@ -144,15 +143,15 @@ namespace SpaceCG.Net
         /// <summary>
         /// 创建一个带对象参数列表的 <see cref="InvokeMessage"/> 实例。
         /// </summary>
-        /// <param name="objectName">目标对象名称，需符合 <see cref="RPCServerBase.IdentifierPattern"/> 命名规则。</param>
-        /// <param name="methodName">目标方法名称，需符合 <see cref="RPCServerBase.IdentifierPattern"/> 命名规则。</param>
+        /// <param name="objectName">目标对象名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
+        /// <param name="methodName">目标方法名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="parameters">可变参数列表。</param>
         /// <returns>创建的消息实例。</returns>
         public static InvokeMessage Create(string objectName, string methodName, params object[] parameters)
         {
-            if (string.IsNullOrWhiteSpace(objectName) || !RPCServerBase.IdentifierPattern.IsMatch(objectName))
+            if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName))
                 throw new ArgumentException(nameof(objectName), "对象名称不能为空或命名格式不正确");
-            if (string.IsNullOrWhiteSpace(methodName) || !RPCServerBase.IdentifierPattern.IsMatch(methodName))
+            if (string.IsNullOrWhiteSpace(methodName) || !RpcServerBase.IdentifierPattern.IsMatch(methodName))
                 throw new ArgumentException(nameof(methodName), "方法名称不能为空或命名格式不正确");
 
             return new InvokeMessage() { ObjectName = objectName, MethodName = methodName, Parameters = parameters };
@@ -161,7 +160,7 @@ namespace SpaceCG.Net
     }
 
     /// <summary>
-    /// 客户端调用消息事件参数，用于 <see cref="RPCServerBase.ClientMessageInvoking"/> 事件。
+    /// 客户端调用消息事件参数，用于 <see cref="RpcServerBase.ClientMessageInvoking"/> 事件。
     /// <para>继承 <see cref="CancelEventArgs"/>，可通过设置 <see cref="CancelEventArgs.Cancel"/> 为 <c>true</c> 来拦截取消执行调用。</para>
     /// </summary>
     public class InvokeMessageEventArgs : CancelEventArgs

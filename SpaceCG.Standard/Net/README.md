@@ -13,13 +13,15 @@
 
 | 类 | 类型 | 说明 |
 |------|------|------|
-| [`RPCServerBase`](./RPC%20服务框架.md) | abstract class | RPC 服务端抽象基类，提供 TCP 连接管理、数据行解析、方法反射调用等核心能力 |
-| [`RPCServer4X`](./RPC%20服务框架.md#35-rpcserver4x) | sealed class | 基于 XML 协议的 RPC 服务端实现，可直接使用 |
+| [`RpcServerBase`](./RPC%20服务框架.md) | abstract class | RPC 服务端抽象基类，提供 TCP 连接管理、数据行解析（一行一消息）、方法反射调用等核心能力 |
+| [`RpcServer4X`](./RPC%20服务框架.md#35-rpcserver4x) | sealed class | 基于 XML 协议的 RPC 服务端实现，可直接使用 |
+| [`RpcClientBase`](./RPC%20服务框架.md) | abstract class | RPC 客户端抽象基类，与服务端镜像对称，提供连接、请求/响应匹配、超时、自动重连等能力 |
+| [`RpcClient4X`](./RPC%20服务框架.md) | sealed class | 基于 XML 协议的 RPC 客户端实现 |
 | [`InvokeMessage`](./RPC%20服务框架.md#32-invokemessage) | class | 客户端调用请求的数据对象 |
 | [`ResponseMessage`](./RPC%20服务框架.md#33-responsemessage) | class | 方法调用结果的数据对象 |
 | [`InvokeMessageEventArgs`](./RPC%20服务框架.md#34-invokemessageeventargs) | class | 消息拦截事件参数（继承 `CancelEventArgs`） |
-| [`RPCClient`](#rpcclient) | class | RPC 客户端（占位，待实现） |
 | [`TcpClientExtensions`](#tcpclientextensions) | static class | `TcpClient` 扩展方法 |
+| [`AutoReconnectTcpClient`](#autoreconnecttcpclient) | sealed class | 带自动重连功能的独立 TCP 客户端封装 |
 
 ---
 
@@ -39,7 +41,7 @@ public class DemoController
 }
 
 // 2. 启动服务
-var server = new RPCServer4X(IPAddress.Loopback, 8080);
+var server = new RpcServer4X(IPAddress.Loopback, 8080);
 server.RegisterObject("Demo", new DemoController());
 server.Start();
 ```
@@ -47,19 +49,19 @@ server.Start();
 ### 客户端
 
 ```csharp
-using var client = new TcpClient();
-await client.ConnectAsync("127.0.0.1", 8080);
-var stream = client.GetStream();
+using SpaceCG.Net;
 
-// 发送
-var request = "<InvokeMessage Id=\"1\" ObjectName=\"Demo\" MethodName=\"GetCurrentPage\" ResponseMode=\"1\" />\r\n";
-var bytes = Encoding.UTF8.GetBytes(request);
-await stream.WriteAsync(bytes, 0, bytes.Length);
+// 使用 RpcClient4X（XML 协议实现）
+var client = new RpcClient4X(IPAddress.Loopback, 8080);
+await client.ConnectAsync();
 
-// 接收响应
-var buffer = new byte[4096];
-var count = await stream.ReadAsync(buffer, 0, buffer.Length);
-Console.WriteLine(Encoding.UTF8.GetString(buffer, 0, count));
+// 请求-响应调用
+var response = await client.InvokeAsync("Demo", "GetCurrentPage");
+if (response.Code >= 0)
+    Console.WriteLine(response.ReturnValue);  // "/home"
+
+// 单向通知（fire-and-forget）
+await client.NotifyAsync("Demo", "OpenPage", new object[] { 42 });
 ```
 
 ---
@@ -68,17 +70,17 @@ Console.WriteLine(Encoding.UTF8.GetString(buffer, 0, count));
 
 | 文档 | 说明 | 适用对象 |
 |------|------|------|
-| [RPC 服务框架.md](./RPC%20服务框架.md) | RPCServerBase 设计文档：架构、流程、设计决策、使用示例 | 内部开发人员 |
+| [RPC 服务框架.md](./RPC%20服务框架.md) | RpcServerBase 设计文档：架构、流程、设计决策、使用示例 | 内部开发人员 |
 | [远程过程调用(XML-RPC)消息协议.md](./远程过程调用\(XML-RPC\)消息协议.md) | XML 协议规范：行格式、消息格式、参数约定、状态码 | **第三方团队/公司** |
 
 ---
 
-## `RPCServerBase`
+## `RpcServerBase`
 
 抽象基类，RPC 服务端的核心。
 
 ```
-行层（CRLF 行分隔）→ 消息层（子类协议解析）→ 调度层（并发+校验）→ 执行层（反射调用）→ 响应层（序列化回写）
+行层（CRLF 行分隔，一行一消息）→ 消息层（子类协议解析）→ 调度层（并发+校验）→ 执行层（反射调用）→ 响应层（序列化回写）
 ```
 
 > 详见 [RPC 服务框架.md](./RPC%20服务框架.md)
@@ -86,7 +88,7 @@ Console.WriteLine(Encoding.UTF8.GetString(buffer, 0, count));
 ### 关键 API
 
 ```csharp
-public abstract class RPCServerBase : IDisposable
+public abstract class RpcServerBase : IDisposable
 {
     // 属性
     public bool IsRunning { get; }
@@ -101,9 +103,9 @@ public abstract class RPCServerBase : IDisposable
     public void Stop();
     public void RegisterObject(string objectName, object objectInstance);
 
-    // 子类实现
-    protected abstract IEnumerable<InvokeMessage> ParseInvokeMessage(ArraySegment<byte> messageLine, IPEndPoint remoteEndPoint);
-    protected abstract byte[] ConvertResponseMessage(ResponseMessage responseMessage, IPEndPoint remoteEndPoint);
+    // 子类实现（一行一条消息）
+    protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> dataLine, IPEndPoint remoteEndPoint);
+    protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint remoteEndPoint);
 
     // 事件
     public event EventHandler<IPEndPoint> ClientConnected;
@@ -114,18 +116,18 @@ public abstract class RPCServerBase : IDisposable
 
 ---
 
-## `RPCServer4X`
+## `RpcServer4X`
 
-基于 XML 协议的 `RPCServerBase` 实现，可直接实例化使用。
+基于 XML 协议的 `RpcServerBase` 实现，可直接实例化使用。
 
-- 以 `/>` 作为行内 XML 自闭合元素分隔符
-- `ParseInvokeMessage` 在一行内以 `/>` 扫描拆分多条 XML 消息
-- 响应使用 `StringBuilder` 直拼 XML（性能优化）
+- 每行一条 XML 自闭合消息，以 CRLF 为行边界
+- `DeserializeInvokeMessage` 反序列化单条 XML 消息，返回一个 `InvokeMessage`
+- 响应使用 `StringBuilder` 直拼 XML + CRLF（性能优化）
 
 ```csharp
 // 创建实例
-var server = new RPCServer4X(8080);                           // 监听所有网卡
-var server = new RPCServer4X(IPAddress.Loopback, 8080);      // 仅本地
+var server = new RpcServer4X(8080);                           // 监听所有网卡
+var server = new RpcServer4X(IPAddress.Loopback, 8080);      // 仅本地
 
 server.RegisterObject("Demo", new DemoController());
 server.Start();
@@ -183,18 +185,39 @@ InvokeMessage.Create("Video", "Seek", 5.6f);
 
 ---
 
-## `RPCClient`
+## `RpcClientBase`
 
-客户端占位类，当前未实现。
+客户端抽象基类，与 `RpcServerBase` 镜像对称设计。
+
+- 以 CRLF 拆分数据行，每行一条响应消息
+- 请求/响应通过 `Id` 匹配（`ConcurrentDictionary` + `TaskCompletionSource`）
+- 发送使用 `SemaphoreSlim(1,1)` 序列化防止字节交错
+- 意外断开时自动重连（固定 3 秒间隔），手动 `Close()` 不重连
+- 默认超时 3 秒，可通过 `DefaultTimeout` 配置
 
 ```csharp
-public class RPCClient
+public abstract class RpcClientBase : IDisposable
 {
-    // 待实现：ConnectAsync、InvokeAsync、超时控制、响应匹配等
+    // 公共 API
+    public Task ConnectAsync();
+    public void Close();
+    public Task<ResponseMessage> InvokeAsync(string objectName, string methodName, object[] parameters = null, TimeSpan? timeout = null);
+    public Task<bool> NotifyAsync(string objectName, string methodName, object[] parameters = null);
+
+    // 子类实现
+    protected abstract byte[] SerializeInvokeMessage(InvokeMessage invokeMessage);
+    protected abstract ResponseMessage DeserializeResponseMessage(ArraySegment<byte> dataLine);
 }
 ```
 
-> 临时方案：直接使用 `TcpClient` + XML 字符串构造请求。
+## `RpcClient4X`
+
+基于 XML 协议的 `RpcClientBase` 实现，与服务端 `RpcServer4X` 配套使用。
+
+```csharp
+var client = new RpcClient4X(IPAddress.Loopback, 8080);
+await client.ConnectAsync();
+var response = await client.InvokeAsync("Demo", "GetCurrentPage");
 
 ---
 
@@ -215,15 +238,17 @@ public static class TcpClientExtensions
 ```
 SpaceCG.Standard/Net/
 ├── README.md                            ← 本文件（命名空间总览）
-├── RPC 服务框架.md                       ← RPCServerBase 设计文档
+├── RPC 服务框架.md                       ← RpcServerBase 设计文档
 ├── 远程过程调用(XML-RPC)消息协议.md       ← XML 协议规范（第三方对接）
-├── InvokeMessage.cs                      ← 请求消息 + 事件参数
+├── InvokeMessage.cs                      ← 请求消息 + 事件参数 + 对象池
 ├── ResponseMessage.cs                    ← 响应消息
-├── RPCServerBase.cs                      ← 抽象基类
-├── RPCServer4X.cs                        ← XML 协议实现
-└── RPCClient.cs                          ← 客户端扩展 + 占位
+├── RpcServerBase.cs                      ← 服务端抽象基类
+├── RpcServer4X.cs                        ← 服务端 XML 协议实现
+├── RpcClientBase.cs                      ← 客户端抽象基类
+├── RpcClient4X.cs                        ← 客户端 XML 协议实现
+└── AutoReconnectTcpClient.cs             ← 独立 TCP 客户端（自动重连，非 RPC 框架核心）
 ```
 
 ---
 
-> 文档版本：v1.0  |  最后更新：2026-07-11  |  维护：SpaceCG 团队
+> 文档版本：v1.2  |  最后更新：2026-07-12  |  维护：SpaceCG 团队

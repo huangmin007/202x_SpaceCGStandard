@@ -1,0 +1,25 @@
+# Project Memory
+
+## RPC 框架设计约定
+
+### 架构对称原则
+- 服务端 `RPCServerBase` 与客户端 `RPCClientBase` 镜像对称设计
+- 两者均以 CRLF (0x0D 0x0A) 为数据行分割标识
+- 两者均使用环形缓冲（Ring Buffer）+ 子类抽象方法实现协议解析层
+
+### 客户端 API 设计
+- `InvokeAsync<T>()` / `InvokeAsync()` — 请求-响应模式（ResponseMode=1），支持超时
+- `NotifyAsync()` — 单向通知模式（ResponseMode=-1），fire-and-forget
+- `InvokeAsync` 内部使用 `ConcurrentDictionary<int, PendingCall>` + `TaskCompletionSource` 匹配响应
+- 发送使用 `SemaphoreSlim(1,1)` 序列化，防止并发写入导致字节交错
+- 不使用 `AutoReconnectTcpClient`，TCP 连接管理内置于 `RPCClientBase`
+
+### 超时与错误码约定
+- 默认超时 3 秒
+- 客户端侧错误码：-100: 连接断开（未连接），-99: 连接关闭（已注册后断开），-98: 序列化结果为空，-97: 写入失败，-96: Id 冲突，-90: 响应超时
+- 服务端侧错误码：0: 成功(void)，1: 成功(有返回值)，-1: 对象未注册，-2: 方法被过滤，-3: 方法不存在，-4: 参数转换失败，-5: 方法执行异常
+
+### 协议扩展
+- 新增协议只需实现两个抽象方法：`SerializeInvokeMessage` / `DeserializeResponseMessage`（客户端）、`DeserializeInvokeMessage` / `SerializeResponseMessage`（服务端）
+- 客户端与服务端抽象方法完全对称
+- 服务端与客户端均以 CRLF 行分隔，**一行一条消息**

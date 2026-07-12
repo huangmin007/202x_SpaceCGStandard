@@ -52,8 +52,10 @@ namespace SpaceCG.Extensions
         {
             if (element == null || !element.HasElements) return;
 
+            const string Templates = nameof(Templates);
+
             // Root Element
-            var templatesElements = element.Elements($"{element.Name}.Templates").ToList();
+            var templatesElements = element.Elements($"{element.Name}.{Templates}").ToList();
             if (templatesElements != null && templatesElements.Count > 0)
             {
                 templatesElements.Remove();
@@ -63,7 +65,7 @@ namespace SpaceCG.Extensions
             // Child Elements
             foreach (var child in element.Elements())
             {
-                templatesElements = child.Elements($"{child.Name}.Templates").ToList();
+                templatesElements = child.Elements($"{child.Name}.{Templates}").ToList();
                 if (templatesElements == null || templatesElements.Count <= 0)
                 {
                     ReplaceTemplateElements(child);
@@ -83,16 +85,18 @@ namespace SpaceCG.Extensions
         {
             if (element == null || templatesElement == null) return;
 
-            const string XName = "Name";
+            const string Name = nameof(Name);
+            const string Template = nameof(Template);
+            const string RefTemplate = nameof(RefTemplate);
 
             // 检查模板元素是否存在循环引用或无效的模板，如果存在，则删除相关的模板元素
             templatesElement.RemoveInvalidTemplates();
-            var templates = templatesElement?.Elements("Template");
+            var templates = templatesElement?.Elements(Template);
             if (templates == null || templates.Count() <= 0) return;
 
             // 获取有效的引用模板元素集合
-            var refTemplates = from refTemplate in element.Descendants("RefTemplate")
-                               where !string.IsNullOrWhiteSpace(refTemplate.Attribute(XName)?.Value)
+            var refTemplates = from refTemplate in element.Descendants(RefTemplate)
+                               where !string.IsNullOrWhiteSpace(refTemplate.Attribute(Name)?.Value)
                                select refTemplate;
             if (refTemplates == null || refTemplates.Count() <= 0) return;
 
@@ -100,11 +104,11 @@ namespace SpaceCG.Extensions
             for (int i = 0; i < refTemplates.Count(); i++)
             {
                 XElement refTemplate = refTemplates.ElementAt(i);
-                string refTemplateName = refTemplate.Attribute(XName)?.Value;
+                string refTemplateName = refTemplate.Attribute(Name)?.Value;
 
                 // 在模板集合中查找指定名称的模板
                 var temps = from template in templates
-                            where refTemplateName == template.Attribute(XName)?.Value
+                            where refTemplateName == template.Attribute(Name)?.Value
                             select template;
                 if (temps == null || temps.Count() <= 0) continue;
 
@@ -112,7 +116,7 @@ namespace SpaceCG.Extensions
                 string templateString = temps.First().ToString();
                 foreach (XAttribute attribute in refTemplate.Attributes())
                 {
-                    if (attribute.Name != XName)
+                    if (attribute.Name != Name)
                         templateString = templateString.Replace($"{{{attribute.Name}}}", attribute.Value);
                 }
 
@@ -130,10 +134,14 @@ namespace SpaceCG.Extensions
         {
             if (templates == null) return;
 
+            const string Name = nameof(Name);
+            const string Template = nameof(Template);
+            const string RefTemplate = nameof(RefTemplate);
+
             // 0.移除没有 Name 属性的 Template 节点
-            foreach (var template in templates.Elements("Template"))
+            foreach (var template in templates.Elements(Template))
             {
-                var nameAttr = template.Attribute("Name");
+                var nameAttr = template.Attribute(Name);
                 if (nameAttr == null || string.IsNullOrWhiteSpace(nameAttr.Value))
                 {
                     template.Remove();
@@ -142,7 +150,7 @@ namespace SpaceCG.Extensions
             }
 
             // 1.收集所有 Template 节点
-            var templateDictionary = templates.Elements("Template").ToDictionary(t => t.Attribute("Name").Value, t => t);
+            var templateDictionary = templates.Elements(Template).ToDictionary(t => t.Attribute(Name).Value, t => t);
 
             // 2️.构建依赖图
             var graph = new Dictionary<string, List<string>>();
@@ -150,8 +158,8 @@ namespace SpaceCG.Extensions
             {
                 var name = kvp.Key;
                 var refNames = kvp.Value
-                    .Descendants("RefTemplate")
-                    .Select(x => (string)x.Attribute("Name"))
+                    .Descendants(RefTemplate)
+                    .Select(x => (string)x.Attribute(Name))
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .ToList();
 
@@ -214,8 +222,10 @@ namespace SpaceCG.Extensions
         {
             if (element == null || !element.HasElements) return;
 
+            const string Dictionary = nameof(Dictionary);
+
             // Root Element
-            var dictionaryElements = element.Elements($"{element.Name}.Dictionary").ToList();
+            var dictionaryElements = element.Elements($"{element.Name}.{Dictionary}").ToList();
             if (dictionaryElements != null && dictionaryElements.Count > 0)
             {
                 dictionaryElements.Remove();
@@ -225,7 +235,7 @@ namespace SpaceCG.Extensions
             // Child Elements
             foreach (var child in element.Elements())
             {
-                dictionaryElements = child.Elements($"{child.Name}.Dictionary").ToList();
+                dictionaryElements = child.Elements($"{child.Name}.{Dictionary}").ToList();
                 if (dictionaryElements == null || dictionaryElements.Count <= 0)
                 {
                     ReplaceDictionaryValues(child);
@@ -245,11 +255,15 @@ namespace SpaceCG.Extensions
         {
             if (element == null || dictionaryElement == null) return;
 
+            const string Key = nameof(Key);
+            const string Item = nameof(Item);
+            const string Value = nameof(Value);
+
             var dictionary = new Dictionary<string, string>();
-            foreach (var item in dictionaryElement.Elements("Item"))
+            foreach (var item in dictionaryElement.Elements(Item))
             {
-                var key = item.Attribute("Key");
-                var value = item.Attribute("Value");
+                var key = item.Attribute(Key);
+                var value = item.Attribute(Value);
                 if (key == null || value == null || string.IsNullOrWhiteSpace(key.Value)) continue;
 
                 if (dictionary.ContainsKey(key.Value))
@@ -270,29 +284,6 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 获取属性或元素的值；优先获取属性值，如果属性不存在，则获取元素的第一个(按文档顺序)子元素的值。
-        /// </summary>
-        /// <param name="element"></param>
-        /// <param name="name">元素的属性名称，或是元素的第一个(按文档顺序)子元素名称</param>
-        /// <returns></returns>
-        [Obsolete("请使用 TryGetValue<T>() 方法替代。", false)]
-        public static string GetElementValue(this XElement element, string name)
-        {
-            if (element == null) return string.Empty;
-            if (string.IsNullOrWhiteSpace(name)) return string.Empty;
-
-            if (element.Attribute(name) != null)
-            {
-                return element.Attribute(name).Value;
-            }
-            else
-            {
-                var subElement = element.Element(name);
-                return subElement != null ? subElement.Value : string.Empty;
-            }
-        }
-
-        /// <summary>
         /// 获取元素的属性或是子元素的值并尝试将其转换为指定类型。
         /// <para>优先获取元素的属性值，如果属性不存在，则获取元素的第一个(按文档顺序)子元素的值。如果为空字符串，则获取元素本身的值。</para>
         /// </summary>
@@ -306,132 +297,17 @@ namespace SpaceCG.Extensions
             value = default(T);
             if (element == null) return false;
 
-            var rawValue = string.IsNullOrWhiteSpace(name) ? element.Value : element.Attribute(name)?.Value ?? element.Element(name)?.Value;
-            if (string.IsNullOrWhiteSpace(rawValue)) return false;
-
-            var result = false;
-            var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+            var rawValue = element.Attribute(name) != null ? element.Attribute(name).Value : element.Element(name)?.Value ?? element.Value;
 
             try
             {
-                // String
-                if (targetType == typeof(string))
-                {
-                    value = (T)(object)rawValue;
-                    return true;
-                }                
-                // Enum
-                if (targetType.IsEnum)
-                {
-                    var enumValue = Enum.Parse(targetType, rawValue, true);
-                    if (enumValue != null) value = (T)enumValue;
-                    return enumValue != null;
-                }
-                // Guid
-                if (targetType == typeof(Guid))
-                {
-                    result = Guid.TryParse(rawValue, out Guid gValue);
-                    if (result) value = (T)(object)gValue;
-                    return result;
-                }
-                // TimeSpan
-                if (targetType == typeof(TimeSpan))
-                {
-                    result = TimeSpan.TryParse(rawValue, CultureInfo.InvariantCulture, out TimeSpan tsValue);
-                    if (result) value = (T)(object)tsValue;
-                    return result;
-                }
-
-                // 常用基础类型转换
-                var typeCode = Type.GetTypeCode(targetType);
-                switch (typeCode)
-                {
-                    case TypeCode.Boolean:
-                        result = bool.TryParse(rawValue, out bool b);
-                        if (result) value = (T)(object)b;
-                        return result;
-
-                    case TypeCode.Byte:
-                        result = byte.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte bValue);
-                        if (result) value = (T)(object)bValue;
-                        return result;
-
-                    case TypeCode.SByte:
-                        result = sbyte.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out sbyte sbValue);
-                        if (result) value = (T)(object)sbValue;
-                        return result;
-
-                    case TypeCode.UInt16:
-                        result = ushort.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort usValue);
-                        if (result) value = (T)(object)usValue;
-                        return result;
-
-                    case TypeCode.Int16:
-                        result = short.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out short sValue);
-                        if (result) value = (T)(object)sValue;
-                        return result;
-
-                    case TypeCode.UInt32:
-                        result = uint.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint uiValue);
-                        if (result) value = (T)(object)uiValue;
-                        return result;
-
-                    case TypeCode.Int32:
-                        result = int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int iValue);
-                        if (result) value = (T)(object)iValue;
-                        return result;
-
-                    case TypeCode.UInt64:
-                        result = ulong.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong ulValue);
-                        if (result) value = (T)(object)ulValue;
-                        return result;
-
-                    case TypeCode.Int64:
-                        result = long.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out long lValue);
-                        if (result) value = (T)(object)lValue;
-                        return result;
-
-                    case TypeCode.Single:
-                        result = float.TryParse(rawValue, NumberStyles.Float, CultureInfo.InvariantCulture, out float fValue);
-                        if (result) value = (T)(object)fValue;
-                        return result;
-
-                    case TypeCode.Double:
-                        result = double.TryParse(rawValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out double dValue);
-                        if (result) value = (T)(object)dValue;
-                        return result;
-
-                    case TypeCode.Decimal:
-                        result = decimal.TryParse(rawValue, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal mValue);
-                        if (result) value = (T)(object)mValue;
-                        return result;
-
-                    case TypeCode.DateTime:
-                        result = DateTime.TryParse(rawValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dtValue);
-                        if (result) value = (T)(object)dtValue;
-                        return result;
-                }
-
-                // 使用 TypeConverter 进行转换
-#if false
-                var converter = TypeDescriptor.GetConverter(targetType);
-#else
-                var converter = TypeExtensions.TypeConverterCache.GetOrAdd(targetType, type => TypeDescriptor.GetConverter(type));
-#endif
-                if (converter != null && converter.CanConvertFrom(typeof(string)))
-                {
-                    object convertValue = converter.ConvertFromInvariantString(rawValue);
-                    if (convertValue != null)
-                    {
-                        value = (T)convertValue;
-                        return true;
-                    }
-                }
-                return false;
+                var result = rawValue.TryConvertTo(typeof(T), out var targetValue);
+                value = (T)targetValue;
+                return result;
             }
             catch (Exception ex)
             {
-                Trace.TraceError($"XML获取值失败: {typeof(T).Name}, Value='{rawValue}', Exception={ex.Message}");
+                Trace.TraceWarning($"获取元素值异常：{ex.Message}");
             }
 
             return false;

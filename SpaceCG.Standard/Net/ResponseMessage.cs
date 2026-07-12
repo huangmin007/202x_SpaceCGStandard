@@ -112,6 +112,22 @@ namespace SpaceCG.Net
         }
 
         /// <summary>
+        /// 创建响应消息对象，并填充状态码和描述信息。
+        /// </summary>
+        /// <param name="code"></param>
+        /// <param name="description"></param>
+        /// <returns></returns>
+        internal static ResponseMessage Create(int code, string description)
+        {
+            return new ResponseMessage()
+            {
+                Code = code,
+                Description = description,
+                Timestamp = DateTimeOffset.UtcNow,
+            };
+        }
+
+        /// <summary>
         /// 返回结果对象的摘要字符串表示形式。
         /// </summary>
         public override string ToString()

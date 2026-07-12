@@ -1,109 +1,92 @@
 using System;
-using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using SpaceCG.Extensions;
 
 namespace SpaceCG.Net
 {
     /// <summary>
-    /// 基于 XML 协议的 RPC 服务端实现（XML-RPC v1.5）。
-    /// <para>消息格式为 XML 自闭合元素（以 "/>" 结束），多消息以 CRLF 作为行分隔符。</para>
+    /// 基于 XML 协议的 RPC 服务端实现（XML-RPC v2.0）。
     /// <para>用法示例：<code>new RPCServer4X(port).Start()</code></para>
     /// </summary>
-    public sealed class RPCServer4X : RPCServerBase
+    public sealed class RpcServer4X : RpcServerBase
     {
         /// <summary> XML 自闭合元素结束标识字节数组 "/>"（0x2F, 0x3E）。 </summary>
-        private static readonly byte[] XMLEndMarker = new byte[] { 0x2F, 0x3E };
+        //private static readonly byte[] XMLEndMarker = new byte[] { 0x2F, 0x3E };
+        
         /// <summary> XML 元素属性正则表达式。 </summary>
         private static readonly Regex AttributeRegex = new Regex(@"(\w+)\s*=\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         /// <summary> 响应消息属性集合。 </summary>
         private static readonly IEnumerable<PropertyInfo> ResponseMessageProperties = typeof(ResponseMessage).GetProperties(BindingFlags.Instance | BindingFlags.Public);
 
         /// <inheritdoc /> 
-        public RPCServer4X(int localPort = 2000) : this(IPAddress.Any, localPort)
+        public RpcServer4X(int localPort = 2000) : this(IPAddress.Any, localPort)
         {
         }
         /// <inheritdoc /> 
-        public RPCServer4X(IPAddress ipAddress, int localPort) : base(ipAddress, localPort)
+        public RpcServer4X(IPAddress ipAddress, int localPort) : base(ipAddress, localPort)
         {
         }
 
         /// <summary>
-        /// 将 XML 格式的消息行解析为 <see cref="InvokeMessage"/> 对象。
+        /// 将 XML 格式的字节数据解析为 <see cref="InvokeMessage"/> 对象。
         /// </summary>
         /// <inheritdoc /> 
-        protected override IEnumerable<InvokeMessage> ParseInvokeMessage(ArraySegment<byte> messageLine, IPEndPoint remoteEndPoint)
+        protected override InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> dataLine, IPEndPoint remoteEndPoint)
         {
-            var position = 0;
-            var messages = new List<InvokeMessage>(8);
-
-            while (position < messageLine.Count)
+            string message = string.Empty;
+            try
             {
-                // 查找下一个 XML 元素结束标识 "/>"
-                var endIndex = messageLine.IndexOf(XMLEndMarker, position, messageLine.Count - position);                
-                if (endIndex < 0) break;
-
-                var message = string.Empty;
-                var tempPosition = position;
-                position = endIndex + XMLEndMarker.Length;   // 移动读指针到当前元素之后，为下一个元素扫描做准备
-
-                try
-                {
-                    message = Encoding.UTF8.GetString(messageLine.Array, tempPosition, endIndex - tempPosition + XMLEndMarker.Length);
-                    Debug.WriteLine($"客户端 {remoteEndPoint} Message:'{message}'");
-                }
-                catch(Exception ex)
-                {
-                    Trace.TraceWarning($"客户端 {remoteEndPoint} 消息解码为字符串异常：{ex.Message}");
-                    continue;
-                }
-
-                if (string.IsNullOrWhiteSpace(message)) continue;
-                
-                try
-                {
-#if true
-                    var element = XElement.Parse(message);
-                    var objectName = element.Attribute(nameof(InvokeMessage.ObjectName))?.Value;
-                    var methodName = element.Attribute(nameof(InvokeMessage.MethodName))?.Value;
-                    if (string.IsNullOrWhiteSpace(objectName) || !RPCServerBase.IdentifierPattern.IsMatch(objectName) ||
-                        string.IsNullOrWhiteSpace(methodName) || !RPCServerBase.IdentifierPattern.IsMatch(methodName)) continue;
-
-                    var invokeMessage = InvokeMessage.Create(objectName, methodName, element.Attribute(nameof(InvokeMessage.Parameters))?.Value);
-
-                    // 解析 Id
-                    if (int.TryParse(element.Attribute(nameof(InvokeMessage.Id))?.Value, out var id)) invokeMessage.Id = id;
-                    // 解析 ResponseMode
-                    if (int.TryParse(element.Attribute(nameof(InvokeMessage.ResponseMode))?.Value, out var responseMode)) invokeMessage.ResponseMode = responseMode;
-                    // 解析 Timestamp
-                    if (DateTimeOffset.TryParse(element.Attribute(nameof(InvokeMessage.Timestamp))?.Value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp)) invokeMessage.Timestamp = timestamp;
-#else
-                    var invokeMessage = XAttributeParse(message);
-                    if (invokeMessage == null)
-                    {
-                        Trace.TraceWarning($"客户端 {remoteEndPoint} XML 元素属性('{message}')解析失败");
-                        continue;
-                    }
-#endif              
-                    messages.Add(invokeMessage);
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceWarning($"客户端 {remoteEndPoint} XML 元素('{message}')解析异常：{ex.Message}");
-                }
+                message = Encoding.UTF8.GetString(dataLine.Array, dataLine.Offset, dataLine.Count);
+                Debug.WriteLine($"客户端 {remoteEndPoint} Message:'{message}'");
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"客户端 {remoteEndPoint} 消息解码为字符串异常：{ex.Message}");
+                return null;
             }
 
-            return messages;
+            if (string.IsNullOrWhiteSpace(message)) return null;
+
+            InvokeMessage invokeMessage = null;
+            try
+            {
+#if false
+                var element = XElement.Parse(message);
+                var objectName = element.Attribute(nameof(InvokeMessage.ObjectName))?.Value;
+                var methodName = element.Attribute(nameof(InvokeMessage.MethodName))?.Value;
+                if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName) ||
+                    string.IsNullOrWhiteSpace(methodName) || !RpcServerBase.IdentifierPattern.IsMatch(methodName)) return null;
+
+                invokeMessage = InvokeMessage.Create(objectName, methodName, element.Attribute(nameof(InvokeMessage.Parameters))?.Value);
+
+                // 解析 Id
+                if (int.TryParse(element.Attribute(nameof(InvokeMessage.Id))?.Value, out var id)) invokeMessage.Id = id;
+                // 解析 ResponseMode
+                if (int.TryParse(element.Attribute(nameof(InvokeMessage.ResponseMode))?.Value, out var responseMode)) invokeMessage.ResponseMode = responseMode;
+                // 解析 Timestamp
+                if (DateTimeOffset.TryParse(element.Attribute(nameof(InvokeMessage.Timestamp))?.Value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp)) invokeMessage.Timestamp = timestamp;
+#else
+                invokeMessage = XAttributeParse(message);
+                if (invokeMessage == null)
+                {
+                    Trace.TraceWarning($"客户端 {remoteEndPoint} XML 元素属性('{message}')解析失败");
+                    return null;
+                }
+#endif
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"客户端 {remoteEndPoint} XML 元素('{message}')解析异常：{ex.Message}");
+            }
+
+            return invokeMessage;
         }
 
         /// <summary>
@@ -137,10 +120,6 @@ namespace SpaceCG.Net
                         message.Attribute(nameof(ResponseMessage.ReturnType)).Remove();
                         message.Attribute(nameof(ResponseMessage.ReturnValue)).Remove();
                     }
-                    else
-                    {
-                        message.Attribute(nameof(ResponseMessage.ReturnType)).Value = responseMessage.ReturnType.Name;
-                    }
                 }
 
                 return Encoding.UTF8.GetBytes($"{message}\r\n");
@@ -153,14 +132,14 @@ namespace SpaceCG.Net
                 builder.Append($"{nameof(ResponseMessage.ObjectMethod)} =\"{responseMessage.ObjectMethod}\" ");
                 if (responseMessage.ReturnType != typeof(void))
                 {
-                    builder.Append($"{nameof(ResponseMessage.ReturnType)}=\"{responseMessage.ReturnType.Name}\" ");
-                    builder.Append($"{nameof(ResponseMessage.ReturnValue)} =\"{SecurityElement.Escape(StringExtensions.ConvertToString(responseMessage.ReturnValue))}\" ");
+                    builder.Append($"{nameof(ResponseMessage.ReturnType)}=\"{responseMessage.ReturnType}\" ");
+                    builder.Append($"{nameof(ResponseMessage.ReturnValue)}=\"{SecurityElement.Escape(StringExtensions.ConvertToString(responseMessage.ReturnValue))}\" ");
                 }
                 if (!string.IsNullOrWhiteSpace(responseMessage.Description))
                 {
                     builder.Append($"{nameof(ResponseMessage.Description)}=\"{SecurityElement.Escape(responseMessage.Description)}\" ");
                 }
-                builder.Append($"{nameof(ResponseMessage.Version)} =\"{responseMessage.Version}\" ");
+                builder.Append($"{nameof(ResponseMessage.Version)}=\"{responseMessage.Version}\" ");
                 builder.Append($"{nameof(ResponseMessage.Timestamp)}=\"{responseMessage.Timestamp:O}\" ");
                 builder.AppendLine("/>");
 
@@ -204,8 +183,8 @@ namespace SpaceCG.Net
                 }
             }
 
-            if (string.IsNullOrWhiteSpace(objectName) || !RPCServerBase.IdentifierPattern.IsMatch(objectName) ||
-                string.IsNullOrWhiteSpace(methodName) || !RPCServerBase.IdentifierPattern.IsMatch(methodName)) return null;
+            if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName) ||
+                string.IsNullOrWhiteSpace(methodName) || !RpcServerBase.IdentifierPattern.IsMatch(methodName)) return null;
 
             var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters);
             invokeMessage.Id = id;
