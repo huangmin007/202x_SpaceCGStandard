@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 
 namespace SpaceCG.Extensions
@@ -12,8 +15,13 @@ namespace SpaceCG.Extensions
     /// </summary>
     public static partial class TypeExtensions
     {
-        internal static readonly ConcurrentDictionary<Type, Type[]> CacheTypeInterfaces = new ConcurrentDictionary<Type, Type[]>();
+        /// <summary>
+        /// 缓存类型转换器，避免每次调用时反射带来的性能开销。
+        /// </summary>
+        internal static readonly ConcurrentDictionary<Type, TypeConverter> TypeConverterCache = new ConcurrentDictionary<Type, TypeConverter>();
 
+        internal static readonly ConcurrentDictionary<Type, Type[]> CacheTypeInterfaces = new ConcurrentDictionary<Type, Type[]>();
+        
         /// <summary>
         /// 获取类型的自定义签名。SVT:String and Value Type
         /// <para>用于反射 MothodInfo 的参数类型签名。</para>
@@ -72,7 +80,7 @@ namespace SpaceCG.Extensions
         /// 判断类型是否实现 IEnumerable&lt;T&gt;
         /// </summary>
         /// <param name="type"></param>
-        internal static bool IsIEnumerable(this Type type)
+        public static bool IsIEnumerable(this Type type)
         {
             if (type == null) return false;
 
@@ -99,7 +107,7 @@ namespace SpaceCG.Extensions
         /// <param name="targetType">目标参数类型。</param>
         /// <param name="conversionValue">输出的转换后值。</param>
         /// <returns>转换成功返回 <c>true</c>；否则返回 <c>false</c>。</returns>
-        internal static bool TryConvertParameter(object value, Type targetType, out object conversionValue)
+        public static bool TryConvertTo(object value, Type targetType, out object conversionValue)
         {
             conversionValue = null;
             if (targetType == null) return false;
@@ -145,6 +153,11 @@ namespace SpaceCG.Extensions
             return false;
         }
 
+        public static bool ConvertFrom(object value, Type destinationType, out object conversionValue) => TryConvertTo(value, destinationType, out conversionValue);
+
+        //public static bool TryConvertParameters(IEnumerable<object> values, IEnumerable<ParameterInfo> parameters, out object[] conversionValues)
+        //{        }
+
         /// <summary>
         /// 将 object[] 转换为强类型数组，递归转换每个元素。
         /// <para>单个元素转换失败时，使用元素类型的默认值填充，不终止整个数组的转换。</para>
@@ -153,7 +166,7 @@ namespace SpaceCG.Extensions
         /// <param name="elementType">目标元素类型。</param>
         /// <param name="conversionValue">输出的强类型数组。</param>
         /// <returns>始终返回 <c>true</c>（元素转换失败时填充默认值）。</returns>
-        internal static bool TryConvertToArray(Array valueArray, Type elementType, out object conversionValue)
+        private static bool TryConvertToArray(Array valueArray, Type elementType, out object conversionValue)
         {
             conversionValue = null;
             if (valueArray == null || elementType == null) return false;
@@ -162,7 +175,7 @@ namespace SpaceCG.Extensions
 
             for (int i = 0; i < valueArray.Length; i++)
             {
-                if (!TryConvertParameter(valueArray.GetValue(i), elementType, out object cValue))
+                if (!TryConvertTo(valueArray.GetValue(i), elementType, out object cValue))
                 {
                     // 转换失败时填充元素类型的默认值
                     cValue = elementType.IsValueType ? Activator.CreateInstance(elementType) : null;

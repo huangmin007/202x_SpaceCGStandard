@@ -15,12 +15,7 @@ namespace SpaceCG.Extensions
     /// 字符串扩展方法
     /// </summary>
     public static partial class StringExtensions
-    {
-        /// <summary>
-        /// 缓存类型转换器，避免每次调用时反射带来的性能开销。
-        /// </summary>
-        internal static readonly ConcurrentDictionary<Type, TypeConverter> TypeConverterCache = new ConcurrentDictionary<Type, TypeConverter>();
-
+    {        
         /// <summary>
         /// 是否为视频文件扩展名
         /// </summary>
@@ -253,7 +248,8 @@ namespace SpaceCG.Extensions
         private static bool IsCloseBracket(char c) => c == ']' || c == ')' || c == '}';
 
         /// <summary>
-        /// 尝试将字符串转换为指定类型的值，返回转换结果和是否成功的标志。支持基本类型、枚举、结构体等值类型转换。
+        /// 将简单的字符串转换为指定类型的值，并返回转换结果和是否成功的标志。
+        /// <para>支持基本类型、枚举、结构体等值类型的转换。</para>
         /// </summary>
         /// <param name="value"></param>
         /// <param name="targetType"></param>
@@ -263,7 +259,8 @@ namespace SpaceCG.Extensions
         public static bool TryConvertTo(this string value, Type targetType, out object targetValue)
         {
             targetValue = null;
-            if (targetType == null) throw new ArgumentNullException(nameof(targetType));
+            if (targetType == null || targetType == typeof(void)) 
+                throw new ArgumentNullException(nameof(targetType));
 
             // 字符串类型直接返回
             if (targetType == typeof(string))
@@ -302,6 +299,15 @@ namespace SpaceCG.Extensions
                 if (double.TryParse(value, out var doubleValue))
                 {
                     targetValue = doubleValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(decimal))
+            {
+                if (decimal.TryParse(value, out var decimalValue))
+                {
+                    targetValue = decimalValue;
                     return true;
                 }
                 return false;
@@ -400,10 +406,48 @@ namespace SpaceCG.Extensions
                 return false;
             }
 
+            // Guid,TimeSpan,DateTime,DateTimeOffset
+            if (targetType == typeof(Guid))
+            {
+                if (Guid.TryParse(value, out var guidValue))
+                {
+                    targetValue = guidValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(TimeSpan))
+            {
+                if (TimeSpan.TryParse(value, out var timeSpanValue))
+                {
+                    targetValue = timeSpanValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(DateTime))
+            {
+                if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTimeValue))
+                {
+                    targetValue = dateTimeValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(DateTimeOffset))
+            {
+                if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTimeOffsetValue))
+                {
+                    targetValue = dateTimeOffsetValue;
+                    return true;
+                }
+                return false;
+            }
+            
             // 通用性值类型转换
             try
             {
-                var converter = TypeConverterCache.GetOrAdd(targetType, type => TypeDescriptor.GetConverter(type));
+                var converter = TypeExtensions.TypeConverterCache.GetOrAdd(targetType, type => TypeDescriptor.GetConverter(type));
                 if (converter != null && converter.CanConvertFrom(typeof(string)))
                 {
                     targetValue = converter.ConvertFromString(value);
@@ -417,11 +461,7 @@ namespace SpaceCG.Extensions
 
             return false;
         }
-
-
-        /// <summary>
-        /// 尝试将字符串转换为指定类型的值，返回转换结果和是否成功的标志。支持基本类型、枚举、结构体等值类型转换。
-        /// </summary>
+        /// <inheritdoc cref="TryConvertTo(string, Type, out object)"/>
         /// <typeparam name="T">值类型</typeparam>
         /// <param name="value"></param>
         /// <param name="targetValue"></param>
@@ -440,5 +480,50 @@ namespace SpaceCG.Extensions
             return false;
         }
 
+        /// <summary>
+        /// 将对象转换为字符串表示形式。只支持基本类型、枚举、结构体等值类型转换，包括集合类型(集合元素为值类型)。
+        /// <para><see cref="ToObjectArray"/>的反向操作</para>
+        /// </summary>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        public static string ConvertToString(object value)
+        {
+            if (value == null) return "null";
+
+            // 字符串类型
+            if (value is string stringValue) return stringValue;
+
+            var valueType = value.GetType();
+            // 基本值类型
+            if (valueType.IsValueType) return value.ToString();
+            // 数组类型
+            if (valueType.IsArray) return ConvertEnumerableToString((System.Collections.IEnumerable)value);
+            // IEnumerable<T> 类型
+            if (valueType.IsIEnumerable() && value is System.Collections.IEnumerable enumerable) return ConvertEnumerableToString(enumerable);
+
+            return value.ToString();
+        }
+        /// <summary>
+        /// 将 <see cref="System.Collections.IEnumerable"/> 集合递归转换为字符串表示形式。
+        /// <para>格式为 "[elem1,elem2,...]"，每个元素通过 <see cref="ConvertToString"/> 递归转换。</para>
+        /// </summary>
+        private static string ConvertEnumerableToString(System.Collections.IEnumerable enumerable)
+        {
+            if (enumerable == null) return "null";
+
+            var builder = new StringBuilder(128);
+            builder.Append('[');
+
+            var hasItems = false;
+            foreach (var item in enumerable)
+            {
+                if (hasItems) builder.Append(',');
+                builder.Append(ConvertToString(item));
+                hasItems = true;
+            }
+
+            builder.Append(']');
+            return builder.ToString();
+        }
     }
 }

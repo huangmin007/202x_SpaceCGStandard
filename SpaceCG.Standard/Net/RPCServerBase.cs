@@ -31,23 +31,30 @@ namespace SpaceCG.Net
     /// </summary>
     public abstract class RPCServerBase : IDisposable
     {
+        /// <summary> 数据行分隔符字节数组，使用 CRLF（0x0D, 0x0A）作为新行标识符。 </summary>
+        public static readonly byte[] NewLine = new byte[] { 0x0D, 0x0A };
         /// <summary> 对象名称或方法名称的命名规则正则表达式，允许字母开头后跟字母、数字、下划线。 </summary>
         public static readonly Regex IdentifierPattern = new Regex(@"^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled);
 
         private bool _isDisposed;
         private TcpListener _tcpListener;
         private CancellationTokenSource _cts;
-        /// <summary>
-        /// 构造时捕获的同步上下文（通常为 WPF UI 线程的 <see cref="SynchronizationContext"/>）。
-        /// <para>使用 <see cref="SynchronizationContext.Send"/> 将方法反射调用封送到目标线程（如 UI 线程）上同步执行，保证线程安全。</para>
-        /// </summary>
         private SynchronizationContext _syncContext;
 
+        #region Public Properties
         /// <summary> 获取服务是否正在运行。 </summary>
         public bool IsRunning => _tcpListener != null && _cts != null;
         /// <summary> 监听的本地 IP 地址和端口号。 </summary>
         public IPEndPoint LocalEndPoint { get; private set; }
+        /// <summary> 当前已连接的 <see cref="TcpClient"/> 只读集合。 </summary>
+        public IReadOnlyList<TcpClient> Clients => _clients;
+        /// <summary> 获取或设置发送缓冲区大小，单位字节，默认 32KB。 </summary>
+        public int SendBufferSize { get; set; } = 1024 * 32;
+        /// <summary> 获取或设置接收缓冲区大小，单位字节，默认 64KB。 </summary>
+        public int ReceiveBufferSize { get; set; } = 1024 * 64;
+        #endregion
 
+        #region events
         /// <summary> 客户端接入连接事件。 </summary>
         public event EventHandler<IPEndPoint> ClientConnected;
         /// <summary> 客户端断开连接事件。 </summary>
@@ -57,25 +64,17 @@ namespace SpaceCG.Net
         /// <para>通过设置 <see cref="CancelEventArgs.Cancel"/> 为 <c>true</c> 可拦截、取消、或是修改客户端调用消息的执行。</para>
         /// </summary>
         public event EventHandler<InvokeMessageEventArgs> ClientMessageInvoking;
+        #endregion
 
-        /// <summary> 当前已连接的 <see cref="TcpClient"/> 只读集合。 </summary>
-        public IReadOnlyList<TcpClient> Clients => _clients;
+        #region readonly fields
         /// <summary> 内部已连接的客户端列表。 </summary>
         private readonly List<TcpClient> _clients = new List<TcpClient>();
-
-        /// <summary> 获取或设置发送缓冲区大小，单位字节，默认 32KB。 </summary>
-        public int SendBufferSize { get; set; } = 1024 * 32;
-        /// <summary> 获取或设置接收缓冲区大小，单位字节，默认 64KB。 </summary>
-        public int ReceiveBufferSize { get; set; } = 1024 * 64;
-        /// <summary> 数据行分隔符字节数组，使用 CRLF（0x0D, 0x0A）作为新行标识符。 </summary>
-        public static readonly byte[] NewLine = new byte[] { 0x0D, 0x0A };
         /// <summary>
         /// 方法过滤器列表，匹配的方法将不允许被远程调用。
         /// <para>格式为：{ObjectName}.{MethodName}，其中 ObjectName 支持通配符 '*'。</para>
         /// <para>例如："*.Dispose" 禁止反射访问所有对象的 Dispose 方法；默认已添加 "*.Dispose" 和 "*.Close"。</para>
         /// </summary>
         public readonly List<string> MethodFilters = new List<string>(16) { "*.Dispose", "*.Close" };
-
         /// <summary>
         /// 方法调用并发控制信号量。
         /// <para>初始许可数 24，最大许可数 60，用于限制同时执行反射调用的并发数量，防止 ThreadPool 线程因 <see cref="_syncContext"/>.Send 阻塞而过度膨胀。</para>
@@ -86,6 +85,10 @@ namespace SpaceCG.Net
         /// <summary> 注册的对象实例的缓存方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预缓存在字典中。 </summary>
         private readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
         
+        //private readonly RPCMessagePool<InvokeMessage> InvokeMessagePool = new RPCMessagePool<InvokeMessage>(24, 128);
+        //private readonly RPCMessagePool<ResponseMessage> ResponseMessagePool = new RPCMessagePool<ResponseMessage>(24, 128);
+        #endregion
+
         /// <summary>
         /// 使用指定的 IP 地址和端口号初始化 <see cref="RPCServerBase"/> 类的新实例。
         /// </summary>
@@ -366,12 +369,20 @@ namespace SpaceCG.Net
                         readPosition = endIndex + NewLine.Length;
 
                         // 解析客户端的数据行
-                        var invokeMessages = ParseInvokeMessage(messageLine, clientEndPoint);
+                        IEnumerable<InvokeMessage> invokeMessages = null;
+                        try
+                        {
+                            invokeMessages = ParseInvokeMessage(messageLine, clientEndPoint);
+                        }
+                        catch (Exception ex)
+                        {
+                            Trace.TraceWarning($"解析客户端消息异常：({ex.GetType().Name}) {ex.Message}");
+                            continue;
+                        }
                         if (invokeMessages != null && invokeMessages.Any())
                         {
                             foreach (var invokeMessage in invokeMessages)
                             {
-                                // 客户端调用消息进入队列，等待处理
                                 if (ClientMessageInvoking != null)
                                 {
                                     var eventArgs = new InvokeMessageEventArgs(invokeMessage, clientEndPoint);
@@ -445,7 +456,7 @@ namespace SpaceCG.Net
             }            
             catch (Exception ex)
             {
-                Trace.TraceError($"处理客户端 {clientEndPoint} 数据时异常: ({ex.GetType().Name}) {ex.Message}");
+                Trace.TraceError($"接收处理客户端 {clientEndPoint} 数据时异常: ({ex.GetType().Name}) {ex.Message}");
             }
             finally
             {
@@ -512,7 +523,7 @@ namespace SpaceCG.Net
                 var paramsLength = invokeMessage.Parameters?.Length ?? 0;
                 if (paramsLength > 0) paramsSign = invokeMessage.Parameters.GetParametersSignature();
                 var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsSign})";
-                Trace.WriteLine($"methodCacheKey:{methodCacheKey}");
+                Debug.WriteLine($"methodCacheKey:{methodCacheKey}");
                 if (!CacheMethodInfos.TryGetValue(methodCacheKey, out var methodInfo))
                 {
                     var responseMessage = ResponseMessage.Create(invokeMessage, -3, $"Object method '{methodCacheKey}' is not available");
@@ -540,7 +551,7 @@ namespace SpaceCG.Net
                 for (int i = 0; i < paramsLength; i++)
                 {
                     var destinationType = methodParameters[i + offset].ParameterType;
-                    if (!TypeExtensions.TryConvertParameter(invokeMessage.Parameters[i], destinationType, out object convertValue))
+                    if (!TypeExtensions.TryConvertTo(invokeMessage.Parameters[i], destinationType, out object convertValue))
                     {
                         var responseMessage = ResponseMessage.Create(invokeMessage, -4, $"Object method '{objectMethod}' parameter {i} convert from {invokeMessage.Parameters[i]?.GetType()} to {destinationType} failed");
                         await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
@@ -552,22 +563,6 @@ namespace SpaceCG.Net
                 #endregion
 
                 #region 执行方法调用（SyncContext.Send 模式）
-#if false  // 旧版 async void + Post 方案（存在竞态Bug，已废弃，保留供参考）
-                _syncContext.Post(async (state) =>
-                {
-                    var result = methodInfo.Invoke(objectInstance, convertParameters);
-                    if (state is InvokeMessage iMessage && iMessage.ResponseMode >= 0)
-                    {
-                        var responseMessage = ResponseMessage.Create(invokeMessage);
-                        responseMessage.Description = "OK";
-                        responseMessage.ReturnValue = result;
-                        responseMessage.ReturnType = methodInfo.ReturnType;
-                        responseMessage.Code = methodInfo.ReturnType == typeof(void) ? 0 : 1;
-
-                        await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
-                    }
-                }, invokeMessage);
-#else
                 object invokeResult = null;
                 Exception invokeException = null;
 
@@ -582,14 +577,18 @@ namespace SpaceCG.Net
                         invokeException = ex;
                     }
                 }, null);
-                // ── 处理结果 ──
+
+                // 处理结果如果发生异常，则响应异常信息
                 if (invokeException != null)
                 {
-                    var responseMessage = ResponseMessage.Create(invokeMessage, -5, $"Object method '{methodCacheKey}' invoke exception: ({invokeException.GetType().Name}) {invokeException.Message}");
+                    var description = $"Object method '{methodCacheKey}' invoke exception: ({invokeException.GetType().Name}) {invokeException.Message}";
+                    Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 执行调用消息异常： {description}");
+
+                    var responseMessage = ResponseMessage.Create(invokeMessage, -5, description);
                     await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
                     return;
                 }
-                // ── 成功响应 ──
+                // 成功响应
                 if (invokeMessage.ResponseMode >= 0)
                 {
                     var responseMessage = ResponseMessage.Create(invokeMessage);
@@ -600,13 +599,14 @@ namespace SpaceCG.Net
 
                     await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
                 }
-#endif
                 #endregion
             }
             catch (Exception ex)
             {
-                Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 执行调用消息异常： {ex.GetType().Name} {ex.Message}");
-                var responseMessage = ResponseMessage.Create(invokeMessage, -5, $"Object method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' invoke exception: ({ex.GetType().Name}) {ex.Message}");
+                var description = $"Process invoke method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' exception: ({ex.GetType().Name}) {ex.Message}";
+                Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 处理执行调用消息异常： {description}");
+
+                var responseMessage = ResponseMessage.Create(invokeMessage, -6, $"{description}");
                 await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
             }
             finally
@@ -623,15 +623,26 @@ namespace SpaceCG.Net
         /// <param name="responseMessage">待发送的响应消息对象。</param>
         /// <param name="cancelToken">用于取消写入操作的令牌。</param>
         /// <returns>一个表示异步写入操作的任务。</returns>
-        protected async Task WriteResponseMessageAsync(InvokeMessage invokeMessage, ResponseMessage responseMessage, CancellationToken cancelToken = default)
+        protected async Task WriteResponseMessageAsync(InvokeMessage invokeMessage, ResponseMessage responseMessage, CancellationToken cancelToken)
         {
             if (invokeMessage == null || responseMessage == null) return;
 
-            if (invokeMessage.ResponseMode == -1) return;            
+            if (invokeMessage.ResponseMode < 0) return;
+            if (invokeMessage.ResponseMode == 0 && responseMessage.Code == 0) return;
             if (invokeMessage.TcpClient == null || !invokeMessage.TcpClient.Connected) return;
 
-            var responseBytes = SerializeResponseMessage(responseMessage, invokeMessage.ClientEndPoint);
-            if (responseBytes?.Length > 0)
+            byte[] responseBytes = null;
+            try
+            {
+                responseBytes = SerializeResponseMessage(responseMessage, invokeMessage.ClientEndPoint);
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"序列化响应消息异常：({ex.GetType().Name}) {ex.Message}");
+                return;
+            }
+
+            if (responseBytes != null && responseBytes.Length > 0)
             {
                 var stream = invokeMessage.TcpClient.GetStream();
                 await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancelToken).ConfigureAwait(false);
@@ -652,6 +663,8 @@ namespace SpaceCG.Net
             RegisterObjects.Clear();
             CacheMethodInfos.Clear();
         }
+
+        
     }
 
 }

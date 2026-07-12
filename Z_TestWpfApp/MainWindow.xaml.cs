@@ -1,9 +1,13 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Net.Sockets;
+using System.Reflection;
+using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -17,6 +21,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Xml.Linq;
 using SpaceCG.Extensions;
 using SpaceCG.Net;
 
@@ -45,7 +50,12 @@ namespace Z_TestWpfApp
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
+        {            
+            //var xml = "<ResponseMessage Id=\"0\" Code=\"1\" ObjectMethod =\"Demo.SetColors\" ReturnValue =\"hello world, \\\"test\\\" hell.\" ReturnType=\"String\" Description=\"OK\" Version =\"2.0.0\" Timestamp=\"2026-07-12T06:11:39.7823568+00:00\" />";
+            //Trace.WriteLine(xml);
+
+            //var el = XElement.Parse(xml);
+
             var s0 = "0x01,True,32,False";
             var s1 = "0x01,3,[True,True,False]";
             var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
@@ -61,6 +71,16 @@ namespace Z_TestWpfApp
             var a5 = s5.ToObjectArray();
 
             Trace.WriteLine($"test");
+
+            IList<List<int>> a6 = new List<List<int>>()
+            {
+                new List<int>(){ 1,2,3, },
+                new List<int>(){ 4,5,6, },
+            };
+            Trace.WriteLine($">>{StringExtensions.ConvertToString(a6)}<<");
+
+            var a7 = "'hello world, \"test\" hell.'";
+            Trace.WriteLine($">>{StringExtensions.ConvertToString(a7)}<<");
 
 
             var bytes = new byte[] {0x01,0x02 };
@@ -122,9 +142,10 @@ namespace Z_TestWpfApp
             Trace.WriteLine($"IEnumerable<Color> colors");
         }
 
-        public void SetColors(IEnumerable<IEnumerable<Color>> colors)
+        public string SetColors(IEnumerable<IEnumerable<Color>> colors)
         {
             Trace.WriteLine($"IEnumerable<IEnumerable<Color>> colors");
+            return "hello world, \"test\" hell.";
         }
 
         public int SetColors(IEnumerable<IEnumerable<Color>> colors, IEnumerable<int> widths)
