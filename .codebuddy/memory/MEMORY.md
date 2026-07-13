@@ -8,9 +8,9 @@
 - 两者均使用环形缓冲（Ring Buffer）+ 子类抽象方法实现协议解析层
 
 ### 客户端 API 设计
-- `InvokeAsync<T>()` / `InvokeAsync()` — 请求-响应模式（ResponseMode=1），支持超时
-- `NotifyAsync()` — 单向通知模式（ResponseMode=-1），fire-and-forget
-- `InvokeAsync` 内部使用 `ConcurrentDictionary<int, PendingCall>` + `TaskCompletionSource` 匹配响应
+- `InvokeFuncAsync()` — 请求-响应模式（ResponseMode=1，必须响应），对应 C# `Func<T>` 有返回值语义
+- `InvokeActionAsync()` — 单向通知模式（ResponseMode=-1），对应 C# `Action` 无返回值、发射后即忘语义
+- `InvokeFuncAsync` 内部使用 `ConcurrentDictionary<int, PendingCall>` + `TaskCompletionSource` 匹配响应
 - 发送使用 `SemaphoreSlim(1,1)` 序列化，防止并发写入导致字节交错
 - 不使用 `AutoReconnectTcpClient`，TCP 连接管理内置于 `RPCClientBase`
 

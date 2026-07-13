@@ -48,7 +48,7 @@ namespace SpaceCG.Net
         /// <summary> 
         /// 消息唯一标识，用于 请求-响应 消息的匹配。 
         /// </summary>
-        public int Id { get; set; }
+        public int Id { get; set; } = -1;
 
         /// <summary> 
         /// 接收或处理消息的已注册对象名称。 
@@ -96,7 +96,10 @@ namespace SpaceCG.Net
         /// <summary>
         /// 内部构造函数，实例由静态工厂方法 <see cref="Create(string, string)"/> 等创建。
         /// </summary>
-        internal InvokeMessage() { }
+        internal InvokeMessage() 
+        {
+            Timestamp = DateTimeOffset.UtcNow;
+        }
 
         /// <inheritdoc cref="Reset" /> 
         void IRPCMessage.Reset() => Reset();

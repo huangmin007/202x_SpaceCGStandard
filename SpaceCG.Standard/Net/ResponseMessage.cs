@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Reflection;
 
 namespace SpaceCG.Net
 {
@@ -10,9 +9,10 @@ namespace SpaceCG.Net
     public class ResponseMessage : IRPCMessage
     {
         /// <summary>
-        /// 消息唯一标识，对应请求 <see cref="InvokeMessage.Id"/>，用于 请求-响应 的匹配。
+        /// 消息唯一标识，对应请求 <see cref="InvokeMessage.Id"/>，用于 请求-响应 的匹配；默认为 -1 不进行 Id 匹配。
+        /// <para>注意：当值小于 0 时，不进行 Id 匹配，即忽略请求消息的 Id 属性。</para>
         /// </summary>
-        public int Id { get; internal set; }
+        public int Id { get; internal set; } = -1;
         /// <summary>
         /// 调用结果状态码：大于等于 0 表示成功，小于 0 表示失败。
         /// </summary>
@@ -23,7 +23,7 @@ namespace SpaceCG.Net
         /// </summary>
         public string ObjectMethod { get; internal set; }
         /// <summary>
-        /// 调用结果的描述信息，如 "OK" 或错误或异常原因等。
+        /// 调用结果的描述信息，如 "Success" 或错误或异常原因等。
         /// </summary>
         public string Description { get; internal set; }
 
@@ -49,7 +49,10 @@ namespace SpaceCG.Net
         /// <summary>
         /// 内部构造函数，实例由静态工厂方法创建。
         /// </summary>
-        internal ResponseMessage() { }
+        internal ResponseMessage() 
+        {
+            Timestamp = DateTimeOffset.UtcNow;
+        }
 
         /// <inheritdoc cref="Reset" /> 
         void IRPCMessage.Reset() => Reset();

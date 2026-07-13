@@ -1,9 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
-using System.Reflection;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -16,14 +14,9 @@ namespace SpaceCG.Net
     /// <para>用法示例：<code>new RPCServer4X(port).Start()</code></para>
     /// </summary>
     public sealed class RpcServer4X : RpcServerBase
-    {
-        /// <summary> XML 自闭合元素结束标识字节数组 "/>"（0x2F, 0x3E）。 </summary>
-        //private static readonly byte[] XMLEndMarker = new byte[] { 0x2F, 0x3E };
-        
+    {        
         /// <summary> XML 元素属性正则表达式。 </summary>
         private static readonly Regex AttributeRegex = new Regex(@"(\w+)\s*=\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        /// <summary> 响应消息属性集合。 </summary>
-        private static readonly IEnumerable<PropertyInfo> ResponseMessageProperties = typeof(ResponseMessage).GetProperties(BindingFlags.Instance | BindingFlags.Public);
 
         /// <inheritdoc /> 
         public RpcServer4X(int localPort = 2000) : this(IPAddress.Any, localPort)
@@ -44,7 +37,7 @@ namespace SpaceCG.Net
             try
             {
                 message = Encoding.UTF8.GetString(dataLine.Array, dataLine.Offset, dataLine.Count);
-                Debug.WriteLine($"客户端 {remoteEndPoint} Message:'{message}'");
+                //Debug.WriteLine($"客户端 {remoteEndPoint} Message:'{message}',,,{dataLine.Offset}, {dataLine.Count}");
             }
             catch (Exception ex)
             {
@@ -59,6 +52,8 @@ namespace SpaceCG.Net
             {
 #if false
                 var element = XElement.Parse(message);
+                if (element.Name != nameof(InvokeMessage)) return null;
+
                 var objectName = element.Attribute(nameof(InvokeMessage.ObjectName))?.Value;
                 var methodName = element.Attribute(nameof(InvokeMessage.MethodName))?.Value;
                 if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName) ||
@@ -103,42 +98,52 @@ namespace SpaceCG.Net
             {
 #if false
                 var message = new XElement(nameof(ResponseMessage));
-                foreach (PropertyInfo property in ResponseMessageProperties)
+                if (responseMessage.Id >= 0)
                 {
-                    if (!property.CanRead) continue;
-
-                    var value = property.GetValue(responseMessage);
-                    if (value == null) continue;
-
-                    message.Add(new XAttribute(property.Name, value));
+                    message.Add(new XAttribute(nameof(ResponseMessage.Id), responseMessage.Id));
                 }
 
-                if (responseMessage.ReturnType != null)
+                message.Add(new XAttribute(nameof(ResponseMessage.Code), responseMessage.Code));
+                message.Add(new XAttribute(nameof(ResponseMessage.ObjectMethod), responseMessage.ObjectMethod));
+
+                if (responseMessage.ReturnType != typeof(void))
                 {
-                    if (responseMessage.ReturnType == typeof(void))
-                    {
-                        message.Attribute(nameof(ResponseMessage.ReturnType)).Remove();
-                        message.Attribute(nameof(ResponseMessage.ReturnValue)).Remove();
-                    }
+                    message.Add(new XAttribute(nameof(ResponseMessage.ReturnType), responseMessage.ReturnType));
+                    message.Add(new XAttribute(nameof(ResponseMessage.ReturnValue), StringExtensions.ConvertToString(responseMessage.ReturnValue)));
                 }
+
+                if (!string.IsNullOrWhiteSpace(responseMessage.Description))
+                {
+                    message.Add(new XAttribute(nameof(ResponseMessage.Description), responseMessage.Description));
+                }
+
+                message.Add(new XAttribute(nameof(ResponseMessage.Version), responseMessage.Version));
+                message.Add(new XAttribute(nameof(ResponseMessage.Timestamp), responseMessage.Timestamp.ToString("O")));
 
                 return Encoding.UTF8.GetBytes($"{message}\r\n");
 #else
                 var builder = new StringBuilder(256 + responseMessage.Description?.Length ?? 0);
 
                 builder.Append($"<{nameof(ResponseMessage)} ");
-                builder.Append($"{nameof(ResponseMessage.Id)}=\"{responseMessage.Id}\" ");
+                if (responseMessage.Id >= 0)
+                {
+                    builder.Append($"{nameof(ResponseMessage.Id)}=\"{responseMessage.Id}\" ");
+                }
+
                 builder.Append($"{nameof(ResponseMessage.Code)}=\"{responseMessage.Code}\" ");
                 builder.Append($"{nameof(ResponseMessage.ObjectMethod)} =\"{responseMessage.ObjectMethod}\" ");
+
                 if (responseMessage.ReturnType != typeof(void))
                 {
                     builder.Append($"{nameof(ResponseMessage.ReturnType)}=\"{responseMessage.ReturnType}\" ");
                     builder.Append($"{nameof(ResponseMessage.ReturnValue)}=\"{SecurityElement.Escape(StringExtensions.ConvertToString(responseMessage.ReturnValue))}\" ");
                 }
+
                 if (!string.IsNullOrWhiteSpace(responseMessage.Description))
                 {
                     builder.Append($"{nameof(ResponseMessage.Description)}=\"{SecurityElement.Escape(responseMessage.Description)}\" ");
                 }
+
                 builder.Append($"{nameof(ResponseMessage.Version)}=\"{responseMessage.Version}\" ");
                 builder.Append($"{nameof(ResponseMessage.Timestamp)}=\"{responseMessage.Timestamp:O}\" ");
                 builder.AppendLine("/>");

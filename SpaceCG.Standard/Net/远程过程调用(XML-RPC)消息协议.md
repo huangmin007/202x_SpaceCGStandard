@@ -80,7 +80,7 @@
 | `MethodName` | String | **是** | 目标方法名称，需符合命名规则 `^[a-zA-Z_][a-zA-Z0-9_]*$` |
 | `Id` | Int32 | 否 | 消息标识，用于请求与响应的匹配。默认值为 `0` |
 | `Parameters` | String | 否 | 方法参数，弱类型格式（见 §2.3）。无参调用可省略 |
-| `ResponseMode` | Int32 | 否 | 响应策略：`-1`=不响应，`0`=默认，`1`=强制响应。默认为 `0` |
+| `ResponseMode` | Int32 | 否 | 响应策略：`-1`=不响应，`0`=默认，`1`=必须响应。默认为 `0` |
 | `Description` | String | 否 | 消息注释或描述信息 |
 | `Timestamp` | DateTime | 否 | 消息时间戳，建议使用 ISO8601 格式（如 `2026-07-11T12:00:00Z`） |
 
@@ -114,7 +114,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 |:--:|------|------|
 | `-1` | **不响应** | 单向通知（fire-and-forget），如日志上报、状态同步 |
 | `0` | **默认规则** | `void` 方法且执行成功时不响应；有返回值或失败时响应 |
-| `1` | **强制响应** | 无论调用结果如何都返回 `ResponseMessage` |
+| `1` | **必须响应** | 无论调用结果如何都返回 `ResponseMessage` |
 
 ---
 
@@ -274,16 +274,16 @@ using System.Net;
 var client = new RpcClient4X(IPAddress.Loopback, 8080);
 await client.ConnectAsync();
 
-// 请求-响应调用
-var response = await client.InvokeAsync("Demo", "GetCurrentPage");
+// 请求-响应调用（Func 语义，有返回值，必须等待结果）
+var response = await client.InvokeFuncAsync("Demo", "GetCurrentPage");
 if (response.Code >= 0)
     Console.WriteLine(response.ReturnValue);
 
 // 带参调用
-var response2 = await client.InvokeAsync("Video", "Seek", new object[] { 5.6f });
+var response2 = await client.InvokeFuncAsync("Video", "Seek", new object[] { 5.6f });
 
-// 单向通知
-await client.NotifyAsync("Logger", "Log", new object[] { "'app started'" });
+// 单向通知（Action 语义，无返回值，发射后即忘）
+await client.InvokeActionAsync("Logger", "Log", new object[] { "'app started'" });
 
 client.Close();
 ```

@@ -55,13 +55,13 @@ using SpaceCG.Net;
 var client = new RpcClient4X(IPAddress.Loopback, 8080);
 await client.ConnectAsync();
 
-// 请求-响应调用
-var response = await client.InvokeAsync("Demo", "GetCurrentPage");
+// 请求-响应调用（Func 语义，有返回值，必须等待结果）
+var response = await client.InvokeFuncAsync("Demo", "GetCurrentPage");
 if (response.Code >= 0)
     Console.WriteLine(response.ReturnValue);  // "/home"
 
-// 单向通知（fire-and-forget）
-await client.NotifyAsync("Demo", "OpenPage", new object[] { 42 });
+// 单向通知（Action 语义，无返回值，发射后即忘）
+await client.InvokeActionAsync("Demo", "OpenPage", new object[] { 42 });
 ```
 
 ---
@@ -147,7 +147,7 @@ server.Start();
 | `MethodName` | string | ✅ | 目标方法名称 |
 | `Id` | int | 否 | 消息标识（默认 0） |
 | `Parameters` | object[] | 否 | 方法参数 |
-| `ResponseMode` | int | 否 | -1=不响应，0=默认，1=强制响应 |
+| `ResponseMode` | int | 否 | -1=不响应，0=默认，1=必须响应 |
 | `Version` | Version | 只读 | 协议版本 2.0.0 |
 
 ```csharp
@@ -201,8 +201,10 @@ public abstract class RpcClientBase : IDisposable
     // 公共 API
     public Task ConnectAsync();
     public void Close();
-    public Task<ResponseMessage> InvokeAsync(string objectName, string methodName, object[] parameters = null, TimeSpan? timeout = null);
-    public Task<bool> NotifyAsync(string objectName, string methodName, object[] parameters = null);
+    /// <summary>请求-响应调用（Func 语义，有返回值，必须等待结果）</summary>
+    public Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters = null, TimeSpan? timeout = null);
+    /// <summary>单向通知调用（Action 语义，无返回值，发射后即忘）</summary>
+    public Task<bool> InvokeActionAsync(string objectName, string methodName, object[] parameters = null);
 
     // 子类实现
     protected abstract byte[] SerializeInvokeMessage(InvokeMessage invokeMessage);
@@ -217,7 +219,7 @@ public abstract class RpcClientBase : IDisposable
 ```csharp
 var client = new RpcClient4X(IPAddress.Loopback, 8080);
 await client.ConnectAsync();
-var response = await client.InvokeAsync("Demo", "GetCurrentPage");
+var response = await client.InvokeFuncAsync("Demo", "GetCurrentPage");
 
 ---
 

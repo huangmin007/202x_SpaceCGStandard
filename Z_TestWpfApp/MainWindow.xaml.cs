@@ -42,7 +42,6 @@ namespace Z_TestWpfApp
 
             rpcServer = new RpcServer4X(2000);
             rpcServer.RegisterObject("Demo", this);
-            //rpcServer.RegisterObject("Window", this);
             rpcServer.Start();
 
             rpcClient = new RpcClient4X("127.0.0.1", 2000);
@@ -54,12 +53,43 @@ namespace Z_TestWpfApp
             rpcServer?.Dispose();
         }
 
+        protected override async void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+            Trace.WriteLine($"Key: {e.Key}");
+
+            switch(e.Key)
+            {
+                case Key.D1:
+                    await rpcClient.InvokeActionAsync("Demo", "test", new object[] {1,2 });
+                    break;
+
+                case Key.D2:
+                    var result = await rpcClient.InvokeFuncAsync("Demo", "test", new object[] { 1, 2 });
+                    Trace.WriteLine($"Response::{result}");
+                    break;
+
+                case Key.D9:
+                    rpcClient.Connect();
+                    break;
+
+                case Key.D0:
+                    rpcClient.Close();
+                    break;
+            }
+        }
+
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             //var xml = "<ResponseMessage Id=\"0\" Code=\"1\" ObjectMethod =\"Demo.SetColors\" ReturnValue =\"hello world, \\\"test\\\" hell.\" ReturnType=\"String\" Description=\"OK\" Version =\"2.0.0\" Timestamp=\"2026-07-12T06:11:39.7823568+00:00\" />";
             //Trace.WriteLine(xml);
 
             //var el = XElement.Parse(xml);
+
+
+            rpcClient = new RpcClient4X("127.0.0.1", 2001);
+            rpcClient.Connect();
+
 
             const string Dictionary = nameof(Dictionary);
 
@@ -139,14 +169,19 @@ namespace Z_TestWpfApp
             return true;
         }
 
-        public bool SetColor(Color color)
+        public IEnumerable<IEnumerable<int>> SetColor(Color color)
         {
             Rectangle_0.Fill = new SolidColorBrush(color);
-            return true;
+
+            var a0 = new List<int>() { 1, 2, 3, 4, 5 };
+            var a1 = new List<int>() { 6, 7, 8, 9, 10 };
+
+            return new List<List<int>>() { a0, a1 };
         }
-        public void SetColors(IEnumerable<Color> colors)
+        public IEnumerable<int> SetColors(IEnumerable<Color> colors)
         {
             Trace.WriteLine($"IEnumerable<Color> colors");
+            return new int[] { 1, 2, 3 };
         }
 
         public string SetColors(IEnumerable<IEnumerable<Color>> colors)
@@ -157,7 +192,7 @@ namespace Z_TestWpfApp
 
         public int SetColors(IEnumerable<IEnumerable<Color>> colors, IEnumerable<int> widths)
         {
-            Trace.WriteLine($"IEnumerable<IEnumerable<Color>> colors, IEnumerable<int> widths");
+            //Trace.WriteLine($"IEnumerable<IEnumerable<Color>> colors, IEnumerable<int> widths");
             return 12;
         }
 

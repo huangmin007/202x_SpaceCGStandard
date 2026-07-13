@@ -8,11 +8,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 using SpaceCG.Extensions;
 
 namespace SpaceCG.Net
@@ -22,7 +20,7 @@ namespace SpaceCG.Net
     /// <para>提供 TCP 客户端连接管理、数据接收解析(数据行)、方法反射调用、结果响应等基础能力。</para>
     /// <para>
     /// <list type="bullet">
-    /// <item>基类是以数据行为单位进行分割，换行回车 CRLF, 0D0A, \r\n或是空行为一个单位进行数据行分割。</item>
+    /// <item>基类是以数据行为单位进行分割，换行回车 CRLF, 0D0A, \r\n或是空行为一个数据单位进行数据行分割处理。</item>
     /// <item>子类继承实现 <see cref="DeserializeInvokeMessage"/> 和 <see cref="SerializeResponseMessage"/> 以支持不同的消息协议</item>
     /// <item>通过 <see cref="ClientMessageInvoking"/> 事件可拦截、取消、修改客户端调用消息的执行</item>
     /// <item>基类以数据行为单位，每行对应一条调用消息，与客户端保持一致</item>
@@ -47,11 +45,22 @@ namespace SpaceCG.Net
         /// <summary> 监听的本地 IP 地址和端口号。 </summary>
         public IPEndPoint LocalEndPoint { get; private set; }
         /// <summary> 当前已连接的 <see cref="TcpClient"/> 只读集合。 </summary>
-        public IReadOnlyList<TcpClient> Clients => _clients;
+        public IReadOnlyList<TcpClient> Clients
+        {
+            get
+            {
+                lock (_clients)
+                {
+                    return _clients.ToList();
+                }
+            }
+        }
         /// <summary> 获取或设置发送缓冲区大小，单位字节，默认 32KB。 </summary>
         public int SendBufferSize { get; set; } = 1024 * 32;
         /// <summary> 获取或设置接收缓冲区大小，单位字节，默认 64KB。 </summary>
         public int ReceiveBufferSize { get; set; } = 1024 * 64;
+        /// <summary> 注册的对象实例的缓存方法签名的集合。 </summary>
+        public IEnumerable<string> MethodSignatures => CacheMethodInfos.Keys;
         #endregion
 
         #region events
@@ -70,25 +79,29 @@ namespace SpaceCG.Net
         /// <summary> 内部已连接的客户端列表。 </summary>
         private readonly List<TcpClient> _clients = new List<TcpClient>();
         /// <summary>
+        /// 方法调用并发控制信号量。
+        /// <para>初始许可数 24，最大许可数 60，用于限制同时执行反射调用的并发数量，防止 ThreadPool 线程因 <see cref="_syncContext"/>.Send 阻塞而过度膨胀。</para>
+        /// </summary>
+        private readonly SemaphoreSlim ProcessInvokeMessageSemaphore = new SemaphoreSlim(24, 60);
+        /// <summary> 客户端写入消息并发控制信号量。 </summary>
+        private readonly ConcurrentDictionary<TcpClient, SemaphoreSlim> ClientWriteMessageSemaphore = new ConcurrentDictionary<TcpClient, SemaphoreSlim>();
+        
+        /// <summary>
         /// 方法过滤器列表，匹配的方法将不允许被远程调用。
         /// <para>格式为：{ObjectName}.{MethodName}，其中 ObjectName 支持通配符 '*'。</para>
         /// <para>例如："*.Dispose" 禁止反射访问所有对象的 Dispose 方法；默认已添加 "*.Dispose" 和 "*.Close"。</para>
         /// </summary>
-        public readonly List<string> MethodFilters = new List<string>(16) { "*.Dispose", "*.Close" };
-        /// <summary>
-        /// 方法调用并发控制信号量。
-        /// <para>初始许可数 24，最大许可数 60，用于限制同时执行反射调用的并发数量，防止 ThreadPool 线程因 <see cref="_syncContext"/>.Send 阻塞而过度膨胀。</para>
-        /// </summary>
-        private readonly SemaphoreSlim InvokeMessageSemaphore = new SemaphoreSlim(24, 60);
+        public readonly List<string> MethodFilters = new List<string>(16) { "*.Dispose", "*.Close" }; 
         /// <summary> 注册的对象实例集合 </summary>
-        private readonly ConcurrentDictionary<string, object> RegisterObjects = new ConcurrentDictionary<string, object>();
+        protected readonly ConcurrentDictionary<string, object> RegisterObjects = new ConcurrentDictionary<string, object>();
         /// <summary> 注册的对象实例的缓存方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预缓存在字典中。 </summary>
-        private readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
-        
-        //private readonly RPCMessagePool<InvokeMessage> InvokeMessagePool = new RPCMessagePool<InvokeMessage>(24, 128);
-        //private readonly RPCMessagePool<ResponseMessage> ResponseMessagePool = new RPCMessagePool<ResponseMessage>(24, 128);
+        protected readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
+
+        //private readonly RpcMessagePool<InvokeMessage> InvokeMessagePool = new RpcMessagePool<InvokeMessage>(24, 128);
+        //private readonly RpcMessagePool<ResponseMessage> ResponseMessagePool = new RpcMessagePool<ResponseMessage>(24, 128);
         #endregion
 
+        #region Constructors
         /// <summary>
         /// 使用指定的 IP 地址和端口号初始化 <see cref="RpcServerBase"/> 类的新实例。
         /// </summary>
@@ -108,7 +121,9 @@ namespace SpaceCG.Net
         /// </summary>
         /// <param name="localPort">服务器监听的本地端口号，范围 1-65535。</param>
         public RpcServerBase(int localPort) : this(IPAddress.Any, localPort) { }
+        #endregion
 
+        #region register object & method
         /// <summary>
         /// 注册可被远程调用/访问的对象实例。
         /// </summary>
@@ -149,9 +164,9 @@ namespace SpaceCG.Net
         /// <param name="objectInstance">注册对象实例。</param>
         private void CacheInstanceMethods(string objectName, object objectInstance)
         {
-            if (CacheMethodInfos.ContainsKey(objectName)) return;
-
             var instanceType = objectInstance.GetType();
+            var extensionType = typeof(ExtensionAttribute);
+
             // 实例的公共方法
             foreach (var method in instanceType.GetMethods())
             {
@@ -171,12 +186,11 @@ namespace SpaceCG.Net
                     objectMethodKeyClone = $"{objectMethodKey}_{count++}";
                 }
 
-                Debug.WriteLine($"{objectMethodKeyClone}");
+                //Debug.WriteLine($"{objectMethodKeyClone}");
                 CacheMethodInfos.TryAdd(objectMethodKeyClone, method);
             }
-            Debug.WriteLine($"-----------------------------------");
-            // 实例的公共扩展方法
-            var extensionType = typeof(ExtensionAttribute);
+            // Debug.WriteLine("------------------------------ Extension ");
+            // 实例的公共扩展方法            
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 if (assembly.GlobalAssemblyCache) continue;
@@ -194,7 +208,7 @@ namespace SpaceCG.Net
                         if (parameters[0].ParameterType == instanceType || instanceType.IsSubclassOf(parameters[0].ParameterType))
                         {
                             var paramsSign = parameters.Skip(1).Select(p => p.ParameterType).GetTypesSignature();
-                            var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})_(Ext)";
+                            var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
 
                             var count = 0;
                             var objectMethodKeyClone = objectMethodKey;
@@ -203,14 +217,16 @@ namespace SpaceCG.Net
                                 objectMethodKeyClone = $"{objectMethodKey}_{count++}";
                             }
 
-                            Debug.WriteLine($"{objectMethodKeyClone}");
+                            //Debug.WriteLine($"{objectMethodKeyClone}");
                             CacheMethodInfos.TryAdd(objectMethodKeyClone, method);
                         }
                     }
                 }
             }
         }
+        #endregion
 
+        #region Start & Stop
         /// <summary>
         /// 启动 RPC 服务端，开始监听客户端连接。
         /// <para>如果服务已在运行，则忽略本次调用。</para>
@@ -239,7 +255,7 @@ namespace SpaceCG.Net
             }
 
             var acceptToken = _cts.Token;
-            _ = Task.Run(() => AcceptTcpClientAsync(acceptToken), acceptToken);
+            _ = Task.Run(() => AcceptClientConnectAsync(acceptToken), acceptToken);
         }
         /// <summary>
         /// 停止 RPC 服务端，取消所有待处理消息数据，断开所有客户端连接并释放监听器资源。
@@ -255,14 +271,8 @@ namespace SpaceCG.Net
             {
                 foreach (var client in _clients)
                 {
-                    try
-                    {
-                        client.Dispose();
-                    }
-                    catch (Exception)
-                    {
-                        // 忽略
-                    }
+                    try { client?.Dispose(); }
+                    catch (Exception ex) { }
                 }
                 _clients.Clear();
             }
@@ -283,20 +293,22 @@ namespace SpaceCG.Net
             _tcpListener = null;
             Trace.TraceInformation($"RPC 服务已停止");
         }
+        #endregion
 
+        #region Accept & Receive Client
         /// <summary>
         /// 异步接受 TCP 客户端连接的主循环。
         /// </summary>
         /// <param name="cancelToken">用于取消接受操作的取消令牌。</param>
         /// <returns>一个表示异步操作的任务。</returns>
-        private async Task AcceptTcpClientAsync(CancellationToken cancelToken)
+        private async Task AcceptClientConnectAsync(CancellationToken cancelToken)
         {
             try
             {
                 while (!cancelToken.IsCancellationRequested)
                 {
                     var client = await _tcpListener.AcceptTcpClientAsync().ConfigureAwait(false);
-                    _ = ReadTcpClientAsync(client, cancelToken);
+                    _ = ReceiveClientMessageAsync(client, cancelToken);
                 }
             }
             catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
@@ -310,10 +322,9 @@ namespace SpaceCG.Net
             }
             catch (Exception ex)
             {
-                Trace.TraceError($"RPC 服务等待客户端连接时生发异常：({ex.GetType().Name}) {ex.Message}");
+                Trace.TraceError($"RPC 服务等待客户端连接时发生异常：({ex.GetType().Name}) {ex.Message}");
             }
         }
-
         /// <summary>
         /// 处理单个 TCP 客户端连接的读取循环。
         /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔数据行，通过 <see cref="DeserializeInvokeMessage"/> 反序列化数据行。</para>
@@ -321,7 +332,7 @@ namespace SpaceCG.Net
         /// <param name="client">已接受的 TCP 客户端连接。</param>
         /// <param name="cancelToken">用于取消读取操作的取消令牌。</param>
         /// <returns>一个表示异步操作的任务。</returns>
-        private async Task ReadTcpClientAsync(TcpClient client, CancellationToken cancelToken)
+        private async Task ReceiveClientMessageAsync(TcpClient client, CancellationToken cancelToken)
         {
             lock (_clients) { _clients.Add(client); }
 
@@ -344,14 +355,21 @@ namespace SpaceCG.Net
             var pendingLength = 0;      // buffer 中有效数据的长度 (未分析读取的数据量)
             var readPosition = 0;       // 数据分析的起始位置 (读指针)
 
+            var semaphoreSlim = new SemaphoreSlim(1, 1);
+            if (!ClientWriteMessageSemaphore.TryAdd(client, semaphoreSlim))
+            {
+                semaphoreSlim.Dispose();
+                semaphoreSlim = null;
+            }
+
             try
             {
                 var clientStream = client.GetStream();
-                while (!cancelToken.IsCancellationRequested && client.Connected)
+                while (!cancelToken.IsCancellationRequested && client.IsConnected())
                 {
                     var count = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancelToken);
                     if (count == 0) break;  // 客户端已断开了连接
-                    Debug.WriteLine($"收到来自 {clientEndPoint} 的数据 {count} bytes ");
+                    //Debug.WriteLine($"接收客户端 {clientEndPoint} 的数据 {count} bytes ");
 
                     writePosition += count;
                     pendingLength += count;
@@ -360,7 +378,7 @@ namespace SpaceCG.Net
                     while (readPosition < pendingLength)
                     {
                         var endIndex = clientBuffer.IndexOf(NewLine, readPosition, pendingLength - readPosition);
-                        if (endIndex < 0) break;
+                        if (endIndex < 0 || endIndex == readPosition) break;
 
                         // 提取完整的数据行（不含 NewLine 本身）
                         var dataLine = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
@@ -376,7 +394,7 @@ namespace SpaceCG.Net
                         }
                         catch (Exception ex)
                         {
-                            Trace.TraceWarning($"解析客户端消息异常：({ex.GetType().Name}) {ex.Message}");
+                            Trace.TraceWarning($"反序列化客户端 {clientEndPoint} 数据异常：({ex.GetType().Name}) {ex.Message}");
                             continue;
                         }
                         if (invokeMessage != null)
@@ -429,7 +447,7 @@ namespace SpaceCG.Net
                     {
                         var remaining = pendingLength - readPosition;
                         Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, remaining);
-                        Trace.TraceInformation($"移动客户端 {clientEndPoint} 缓冲区数据 {remaining} bytes");
+                        Trace.TraceInformation($"客户端 {clientEndPoint} 移动缓冲区数据 {remaining} bytes");
 
                         writePosition = remaining;
                         pendingLength = remaining;
@@ -439,7 +457,7 @@ namespace SpaceCG.Net
                     // 缓冲区已经满了，清空防止死锁
                     if (writePosition == bufferSize)
                     {
-                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满且无完整消息，清空缓冲区 {pendingLength} bytes");
+                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满，且没有完整的数据行，清空缓冲区 {pendingLength} bytes");
                         writePosition = 0;
                         pendingLength = 0;
                         readPosition = 0;
@@ -458,12 +476,15 @@ namespace SpaceCG.Net
             finally
             {
                 lock (_clients) { _clients.Remove(client); }
-
-                client.Dispose();
+                ClientWriteMessageSemaphore.TryRemove(client, out var _);
+                
+                client?.Dispose();
+                semaphoreSlim?.Dispose();
                 ClientDisconnected?.Invoke(this, clientEndPoint);
-                Trace.TraceInformation($"客户端 {clientEndPoint} 已断开");
+                Trace.TraceInformation($"客户端 {clientEndPoint} 已断开连接");
             }
         }
+        #endregion
 
         /// <summary>
         /// 解析客户端发送的完整数据行（以 CRLF 作为结束符的一数据行数据）。
@@ -495,7 +516,7 @@ namespace SpaceCG.Net
         {
             if (invokeMessage == null) return;
 
-            await InvokeMessageSemaphore.WaitAsync(cancelToken).ConfigureAwait(false);
+            await ProcessInvokeMessageSemaphore.WaitAsync(cancelToken).ConfigureAwait(false);
 
             try
             {
@@ -520,7 +541,7 @@ namespace SpaceCG.Net
                 var paramsLength = invokeMessage.Parameters?.Length ?? 0;
                 if (paramsLength > 0) paramsSign = invokeMessage.Parameters.GetParametersSignature();
                 var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsSign})";
-                Debug.WriteLine($"methodCacheKey:{methodCacheKey}");
+                //Debug.WriteLine($"methodCacheKey:{methodCacheKey}");
                 if (!CacheMethodInfos.TryGetValue(methodCacheKey, out var methodInfo))
                 {
                     var responseMessage = ResponseMessage.Create(invokeMessage, -3, $"Object method '{methodCacheKey}' is not available");
@@ -529,7 +550,7 @@ namespace SpaceCG.Net
                 }
                 #endregion
 
-                #region 解析转换参数
+                #region 参数转换解析
                 var offset = 0;
                 object[] convertedParameters = null;
                 var methodParameters = methodInfo.GetParameters();
@@ -589,7 +610,7 @@ namespace SpaceCG.Net
                 if (invokeMessage.ResponseMode >= 0)
                 {
                     var responseMessage = ResponseMessage.Create(invokeMessage);
-                    responseMessage.Description = "OK";
+                    responseMessage.Description = "Success";
                     responseMessage.ReturnValue = invokeResult;
                     responseMessage.ReturnType = methodInfo.ReturnType;
                     responseMessage.Code = methodInfo.ReturnType == typeof(void) ? 0 : 1;
@@ -603,12 +624,12 @@ namespace SpaceCG.Net
                 var description = $"Process invoke method '{invokeMessage.ObjectName}.{invokeMessage.MethodName}' exception: ({ex.GetType().Name}) {ex.Message}";
                 Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 处理执行调用消息异常： {description}");
 
-                var responseMessage = ResponseMessage.Create(invokeMessage, -6, $"{description}");
+                var responseMessage = ResponseMessage.Create(invokeMessage, -6, description);
                 await WriteResponseMessageAsync(invokeMessage, responseMessage, cancelToken).ConfigureAwait(false);
             }
             finally
             {
-                InvokeMessageSemaphore.Release();
+                ProcessInvokeMessageSemaphore.Release();
             }
         }
 
@@ -635,15 +656,40 @@ namespace SpaceCG.Net
             }
             catch (Exception ex)
             {
-                Trace.TraceWarning($"序列化响应消息异常：({ex.GetType().Name}) {ex.Message}");
+                Trace.TraceWarning($"序列化客户端 {invokeMessage.ClientEndPoint} 响应消息异常：({ex.GetType().Name}) {ex.Message}");
                 return;
             }
 
-            if (responseBytes != null && responseBytes.Length > 0)
+            if (ClientWriteMessageSemaphore.TryGetValue(invokeMessage.TcpClient, out var semaphoreSlim))
             {
-                var stream = invokeMessage.TcpClient.GetStream();
-                await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancelToken).ConfigureAwait(false);
-                await stream.FlushAsync(cancelToken).ConfigureAwait(false);
+                try
+                {
+                    await semaphoreSlim.WaitAsync(cancelToken).ConfigureAwait(false);
+
+                    if (responseBytes != null && responseBytes.Length > 0)
+                    {
+                        var stream = invokeMessage.TcpClient.GetStream();
+                        await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancelToken).ConfigureAwait(false);
+                        await stream.FlushAsync(cancelToken).ConfigureAwait(false);
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 写入响应消息异常：({ex.GetType().Name}) {ex.Message}");
+                }
+                finally
+                {
+                    try { semaphoreSlim.Release(); }
+                    catch (ObjectDisposedException) { }
+                }
+            }
+            else
+            {
+                Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 未找到写入消息信号量。");
             }
         }
 
@@ -657,8 +703,18 @@ namespace SpaceCG.Net
             _isDisposed = true;
 
             Stop();
+
+            foreach (var kvp in ClientWriteMessageSemaphore)
+            {
+                try { kvp.Value?.Dispose(); }
+                catch (Exception ex) { }
+            }
+            ClientWriteMessageSemaphore.Clear();
+            ProcessInvokeMessageSemaphore?.Dispose();
+            
             RegisterObjects.Clear();
             CacheMethodInfos.Clear();
+
         }
 
         

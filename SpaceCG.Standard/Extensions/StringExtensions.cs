@@ -530,9 +530,9 @@ namespace SpaceCG.Extensions
             // 基本值类型
             if (valueType.IsValueType) return value.ToString();
             // 数组类型
-            if (valueType.IsArray) return ConvertEnumerableToString((System.Collections.IEnumerable)value);
+            if (valueType.IsArray) return ConvertEnumerableToString((IEnumerable)value);
             // IEnumerable<T> 类型
-            if (valueType.IsIEnumerable() && value is System.Collections.IEnumerable enumerable) return ConvertEnumerableToString(enumerable);
+            if (valueType.IsIEnumerable() && value is IEnumerable enumerable) return ConvertEnumerableToString(enumerable);
 
             return value.ToString();
         }
