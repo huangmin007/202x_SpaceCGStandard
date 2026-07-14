@@ -5,13 +5,15 @@ using System.Net;
 using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using SpaceCG.Extensions;
 
 namespace SpaceCG.Net
 {
     /// <summary>
     /// 基于 XML 协议的 RPC 服务端实现（XML-RPC v2.0）。
-    /// <para>用法示例：<code>new RPCServer4X(port).Start()</code></para>
+    /// <para>每行一条 XML 自闭合消息，以 CRLF 为行边界。请求和响应均使用 XElement 解析 / StringBuilder 拼接 XML。</para>
+    /// <para>用法示例：<code>new RpcServer4X(port).Start()</code></para>
     /// </summary>
     public sealed class RpcServer4X : RpcServerBase
     {        
@@ -31,27 +33,29 @@ namespace SpaceCG.Net
         /// 将 XML 格式的字节数据解析为 <see cref="InvokeMessage"/> 对象。
         /// </summary>
         /// <inheritdoc /> 
-        protected override InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> dataLine, IPEndPoint remoteEndPoint)
+        protected override InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> requestMessage, IPEndPoint clientEndPoint)
         {
-            string message = string.Empty;
+            if (requestMessage == null || requestMessage.Count == 0) return null;
+
+            var content = string.Empty;
             try
             {
-                message = Encoding.UTF8.GetString(dataLine.Array, dataLine.Offset, dataLine.Count);
-                //Debug.WriteLine($"客户端 {remoteEndPoint} Message:'{message}',,,{dataLine.Offset}, {dataLine.Count}");
+                content = Encoding.UTF8.GetString(requestMessage.Array, requestMessage.Offset, requestMessage.Count);
+                //Debug.WriteLine($"客户端 {remoteEndPoint} Message:'{message}',,,{requestMessage.Offset}, {requestMessage.Count}");
             }
             catch (Exception ex)
             {
-                Trace.TraceWarning($"客户端 {remoteEndPoint} 消息解码为字符串异常：{ex.Message}");
+                Trace.TraceWarning($"客户端 {clientEndPoint} 请求消息解码为字符串时异常：({ex.GetType().Name}){ex.Message}");
                 return null;
             }
 
-            if (string.IsNullOrWhiteSpace(message)) return null;
+            if (string.IsNullOrWhiteSpace(content)) return null;
 
             InvokeMessage invokeMessage = null;
             try
             {
-#if false
-                var element = XElement.Parse(message);
+#if true
+                var element = XElement.Parse(content);
                 if (element.Name != nameof(InvokeMessage)) return null;
 
                 var objectName = element.Attribute(nameof(InvokeMessage.ObjectName))?.Value;
@@ -59,38 +63,37 @@ namespace SpaceCG.Net
                 if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName) ||
                     string.IsNullOrWhiteSpace(methodName) || !RpcServerBase.IdentifierPattern.IsMatch(methodName)) return null;
 
-                invokeMessage = InvokeMessage.Create(objectName, methodName, element.Attribute(nameof(InvokeMessage.Parameters))?.Value);
+                int id = int.TryParse(element.Attribute(nameof(InvokeMessage.Id))?.Value, out var _id) ? _id : -1;
+                int responseMode = int.TryParse(element.Attribute(nameof(InvokeMessage.ResponseMode))?.Value, out var _responseMode) ? _responseMode : 0;
 
-                // 解析 Id
-                if (int.TryParse(element.Attribute(nameof(InvokeMessage.Id))?.Value, out var id)) invokeMessage.Id = id;
-                // 解析 ResponseMode
-                if (int.TryParse(element.Attribute(nameof(InvokeMessage.ResponseMode))?.Value, out var responseMode)) invokeMessage.ResponseMode = responseMode;
+                invokeMessage = InvokeMessage.Create(objectName, methodName, element.Attribute(nameof(InvokeMessage.Parameters))?.Value, id, responseMode);
+
+                // 解析 Version
+                if (Version.TryParse(element.Attribute(nameof(InvokeMessage.Version))?.Value, out var version)) invokeMessage.Version = version;                
                 // 解析 Timestamp
-                if (DateTimeOffset.TryParse(element.Attribute(nameof(InvokeMessage.Timestamp))?.Value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var timestamp)) invokeMessage.Timestamp = timestamp;
+                if (DateTimeOffset.TryParse(element.Attribute(nameof(InvokeMessage.Timestamp))?.Value, out var timestamp)) invokeMessage.Timestamp = timestamp;
 #else
-                invokeMessage = XAttributeParse(message);
+                invokeMessage = XAttributeParse(content);
                 if (invokeMessage == null)
                 {
-                    Trace.TraceWarning($"客户端 {remoteEndPoint} XML 元素属性('{message}')解析失败");
+                    Trace.TraceWarning($"客户端 {clientEndPoint} XML 元素属性('{content}')解析失败");
                     return null;
                 }
 #endif
             }
             catch (Exception ex)
             {
-                Trace.TraceWarning($"客户端 {remoteEndPoint} XML 元素('{message}')解析异常：{ex.Message}");
+                Trace.TraceWarning($"客户端 {clientEndPoint} 请求消息反序列化时异常：({ex.GetType().Name}){ex.Message}");
             }
-
+            
             return invokeMessage;
         }
 
         /// <summary>
         /// 将调用结果序列化为 XML 字符格式的响应字节数组。
-        /// <para>当调用成功（Code == 0）且返回类型为 void 时不发响应；错误和带返回值的结果才响应。</para>
-        /// <para>当前使用 StringBuilder 直拼 XML（性能优化方案），旧版 XElement 反射方案通过 <c>#if false</c> 保留在源码中。</para>
         /// </summary>
         /// <inheritdoc />
-        protected override byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint remoteEndPoint)
+        protected override byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint clientEndPoint)
         {
             if (responseMessage == null) return Array.Empty<byte>();
 
@@ -98,7 +101,7 @@ namespace SpaceCG.Net
             {
 #if false
                 var message = new XElement(nameof(ResponseMessage));
-                if (responseMessage.Id >= 0)
+                if (responseMessage.Id > 0)
                 {
                     message.Add(new XAttribute(nameof(ResponseMessage.Id), responseMessage.Id));
                 }
@@ -106,7 +109,7 @@ namespace SpaceCG.Net
                 message.Add(new XAttribute(nameof(ResponseMessage.Code), responseMessage.Code));
                 message.Add(new XAttribute(nameof(ResponseMessage.ObjectMethod), responseMessage.ObjectMethod));
 
-                if (responseMessage.ReturnType != typeof(void))
+                if (responseMessage.ReturnType != null && responseMessage.ReturnType != typeof(void))
                 {
                     message.Add(new XAttribute(nameof(ResponseMessage.ReturnType), responseMessage.ReturnType));
                     message.Add(new XAttribute(nameof(ResponseMessage.ReturnValue), StringExtensions.ConvertToString(responseMessage.ReturnValue)));
@@ -125,17 +128,17 @@ namespace SpaceCG.Net
                 var builder = new StringBuilder(256 + responseMessage.Description?.Length ?? 0);
 
                 builder.Append($"<{nameof(ResponseMessage)} ");
-                if (responseMessage.Id >= 0)
+                if (responseMessage.Id > 0)
                 {
                     builder.Append($"{nameof(ResponseMessage.Id)}=\"{responseMessage.Id}\" ");
                 }
 
                 builder.Append($"{nameof(ResponseMessage.Code)}=\"{responseMessage.Code}\" ");
-                builder.Append($"{nameof(ResponseMessage.ObjectMethod)} =\"{responseMessage.ObjectMethod}\" ");
+                builder.Append($"{nameof(ResponseMessage.ObjectMethod)}=\"{responseMessage.ObjectMethod}\" ");
 
-                if (responseMessage.ReturnType != typeof(void))
+                if (responseMessage.ReturnType != null && responseMessage.ReturnType != typeof(void))
                 {
-                    builder.Append($"{nameof(ResponseMessage.ReturnType)}=\"{responseMessage.ReturnType}\" ");
+                    builder.Append($"{nameof(ResponseMessage.ReturnType)}=\"{SecurityElement.Escape(responseMessage.ReturnType.ToString())}\" ");
                     builder.Append($"{nameof(ResponseMessage.ReturnValue)}=\"{SecurityElement.Escape(StringExtensions.ConvertToString(responseMessage.ReturnValue))}\" ");
                 }
 
@@ -153,7 +156,7 @@ namespace SpaceCG.Net
             }
             catch (Exception ex)
             {
-                Trace.TraceWarning($"客户端 {remoteEndPoint} 响应消息序列化异常：{ex.Message}");
+                Trace.TraceWarning($"客户端 {clientEndPoint} 响应消息序列化时异常：({ex.GetType().Name}){ex.Message}");
                 return Array.Empty<byte>();
             } 
         }
@@ -167,7 +170,7 @@ namespace SpaceCG.Net
         {
             if (string.IsNullOrWhiteSpace(xmlContent)) return null;
 
-            int id = 0, responseMode = 0;
+            int id = -1, responseMode = 0;
             string objectName = null, methodName = null, parameters = null, description = null, timestamp = null;
 
             foreach (Match match in AttributeRegex.Matches(xmlContent))
@@ -191,9 +194,7 @@ namespace SpaceCG.Net
             if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName) ||
                 string.IsNullOrWhiteSpace(methodName) || !RpcServerBase.IdentifierPattern.IsMatch(methodName)) return null;
 
-            var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters);
-            invokeMessage.Id = id;
-            invokeMessage.ResponseMode = responseMode;
+            var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, id, responseMode);
 
             if (!string.IsNullOrWhiteSpace(description)) invokeMessage.Description = description;
             if (!string.IsNullOrWhiteSpace(timestamp) && DateTimeOffset.TryParse(timestamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out var _timestamp)) invokeMessage.Timestamp = _timestamp;

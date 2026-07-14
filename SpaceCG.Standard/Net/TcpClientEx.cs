@@ -63,7 +63,7 @@ namespace SpaceCG.Net
     /// // client.Dispose();
     /// </code>
     /// </remarks>
-    public sealed class AutoReconnectTcpClient : IDisposable
+    public sealed class TcpClientEx : IDisposable
     {
         #region 字段
         /// <summary>读取缓冲区大小（默认 8192 字节）。</summary>
@@ -173,10 +173,10 @@ namespace SpaceCG.Net
 
         #region 构造函数
         /// <summary>
-        /// 初始化 <see cref="AutoReconnectTcpClient"/> 的新实例。
+        /// 初始化 <see cref="TcpClientEx"/> 的新实例。
         /// <para>注意：此构造函数不设置连接目标，需要后续调用 <see cref="ConnectAsync(string, int)"/>。</para>
         /// </summary>
-        public AutoReconnectTcpClient()
+        public TcpClientEx()
         {
             _host = null;
             _port = 0;
@@ -184,13 +184,13 @@ namespace SpaceCG.Net
         }
 
         /// <summary>
-        /// 初始化 <see cref="AutoReconnectTcpClient"/> 的新实例，指定目标主机和端口。
+        /// 初始化 <see cref="TcpClientEx"/> 的新实例，指定目标主机和端口。
         /// </summary>
         /// <param name="host">目标主机名或 IP 地址。</param>
         /// <param name="port">目标端口号。</param>
         /// <exception cref="ArgumentNullException"><paramref name="host"/> 为 null 或空字符串。</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="port"/> 不在 1~65535 范围内。</exception>
-        public AutoReconnectTcpClient(string host, int port)
+        public TcpClientEx(string host, int port)
         {
             if (string.IsNullOrWhiteSpace(host)) throw new ArgumentNullException(nameof(host));
             if (port <= 0 || port > 65535) throw new ArgumentOutOfRangeException(nameof(port), "端口号必须在 1~65535 之间。");
@@ -226,7 +226,7 @@ namespace SpaceCG.Net
             CancellationToken token;
             lock (_lock)
             {
-                if (_disposed) throw new ObjectDisposedException(nameof(AutoReconnectTcpClient));
+                if (_disposed) throw new ObjectDisposedException(nameof(TcpClientEx));
                 if (_state == ReconnectState.Connecting || _state == ReconnectState.Connected) return;
 
                 _manualClose = false;

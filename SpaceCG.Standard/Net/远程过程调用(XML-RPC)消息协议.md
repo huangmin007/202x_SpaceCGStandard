@@ -143,17 +143,32 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 
 ### 3.3 状态码（Code）
 
-#### 响应端状态码（客户端收到的）
+#### 服务端状态码（客户端收到的）
 
 | Code | 含义 | 说明 |
 |:----:|------|------|
 | **0** | 成功，无返回值 | 方法返回类型为 `void` |
 | **1** | 成功，有返回值 | 返回值见 `ReturnValue` / `ReturnType` |
-| **-1** | 目标对象未注册 | 服务端未找到 `ObjectName` 对应的注册对象 |
-| **-2** | 方法被禁止调用 | 方法名匹配了服务端配置的过滤规则 |
-| **-3** | 方法不存在 | 方法名或参数签名不匹配任何已注册方法 |
-| **-4** | 参数转换失败 | 传入的参数无法转换为目标方法要求的类型 |
-| **-5** | 方法执行异常 | 方法在服务端执行过程中抛出异常 |
+| **-3** | 调用请求被拦截取消 | 服务端 ClientInvokeRequest 事件处理中设置了 Cancel=true |
+| **-10** | 目标对象未注册 | 服务端未找到 ObjectName 对应的注册对象 |
+| **-11** | 方法被禁止调用 | 方法名匹配了服务端配置的过滤规则（MethodFilters） |
+| **-12** | 方法不存在 | 方法名或参数签名不匹配任何已注册方法 |
+| **-13** | 参数转换失败 | 传入的参数无法转换为目标方法要求的类型 |
+| **-14** | 方法执行异常 | 方法在服务端执行过程中抛出异常（InnerException 信息见 Description） |
+| **-15** | 内部处理异常 | 服务端处理调用消息时发生非预期异常 |
+
+#### 客户端本地状态码（客户端自生成，不经过网络传输）
+
+| Code | 含义 | 说明 |
+|:----:|------|------|
+| **-96** | 消息 Id 冲突 | 待响应字典中已存在相同 Id |
+| **-97** | 响应超时 | 在指定超时时间内未收到服务端响应 |
+| **-100** | 客户端未连接 | 调用 InvokeFuncAsync 时未连接到服务端 |
+| **-101** | 连接已关闭 | 序列化后发送前检测到连接断开 |
+| **-102** | 连接关闭 | 接收循环断开，取消所有待响应调用 |
+| **-105** | 消息序列化失败 | 客户端序列化 InvokeMessage 时发生异常 |
+| **-106** | 序列化结果为空 | 序列化后的字节数组为空 |
+| **-107** | 写入失败 | 发送消息到网络流时发生异常 |
 
 ---
 
@@ -184,7 +199,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 
 ```
 → <InvokeMessage ObjectName="Unknown" MethodName="DoSomething" Id="3" />\r\n
-← <ResponseMessage Id="3" Code="-1" ObjectMethod="Unknown.DoSomething" Description="Object 'Unknown' not register" Version="2.0.0" Timestamp="..." />\r\n
+← <ResponseMessage Id="3" Code="-10" ObjectMethod="Unknown.DoSomething" Description="Object (Unknown) not register" Version="2.0.0" Timestamp="..." />\r\n
 ```
 
 ### 4.5 连续多条消息
@@ -223,7 +238,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 1. **数据行定界**：以 `CRLF`(`0D0A`，字符是`\r\n`) 拆分数据行。TCP 粘包/半包需自行处理，建议使用缓冲区拼接。**每行一条消息**。
 2. **字符编码**：统一使用 UTF-8 编解码。
 3. **响应匹配**：通过 `Id` 字段进行 请求-响应 配对。建议客户端生成递增的正整数 `Id`。
-4. **超时处理**：建议设置合理的读写超时（如 3 秒），超时后可按 Code `-10` 处理。
+4. **超时处理**：建议设置合理的读写超时（如 3 秒），超时后客户端按本地 Code `-97`（响应超时）处理。
 5. **连接保活**：TCP 长连接，闲置时无需发送心跳，服务端不会主动断开。
 6. **心跳策略**：建议每隔 3 秒调用一次服务端设计的心跳函数，消息响应模式 `ResponseMode` 设为 `1`。
 7. **重连策略**：建议在连接断开后按指数退避重连，避免频繁重连。
@@ -272,7 +287,7 @@ using System.Net;
 
 // 使用 RpcClient4X（XML 协议实现）
 var client = new RpcClient4X(IPAddress.Loopback, 8080);
-await client.ConnectAsync();
+client.Connect();
 
 // 请求-响应调用（Func 语义，有返回值，必须等待结果）
 var response = await client.InvokeFuncAsync("Demo", "GetCurrentPage");
@@ -368,4 +383,4 @@ client.Close();
 
 ---
 
-> 文档版本：v3.0  |  最后更新：2026-07-12  |  维护：SpaceCG 团队
+> 文档版本：v3.1  |  最后更新：2026-07-14  |  维护：SpaceCG 团队

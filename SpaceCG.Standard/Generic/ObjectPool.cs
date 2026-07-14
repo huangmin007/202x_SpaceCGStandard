@@ -70,7 +70,7 @@ namespace SpaceCG.Generic
             if (Pool.TryDequeue(out var message))
             {
                 Interlocked.Decrement(ref _count);
-                return message; // Reset 已由 Return 时调用
+                return message;
             }
 
             return new T();

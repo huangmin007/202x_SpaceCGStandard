@@ -53,7 +53,7 @@ using SpaceCG.Net;
 
 // 使用 RpcClient4X（XML 协议实现）
 var client = new RpcClient4X(IPAddress.Loopback, 8080);
-await client.ConnectAsync();
+client.Connect();
 
 // 请求-响应调用（Func 语义，有返回值，必须等待结果）
 var response = await client.InvokeFuncAsync("Demo", "GetCurrentPage");
@@ -110,7 +110,7 @@ public abstract class RpcServerBase : IDisposable
     // 事件
     public event EventHandler<IPEndPoint> ClientConnected;
     public event EventHandler<IPEndPoint> ClientDisconnected;
-    public event EventHandler<InvokeMessageEventArgs> ClientMessageInvoking;
+    public event EventHandler<InvokeMessageEventArgs> ClientInvokeRequest;
 }
 ```
 
@@ -177,11 +177,13 @@ InvokeMessage.Create("Video", "Seek", 5.6f);
 |:----:|------|
 | 0 | 成功（void） |
 | 1 | 成功（有返回值） |
-| -1 | 对象未注册 |
-| -2 | 方法被过滤 |
-| -3 | 方法不存在 |
-| -4 | 参数转换失败 |
-| -5 | 执行异常 |
+| -3 | 调用被拦截取消 |
+| -10 | 对象未注册 |
+| -11 | 方法被过滤 |
+| -12 | 方法不存在 |
+| -13 | 参数转换失败 |
+| -14 | 执行异常 |
+| -15 | 内部处理异常 |
 
 ---
 
@@ -199,7 +201,7 @@ InvokeMessage.Create("Video", "Seek", 5.6f);
 public abstract class RpcClientBase : IDisposable
 {
     // 公共 API
-    public Task ConnectAsync();
+    public void Connect();
     public void Close();
     /// <summary>请求-响应调用（Func 语义，有返回值，必须等待结果）</summary>
     public Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters = null, TimeSpan? timeout = null);
@@ -218,7 +220,7 @@ public abstract class RpcClientBase : IDisposable
 
 ```csharp
 var client = new RpcClient4X(IPAddress.Loopback, 8080);
-await client.ConnectAsync();
+client.Connect();
 var response = await client.InvokeFuncAsync("Demo", "GetCurrentPage");
 
 ---
@@ -242,8 +244,7 @@ SpaceCG.Standard/Net/
 ├── README.md                            ← 本文件（命名空间总览）
 ├── RPC 服务框架.md                       ← RpcServerBase 设计文档
 ├── 远程过程调用(XML-RPC)消息协议.md       ← XML 协议规范（第三方对接）
-├── InvokeMessage.cs                      ← 请求消息 + 事件参数 + 对象池
-├── ResponseMessage.cs                    ← 响应消息
+├── RpcMessages.cs                        ← 请求/响应消息 + 事件参数 + 消息池
 ├── RpcServerBase.cs                      ← 服务端抽象基类
 ├── RpcServer4X.cs                        ← 服务端 XML 协议实现
 ├── RpcClientBase.cs                      ← 客户端抽象基类
@@ -253,4 +254,4 @@ SpaceCG.Standard/Net/
 
 ---
 
-> 文档版本：v1.2  |  最后更新：2026-07-12  |  维护：SpaceCG 团队
+> 文档版本：v1.3  |  最后更新：2026-07-14  |  维护：SpaceCG 团队

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Security;
@@ -43,8 +44,7 @@ namespace Z_TestWpfApp
             rpcServer = new RpcServer4X(2000);
             rpcServer.RegisterObject("Demo", this);
             rpcServer.Start();
-
-            rpcClient = new RpcClient4X("127.0.0.1", 2000);
+            
         }
         protected override void OnClosing(CancelEventArgs e)
         {
@@ -65,8 +65,20 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D2:
-                    var result = await rpcClient.InvokeFuncAsync("Demo", "test", new object[] { 1, 2 });
+                    var result = await rpcClient.InvokeFuncAsync("Demo", "SetColor", new object[] { "#FF00FF00" });
                     Trace.WriteLine($"Response::{result}");
+                    Trace.WriteLine($"ReturnType::{result.ReturnType}");
+                    Trace.WriteLine($"ReturnValue::{result.ReturnValue}");
+
+                    if (result.ReturnValue is IEnumerable<IEnumerable<int>> resultEnumerable)
+                    {
+                        foreach (var item in resultEnumerable)
+                        {
+                            Trace.WriteLine($">>{string.Join(",", item)}");
+                        }
+                    }
+                    
+                    Trace.WriteLine($"ReturnValue::{result.ReturnValue}");
                     break;
 
                 case Key.D9:
@@ -81,15 +93,11 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            //var xml = "<ResponseMessage Id=\"0\" Code=\"1\" ObjectMethod =\"Demo.SetColors\" ReturnValue =\"hello world, \\\"test\\\" hell.\" ReturnType=\"String\" Description=\"OK\" Version =\"2.0.0\" Timestamp=\"2026-07-12T06:11:39.7823568+00:00\" />";
-            //Trace.WriteLine(xml);
-
-            //var el = XElement.Parse(xml);
-
+            //var str = "System.Collections.Generic.IEnumerable`1[System.Collections.Generic.IEnumerable`1[System.Int32]]";
+            //var returnType = Type.GetType(str, true);
 
             rpcClient = new RpcClient4X("127.0.0.1", 2001);
             rpcClient.Connect();
-
 
             const string Dictionary = nameof(Dictionary);
 

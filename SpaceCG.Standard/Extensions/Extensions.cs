@@ -73,7 +73,8 @@ namespace SpaceCG.Extensions
             var pCount = pattern.Count;
 
             // 边界检查：空模式、模式过长、index 越界
-            if (pCount == 0 || pCount > sCount || index < 0 || index >= sCount) return -1;
+            if (sCount == 0 || pCount == 0 || pCount > sCount) return -1;
+            if (index < 0 || index >= sCount) return -1;
 
             // 计算有效搜索上界：若 count=-1 则搜索到 source 末尾，否则取 index+count
             var searchEnd = count < 0 ? sCount : index + count;
