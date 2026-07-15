@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,7 +38,7 @@ namespace SpaceCG.Net
 
     /// <summary>
     /// RPC 客户端抽象基类，与服务端 <see cref="RpcServerBase"/> 镜像对称设计。
-    /// <para>提供 TCP 连接管理、环形缓冲 CRLF 行拆分、请求/响应 Id 匹配、超时管理、自动重连等基础能力。</para>
+    /// <para>提供 TCP 连接管理、环形缓冲 CRLF 数据行拆分、请求/响应 Id 匹配、超时管理、自动重连等基础能力。</para>
     /// <para>
     /// <list type="bullet">
     ///     <item>基类以 CRLF (0x0D 0x0A) 为数据行分割标识，每行一条消息。</item>
@@ -109,7 +107,7 @@ namespace SpaceCG.Net
         /// </summary>
         public int ReceiveBufferSize { get; set; } = 1024 * 64;
         /// <summary>
-        /// 获取或设置默认的远程方法请求调用超时时间，默认 3 秒。
+        /// 获取或设置默认的远程方法调用请求超时时间，默认 3 秒。
         /// </summary>
         public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(3);
         #endregion
@@ -212,7 +210,7 @@ namespace SpaceCG.Net
         }
         #endregion
 
-        #region ConnectLoop & Receive
+        #region ConnectLoop & HandleSessionAsync
         /// <summary>
         /// 连接循环任务，内部会启动异步循环连接任务，连接成功后自动开始接收数据任务。
         /// </summary>
@@ -261,6 +259,10 @@ namespace SpaceCG.Net
                     LocalEndPoint = _tcpClient.Client.LocalEndPoint as IPEndPoint;
                     Trace.TraceInformation($"RPC 客户端 {LocalEndPoint} 已连接到 {RemoteEndPoint}");
                 }
+                catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
+                {
+                    return;
+                }
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"RPC 客户端连接失败: {ex.Message}，重试中 .....");
@@ -268,7 +270,7 @@ namespace SpaceCG.Net
                     continue;
                 }
 
-                await ReceiveLoopAsync(_tcpClient, cancellationToken).ConfigureAwait(false);
+                await HandleSessionAsync(_tcpClient, cancellationToken).ConfigureAwait(false);
             }
         }
         /// <summary>
@@ -425,7 +427,7 @@ namespace SpaceCG.Net
         /// <param name="invokeMessage">原始调用消息，用于超时时构造错误响应。</param>
         /// <param name="timeout">超时时间。</param>
         /// <returns>服务端返回的响应消息，或超时/错误响应。</returns>
-        private async Task<ResponseMessage> WaitResponseAsync(TaskCompletionSource<ResponseMessage> taskSource, InvokeMessage invokeMessage, TimeSpan timeout)
+        private async Task<ResponseMessage> WaitResponseMessageAsync(TaskCompletionSource<ResponseMessage> taskSource, InvokeMessage invokeMessage, TimeSpan timeout)
         {
             using (var timeoutCts = new CancellationTokenSource())
             {
@@ -476,13 +478,16 @@ namespace SpaceCG.Net
             if (offset < 0 || offset >= data.Length || length <= 0 || offset + length > data.Length)
                 throw new ArgumentOutOfRangeException(nameof(length));
 
-            await _sendSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-
             try
             {
+                await _sendSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+
                 var clientStream = _tcpClient.GetStream();
                 await clientStream.WriteAsync(data, offset, length, cancellationToken).ConfigureAwait(false);
                 await clientStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
+            {
             }
             catch (Exception ex)
             {
@@ -622,7 +627,7 @@ namespace SpaceCG.Net
             }
 
             // 等待响应（带超时）
-            return await WaitResponseAsync(tcs, invokeMessage, timeout ?? DefaultTimeout).ConfigureAwait(false);
+            return await WaitResponseMessageAsync(tcs, invokeMessage, timeout ?? DefaultTimeout).ConfigureAwait(false);
         }
         #endregion
 

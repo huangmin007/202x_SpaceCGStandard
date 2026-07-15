@@ -11,8 +11,8 @@ using SpaceCG.Extensions;
 namespace SpaceCG.Net
 {
     /// <summary>
-    /// 基于 XML 协议的 RPC 服务端实现（XML-RPC v2.0）。
-    /// <para>每行一条 XML 自闭合消息，以 CRLF 为行边界。请求和响应均使用 XElement 解析 / StringBuilder 拼接 XML。</para>
+    /// 基于 XML 消息协议的 RPC 服务端实现（XML-RPC v2.0）。
+    /// <para>每行（以 CRLF 为行边界）一条 XML 消息。请求和响应均使用 XElement 解析 / StringBuilder 拼接 XML。</para>
     /// <para>用法示例：<code>new RpcServer4X(port).Start()</code></para>
     /// </summary>
     public sealed class RpcServer4X : RpcServerBase
@@ -68,6 +68,8 @@ namespace SpaceCG.Net
 
                 invokeMessage = InvokeMessage.Create(objectName, methodName, element.Attribute(nameof(InvokeMessage.Parameters))?.Value, id, responseMode);
 
+                // 解析 Description
+                invokeMessage.Description = element.Attribute(nameof(InvokeMessage.Description))?.Value;
                 // 解析 Version
                 if (Version.TryParse(element.Attribute(nameof(InvokeMessage.Version))?.Value, out var version)) invokeMessage.Version = version;                
                 // 解析 Timestamp

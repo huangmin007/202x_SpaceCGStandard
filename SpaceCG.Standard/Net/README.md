@@ -3,8 +3,8 @@
 `SpaceCG.Net` 命名空间提供轻量级远程过程调用（RPC）框架，面向局域网络下的 DEMO 交互控制场景。
 
 - **目标框架**：.NET Standard 2.0
-- **传输**：TCP 字节流
-- **行层**：CRLF（`\r\n`）行分隔
+- **传输层**：TCP 字节流
+- **数据层**：CRLF（`\r\n`）按行分隔数据
 - **消息层**：由子类定义（当前支持 XML）
 
 ---
@@ -13,15 +13,15 @@
 
 | 类 | 类型 | 说明 |
 |------|------|------|
-| [`RpcServerBase`](./RPC%20服务框架.md) | abstract class | RPC 服务端抽象基类，提供 TCP 连接管理、数据行解析（一行一消息）、方法反射调用等核心能力 |
+| [`RpcServerBase`](./RPC%20服务框架.md) | abstract class | RPC 服务端抽象基类，提供 TCP 连接管理、数据行解析（一行一条消息）、方法反射调用等核心能力 |
 | [`RpcServer4X`](./RPC%20服务框架.md#35-rpcserver4x) | sealed class | 基于 XML 协议的 RPC 服务端实现，可直接使用 |
 | [`RpcClientBase`](./RPC%20服务框架.md) | abstract class | RPC 客户端抽象基类，与服务端镜像对称，提供连接、请求/响应匹配、超时、自动重连等能力 |
 | [`RpcClient4X`](./RPC%20服务框架.md) | sealed class | 基于 XML 协议的 RPC 客户端实现 |
 | [`InvokeMessage`](./RPC%20服务框架.md#32-invokemessage) | class | 客户端调用请求的数据对象 |
 | [`ResponseMessage`](./RPC%20服务框架.md#33-responsemessage) | class | 方法调用结果的数据对象 |
 | [`InvokeMessageEventArgs`](./RPC%20服务框架.md#34-invokemessageeventargs) | class | 消息拦截事件参数（继承 `CancelEventArgs`） |
+| [`TcpClientEx`](#TcpClientEx) | sealed class | 带自动重连功能的独立 TCP 客户端封装 |
 | [`TcpClientExtensions`](#tcpclientextensions) | static class | `TcpClient` 扩展方法 |
-| [`AutoReconnectTcpClient`](#autoreconnecttcpclient) | sealed class | 带自动重连功能的独立 TCP 客户端封装 |
 
 ---
 
@@ -70,7 +70,7 @@ await client.InvokeActionAsync("Demo", "OpenPage", new object[] { 42 });
 
 | 文档 | 说明 | 适用对象 |
 |------|------|------|
-| [RPC 服务框架.md](./RPC%20服务框架.md) | RpcServerBase 设计文档：架构、流程、设计决策、使用示例 | 内部开发人员 |
+| [RPC 服务框架.md](./RPC%20服务框架.md) | Rpc 设计文档：架构、流程、设计决策、使用示例 | 内部开发人员 |
 | [远程过程调用(XML-RPC)消息协议.md](./远程过程调用\(XML-RPC\)消息协议.md) | XML 协议规范：行格式、消息格式、参数约定、状态码 | **第三方团队/公司** |
 
 ---
@@ -80,7 +80,7 @@ await client.InvokeActionAsync("Demo", "OpenPage", new object[] { 42 });
 抽象基类，RPC 服务端的核心。
 
 ```
-行层（CRLF 行分隔，一行一消息）→ 消息层（子类协议解析）→ 调度层（并发+校验）→ 执行层（反射调用）→ 响应层（序列化回写）
+行层（CRLF 行分隔，一行一条消息）→ 消息层（子类协议解析）→ 调度层（并发+校验）→ 执行层（反射调用）→ 响应层（序列化回写）
 ```
 
 > 详见 [RPC 服务框架.md](./RPC%20服务框架.md)
@@ -120,7 +120,7 @@ public abstract class RpcServerBase : IDisposable
 
 基于 XML 协议的 `RpcServerBase` 实现，可直接实例化使用。
 
-- 每行一条 XML 自闭合消息，以 CRLF 为行边界
+- 每行一条 XML 格式消息，以 CRLF 为行边界
 - `DeserializeInvokeMessage` 反序列化单条 XML 消息，返回一个 `InvokeMessage`
 - 响应使用 `StringBuilder` 直拼 XML + CRLF（性能优化）
 
@@ -143,12 +143,16 @@ server.Start();
 
 | 属性 | 类型 | 必须 | 说明 |
 |------|------|:--:|------|
-| `ObjectName` | string | ✅ | 目标对象名称 |
-| `MethodName` | string | ✅ | 目标方法名称 |
-| `Id` | int | 否 | 消息标识（默认 0） |
-| `Parameters` | object[] | 否 | 方法参数 |
-| `ResponseMode` | int | 否 | -1=不响应，0=默认，1=必须响应 |
-| `Version` | Version | 只读 | 协议版本 2.0.0 |
+| `ObjectName` | `string` | ✅ 必须 | 已注册目标对象的名称 |
+| `MethodName` | `string` | ✅ 必须 | 目标方法名称 |
+| `Id` | `int` | 可选 | 消息唯一标识，用于请求-响应匹配，默认 0；<br />当 `Id < 0` 时（如 0、-1）表示不进行 Id 匹配跟踪，即忽略请求消息的 Id 属性 |
+| `Parameters` | `object[]` | 可选 | 方法参数列表，无参调用为 `null` |
+| `ResponseMode` | `int` | 可选 | 消息的响应模式：<br />-1 表示不响应；<br />0 默认，调用异常响应、方法有返回值响应，其它(`void`)不响应；<br />1 需要响应，不关心是否有返回值 |
+| `Description` | `string` | 可选 | 消息描述/注释 |
+| `Timestamp` | `DateTimeOffset` | 可选 | 消息时间戳（ISO8601），默认 `UtcNow`，字符解析为 `O` 格式 |
+| `Version` | `Version` | 只读 | 协议版本 2.0.0 |
+| `TcpClient` | `TcpClient` | (internal) | 关联的 TCP 客户端 |
+| `ClientEndPoint` | `IPEndPoint` | (internal) | 客户端远程端点 |
 
 ```csharp
 InvokeMessage.Create("Demo", "GetCurrentPage");
@@ -162,14 +166,16 @@ InvokeMessage.Create("Video", "Seek", 5.6f);
 
 响应消息数据类，由服务端构造。
 
-| 属性 | 类型 | 说明 |
-|------|------|------|
-| `Id` | int | 对应请求 Id |
-| `Code` | int | ≥0 成功，<0 失败 |
-| `ObjectMethod` | string | `{ObjectName}.{MethodName}` |
-| `Description` | string | 结果描述/错误信息 |
-| `ReturnValue` | object | 返回值 |
-| `ReturnType` | Type | 返回值类型 |
+| 属性 | 类型 | 必须 | 说明 |
+|------|------|:--:|------|
+| `Code` | `int` | ✅ 必须 | 状态码：< 0 失败， ≥0 成功，=1 成功且有返回值 |
+| `ObjectMethod` | `string` | ✅ 必须 |  被调用方法的完整名称 `{ObjectName}.{MethodName}` |
+| `Id` | `int` | 可选 | 对应请求消息的 Id，当 `Id < 0` 时表示不进行 Id 跟踪匹配 |
+| `Description` | `string` | 可选 |  结果描述或错误信息 |
+| `ReturnType` | `Type` | 可选 | 返回值类型 |
+| `ReturnValue` | `object` | 可选 | 返回值 |
+| `Timestamp` | `DateTimeOffset` | 可选 | 响应时间戳 |
+| `Version` | `Version` | 可选 | 协议版本 2.0.0 |
 
 **状态码**：
 
@@ -177,7 +183,7 @@ InvokeMessage.Create("Video", "Seek", 5.6f);
 |:----:|------|
 | 0 | 成功（void） |
 | 1 | 成功（有返回值） |
-| -3 | 调用被拦截取消 |
+| -5 | 调用被拦截取消 |
 | -10 | 对象未注册 |
 | -11 | 方法被过滤 |
 | -12 | 方法不存在 |

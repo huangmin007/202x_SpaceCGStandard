@@ -1,10 +1,9 @@
-﻿# 远程过程调用(XML-RPC)消息协议 v3.0
+﻿# 远程过程调用(XML-RPC)消息协议 v2.0
 
-> **文档定位**：面向第三方团队或公司的通信接口参考文档。
 >
-> 本文档描述 `RpcServer4X` 服务的 XML 消息协议，第三方开发人员可依据本文档实现兼容的 RPC 客户端。
+> 本文档描述 `XML-RPC` 服务的 XML 消息协议，第三方开发人员可依据本文档实现兼容的 RPC 客户端。
 >
-> `RpcServer4X` 是 SpaceCG.Net RPC 框架中基于 XML 协议的服务端实现，继承自 `RpcServerBase`（一行一条消息）。
+> `RpcServer4X` 是 SpaceCG.Net RPC 框架中基于 XML 协议的服务端实现，继承自 `RpcServerBase`。
 
 ---
 
@@ -13,32 +12,17 @@
 | 1.0 | 2023-11 | 初版 |
 | 1.1 | 2025-04 | 增加响应超时状态，细节优化 |
 | 1.2 | 2026-06 | 优化协议，移除多消息 InvokeMessages 格式 |
-| 2.0 | 2026-07 | 重构：数据行层与消息层分离 |
-| 3.0 | 2026-07 | **突破性变更**：一行一消息，客户端与服务端保持对称一致，简化协议实现 |
+| 2.0 | 2026-07 | **重构**：一行数据一条消息，简化协议实现，XML 不支持子节点 |
 
 ---
 
 ## 1. 协议总览
 
-### 1.1 分层模型
+### 1.1 关键约定
 
-```
-┌─────────────────────────────────┐
-│         消息层（Message）        │  ← XML 自闭合元素（以 XML '/>' 结束，不可以有子节点）
-│   每行一条消息                   │
-├─────────────────────────────────┤
-│          数据行层（Line）        │  ← 以 CRLF（\r\n, 0x0D 0x0A）为行结束符
-│     一行一条消息                 │
-├─────────────────────────────────┤
-│        传输层（Transport）       │  ← TCP 字节流，UTF-8 编码
-└─────────────────────────────────┘
-```
-
-**关键约定**：
-
-- 服务端以 **CRLF** 为行边界，每次从 TCP 流中读取一个完整的数据行
-- 一行对应一条 XML 自闭合消息（v3.0 起，一行一消息）
-- XML 自闭合元素不允许有子节点
+- 传输数据以 **CRLF** 为行边界(或 0x0D 0x0A、\r\n、空行)，每次从 TCP 流中读取一个完整的数据行
+- 一行数据对应一条 XML 格式消息（v2.0 起，一行一消息）
+- XML 格式元素不允许有子节点，减少解析复杂度，减少数据长度
 - 每条消息元素对应一次独立的方法调用请求
 
 ### 1.2 通信模式
@@ -47,10 +31,10 @@
 |------|------|
 | 传输协议 | TCP（可靠字节流） |
 | 数据行定界 | CRLF `\r\n`（`0x0D 0x0A`）|
-| 消息格式 | XML 自闭合元素（以 `/>` 结束），每行一条消息 |
+| 消息格式 | XML 元素消息，以 `/>` 结束，每行一条消息 |
 | 字符编码 | UTF-8 |
 | 连接模式 | 长连接，单连接可发送多行 |
-| 调用模式 | 请求-响应（同步），可通过 `ResponseMode` 控制是否响应 |
+| 调用模式 | 请求-响应（异步），可通过 `ResponseMode` 控制是否响应 |
 
 ### 1.3 消息行示例
 
@@ -70,7 +54,7 @@
 <InvokeMessage 属性列表 />
 ```
 
-消息为 **XML 自闭合元素**，以 `/>` 结束。**不支持**传统的成对开始/结束标签。
+消息为 **XML 格式字符**，以 `/>` 结束。**不支持**、**不允许** 有子节点。
 
 ### 2.2 属性定义
 
@@ -80,13 +64,13 @@
 | `MethodName` | String | **是** | 目标方法名称，需符合命名规则 `^[a-zA-Z_][a-zA-Z0-9_]*$` |
 | `Id` | Int32 | 否 | 消息标识，用于请求与响应的匹配。默认值为 `0` |
 | `Parameters` | String | 否 | 方法参数，弱类型格式（见 §2.3）。无参调用可省略 |
-| `ResponseMode` | Int32 | 否 | 响应策略：`-1`=不响应，`0`=默认，`1`=必须响应。默认为 `0` |
+| `ResponseMode` | Int32 | 否 | 响应策略：`-1`=不响应；`0`=默认，异常响应，有返回值响应；`1`=必须响应。默认为 `0` |
 | `Description` | String | 否 | 消息注释或描述信息 |
-| `Timestamp` | DateTime | 否 | 消息时间戳，建议使用 ISO8601 格式（如 `2026-07-11T12:00:00Z`） |
+| `Timestamp` | DateTime | 否 | 消息时间戳，建议使用 ISO8601 格式（如 `2026-07-15T06:36:15.7375595+00:00`） |
 
 ### 2.3 参数传递方式 `@Parameters` 属性（弱类型）
 
-多个参数使用英文逗号 `,` 分隔，参数只支持 `值类型`、简单的 `字符类型` 和简单的 `集合类型`(元素必须是`值类型`或`字符类型`)，解析规则如下：
+多个参数使用英文逗号 `,` 分隔，参数只支持 `值类型`、简单的 `字符类型` 和简单的 `集合类型`(集合元素必须是`值类型`或`字符类型`)，解析规则如下：
 
 | 数据类型 | 格式 | 示例 |
 |------|------|------|
@@ -94,9 +78,8 @@
 | 浮点数 | 直接书写 | `5.6` |
 | 字符串 | 单引号 `'` 或双引号 `"` 包裹 | `'hello'` 或 `"world"` |
 | 布尔 | `true` / `false` | `true` |
-| 字节/十六进制 | `0x` 前缀 | `0xFF`、`0x0A` |
-| 数组 | `[]` 包裹，逗号分隔 | `[1,2,3]` `[[#FFFF0000,#FF00FFFF],[#FF0000FF,#FF0F0F0F]]` |
-| 字节数组 | `[]` 包裹，元素使用 `0x` 前缀 | `[0x08,0x09,0x0A]` |
+| 字节/十六进制 | `0x` 前缀 | `0xFF`、`0x0A`、`0xFF00FF00` |
+| 集合/数组 | `[]` 包裹，逗号分隔 | `[1,2,3]`、`[0x08,0x09,0x0A]`、`[[#FFFF0000,#FF00FFFF],[#FF0000FF,#FF0F0F0F]]` |
 
 示例：
 ```
@@ -126,7 +109,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 <ResponseMessage 属性列表 />
 ```
 
-响应同样为 XML 自闭合元素，以 `/>` 结束，每条响应消息后紧跟 CRLF。一行一条响应。
+响应同样为 XML 格式字符，以 `/>` 结束，每条响应消息后紧跟 CRLF。一行一条响应。
 
 ### 3.2 属性定义
 
@@ -149,7 +132,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 |:----:|------|------|
 | **0** | 成功，无返回值 | 方法返回类型为 `void` |
 | **1** | 成功，有返回值 | 返回值见 `ReturnValue` / `ReturnType` |
-| **-3** | 调用请求被拦截取消 | 服务端 ClientInvokeRequest 事件处理中设置了 Cancel=true |
+| **-5** | 调用请求被拦截取消 | 服务端 ClientInvokeRequest 事件处理中设置了 Cancel=true |
 | **-10** | 目标对象未注册 | 服务端未找到 ObjectName 对应的注册对象 |
 | **-11** | 方法被禁止调用 | 方法名匹配了服务端配置的过滤规则（MethodFilters） |
 | **-12** | 方法不存在 | 方法名或参数签名不匹配任何已注册方法 |
@@ -165,7 +148,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 | **-97** | 响应超时 | 在指定超时时间内未收到服务端响应 |
 | **-100** | 客户端未连接 | 调用 InvokeFuncAsync 时未连接到服务端 |
 | **-101** | 连接已关闭 | 序列化后发送前检测到连接断开 |
-| **-102** | 连接关闭 | 接收循环断开，取消所有待响应调用 |
+| **-102** | 连接关闭 | 循环接收时检测到断开，取消所有待响应调用 |
 | **-105** | 消息序列化失败 | 客户端序列化 InvokeMessage 时发生异常 |
 | **-106** | 序列化结果为空 | 序列化后的字节数组为空 |
 | **-107** | 写入失败 | 发送消息到网络流时发生异常 |
@@ -178,14 +161,14 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 
 ```
 → <InvokeMessage ObjectName="Demo" MethodName="GetCurrentPage" Id="1" ResponseMode="1" />\r\n
-← <ResponseMessage Id="1" Code="1" ObjectMethod="Demo.GetCurrentPage" ReturnValue="/home" ReturnType="String" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:01Z" />\r\n
+← <ResponseMessage Id="1" Code="1" ObjectMethod="Demo.GetCurrentPage" ReturnValue="1" ReturnType="System.Int32" Description="Success" Version="2.0.0" Timestamp="2026-07-11T12:00:01Z" />\r\n
 ```
 
 ### 4.2 带参数调用
 
 ```
 → <InvokeMessage ObjectName="Video" MethodName="Seek" Id="2" Parameters="0.6" ResponseMode="1" />\r\n
-← <ResponseMessage Id="2" Code="0" ObjectMethod="Video.Seek" ReturnType="Void" Description="OK" Version="2.0.0" Timestamp="2026-07-11T12:00:02Z" />\r\n
+← <ResponseMessage Id="2" Code="0" ObjectMethod="Video.Seek" ReturnType="Void" Description="Success" Version="2.0.0" Timestamp="2026-07-11T12:00:02Z" />\r\n
 ```
 
 ### 4.3 单向通知（无响应）
@@ -211,7 +194,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 ← <ResponseMessage Id="11" Code="0" ObjectMethod="Video.Play" ... />
 ```
 
-> 每行为一条独立的消息，服务端依次处理并响应。多条消息需分多行发送。
+> 每行为一条独立的消息，服务端依次处理异步响应。多条消息可同时发送，或分次发送都可以。
 
 ---
 
@@ -228,6 +211,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 | `System.Int32[]` | `[1,2,3]` | 数组 |
 | `System.Byte[]` | `[0x01,0x02,0x03]` | 字节数组 |
 | `System.Enum` | `'OptionA'` | 枚举值按名称解析 |
+| `......` | `[......]` | 其它集合接口类型 |
 
 ---
 
@@ -241,7 +225,7 @@ Parameters="[#FFFF0000,#FF00FF00,#FF0000FF],[12,30]"
 4. **超时处理**：建议设置合理的读写超时（如 3 秒），超时后客户端按本地 Code `-97`（响应超时）处理。
 5. **连接保活**：TCP 长连接，闲置时无需发送心跳，服务端不会主动断开。
 6. **心跳策略**：建议每隔 3 秒调用一次服务端设计的心跳函数，消息响应模式 `ResponseMode` 设为 `1`。
-7. **重连策略**：建议在连接断开后按指数退避重连，避免频繁重连。
+7. **重连策略**：建议在连接断开后按指数退避重连，避免频繁重连，例如：等待 3 秒后重连。
 
 ### 6.2 支持的平台/语言
 
@@ -324,15 +308,14 @@ public class SimpleRPCClient
     }
 
     /// <summary>发送一条调用消息（每行一条消息）</summary>
-    public async Task SendAsync(string objectName, string methodName,
-        string parameters = null, int id = 0, int responseMode = 0)
+    public async Task SendAsync(string objectName, string methodName, string parameters = null, int id = 0, int responseMode = 0)
     {
         var sb = new StringBuilder();
         sb.Append($"<InvokeMessage ObjectName=\"{objectName}\" MethodName=\"{methodName}\"");
         if (id != 0) sb.Append($" Id=\"{id}\"");
         if (parameters != null) sb.Append($" Parameters=\"{parameters}\"");
         if (responseMode != 0) sb.Append($" ResponseMode=\"{responseMode}\"");
-        sb.Append(" />\r\n");
+        sb.AppendLine(" />");
 
         var bytes = Encoding.UTF8.GetBytes(sb.ToString());
         await _stream.WriteAsync(bytes, 0, bytes.Length);
@@ -383,4 +366,13 @@ client.Close();
 
 ---
 
-> 文档版本：v3.1  |  最后更新：2026-07-14  |  维护：SpaceCG 团队
+## 附录 A：注册对象与方法名称命名约定
+
+| 约定 | 示例 |
+|------|------|
+| 注册对象名 | `Demo`、`Window`、`Video` 等简短 PascalCase 名称 |
+| 方法名称 | `LoadItem(int)`、`HomeItem()`、`NextItem()`、`PrevItem`、`PlayPause()`、`LanguageChange()`、`LanguageChange(string)`、 `int GetItem()`、`Seek`、`VolumeUp(float)` 等等 |
+
+---
+
+> 文档版本：v2.1  |  最后更新：2026-07-14  |  维护：SpaceCG 团队

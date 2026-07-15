@@ -17,10 +17,10 @@ namespace SpaceCG.Net
 {
     /// <summary>
     /// 远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control) 服务端抽象基类。
-    /// <para>提供 TCP 客户端连接管理、数据行解析（CRLF 分隔，一行一条消息）、方法反射调用、结果响应等基础能力。</para>
+    /// <para>提供 TCP 客户端连接管理、数据行解析（CRLF 分隔数据）、方法反射调用、结果响应等基础能力。</para>
     /// <para>
     /// <list type="bullet">
-    /// <item>基类以数据行为单位进行分割，使用 CRLF (0x0D 0x0A, \r\n) 作为行分隔符，每行一条调用消息。</item>
+    /// <item>基类使用 CRLF (0x0D 0x0A, \r\n) 分隔符数据行。</item>
     /// <item>子类继承实现 <see cref="DeserializeInvokeMessage"/> 和 <see cref="SerializeResponseMessage"/> 以支持不同的消息协议。</item>
     /// <item>通过 <see cref="ClientInvokeRequest"/> 事件可拦截或取消客户端调用请求的执行。</item>
     /// <item>方法调用通过 <see cref="SynchronizationContext.Send(SendOrPostCallback, object)"/> 封送到构造线程（通常为 UI 线程）执行。</item>
@@ -83,9 +83,9 @@ namespace SpaceCG.Net
         /// <para>例如："*.Dispose" 禁止反射访问所有对象的 Dispose 方法；默认已添加 "*.Dispose" 和 "*.Close"。</para>
         /// </summary>
         public readonly List<string> MethodFilters = new List<string>(16) { "*.Dispose", "*.Close" }; 
-        /// <summary> 注册的对象实例集合 </summary>
+        /// <summary> 注册对象的实例集合 </summary>
         protected readonly ConcurrentDictionary<string, object> RegisterObjects = new ConcurrentDictionary<string, object>();
-        /// <summary> 注册的对象实例的缓存方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预缓存在字典中。 </summary>
+        /// <summary> 注册对象的实例缓存的方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预缓存在字典中。 </summary>
         protected readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
 
         //private readonly RpcMessagePool<InvokeMessage> InvokeMessagePool = new RpcMessagePool<InvokeMessage>(25, 128);
@@ -146,10 +146,10 @@ namespace SpaceCG.Net
             CacheObjectMethods(objectName, objectInstance);
         }
         /// <summary>
-        /// 缓存实例的公共方法和公共扩展方法。
+        /// 缓存注册对象实例的公共方法和公共扩展方法。
         /// <para>扫描注册对象类型的所有公共实例方法（排除 virtual/special-name 方法、含 ref 参数的方法），
         /// 以及当前 AppDomain 中所有程序集的公共扩展方法，生成方法签名缓存键存入 <see cref="CacheMethodInfos"/>。</para>
-        /// <para>注意：扩展方法扫描涉及 AppDomain 全局反射，时间复杂度较高，每个对象类型仅执行一次（已缓存则跳过）。</para>
+        /// <para>注意：扩展方法扫描涉及 AppDomain 全局反射，时间复杂度较高。</para>
         /// </summary>
         /// <param name="objectName">注册对象名称，用于生成方法缓存键前缀。</param>
         /// <param name="objectInstance">注册对象实例。</param>
@@ -335,7 +335,7 @@ namespace SpaceCG.Net
             }
         }
         /// <summary>
-        /// 处理单个 TCP 客户端连接的读取循环。
+        /// 处理 TCP 客户端连接会话(循环读取数据 -> 处理数据 -> 写入响应数据)。
         /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔数据行，通过 <see cref="DeserializeInvokeMessage"/> 反序列化数据行。</para>
         /// </summary>
         /// <param name="client">已接受的 TCP 客户端连接。</param>
@@ -463,9 +463,9 @@ namespace SpaceCG.Net
                 ClientDisconnected?.Invoke(this, clientEndPoint);
             }
         }
-        
+
         /// <summary>
-        /// 处理客户端的数据行（反序列化 → 事件拦截 → 方法调用分发）。
+        /// 处理客户端的数据行（反序列化 -> 事件拦截 -> 方法调用分发）。
         /// </summary>
         /// <param name="client">发送数据的 TCP 客户端连接。</param>
         /// <param name="clientMessage">一个完整的数据行（不含尾部 CRLF）。</param>
@@ -507,7 +507,7 @@ namespace SpaceCG.Net
                 if (eventArgs.Cancel)
                 {
                     Trace.TraceInformation($"客户端 {clientEndPoint} 的调用消息 (Id:{invokeMessage.Id}) 被拦截取消");
-                    var responseMessage = ResponseMessage.Create(invokeMessage, -3, "Invoke request is intercepted and canceled");
+                    var responseMessage = ResponseMessage.Create(invokeMessage, -5, "Invoke request is intercepted and canceled");
                     await WriteResponseMessageAsync(invokeMessage, responseMessage, cancellationToken).ConfigureAwait(false);
                     return;
                 }
@@ -518,7 +518,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 异步执行处理客户端调用消息的主流程。
         /// <para>通过信号量控制并发数，在 <see cref="_syncContext"/> 目标线程上反射调用注册对象的方法，并返回执行结果。</para>
-        /// <para>处理流程：基本校验 → 方法查找 → 参数转换 → UI 线程同步调用 → 响应写入。</para>
+        /// <para>处理流程：基本校验 -> 方法查找 -> 参数转换 -> 线程同步调用 -> 响应写入。</para>
         /// </summary>
         /// <param name="invokeMessage">客户端调用请求消息。</param>
         /// <param name="cancellationToken">用于取消操作的令牌。</param>

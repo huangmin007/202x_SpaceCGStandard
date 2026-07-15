@@ -51,9 +51,9 @@ namespace SpaceCG.Net
 
         /// <summary> 
         /// 消息唯一标识，用于 请求-响应 消息的匹配跟踪。
-        /// <para>默认值为 0，当值小于 0 时（如 -1）表示不进行 Id 匹配跟踪，即忽略请求消息的 Id 属性。</para>
+        /// <para>默认值为 0，当值小于 0 时（如 0、-1）表示不进行 Id 匹配跟踪，即忽略请求消息的 Id 属性。</para>
         /// </summary>
-        public int Id { get; private set; } = 0;
+        public int Id { get; internal set; } = 0;
 
         /// <summary> 
         /// 接收或处理消息的已注册对象名称。 
@@ -76,7 +76,7 @@ namespace SpaceCG.Net
         /// <item>1 表示要求服务端必须要响应当前消息。</item>
         /// </list>
         /// </summary>
-        public int ResponseMode { get; private set; } = 0;
+        public int ResponseMode { get; internal set; } = 0;
         
         /// <summary> 
         /// 消息描述信息，保留字段。 
@@ -101,7 +101,7 @@ namespace SpaceCG.Net
         /// 初始化 <see cref="InvokeMessage"/> 类的新实例。
         /// <para>推荐通过静态工厂方法 <see cref="Create(string, string, object[], int, int)"/> 创建实例。</para>
         /// </summary>
-        public InvokeMessage() 
+        internal InvokeMessage() 
         {
         }
 
@@ -199,9 +199,9 @@ namespace SpaceCG.Net
     {
         /// <summary>
         /// 消息唯一标识，对应请求 <see cref="InvokeMessage.Id"/>，用于 请求-响应 的跟踪匹配。
-        /// <para>默认值为 0，当值小于 0 时（如 -1）表示不进行 Id 跟踪匹配。</para>
+        /// <para>默认值为 0，当值小于 0 时（如 0、-1）表示不进行 Id 跟踪匹配。</para>
         /// </summary>
-        public int Id { get; private set; } = 0;
+        public int Id { get; internal set; } = 0;
         /// <summary>
         /// 调用结果状态码：小于 0 表示失败，大于等于 0 表示成功，等于 1 表示成功且有返回值。
         /// </summary>
@@ -215,11 +215,11 @@ namespace SpaceCG.Net
         /// <summary>
         /// 调用方法的返回值类型，方法返回 <c>void</c> 时此值为 <see cref="void"/>。
         /// </summary>
-        public Type ReturnType { get; private set; }
+        public Type ReturnType { get; internal set; }
         /// <summary>
         /// 调用方法的返回值，无返回值时为 <c>null</c>。
         /// </summary>
-        public object ReturnValue { get; private set; }
+        public object ReturnValue { get; internal set; }
 
         /// <summary> 
         /// 调用结果的描述信息，如 "Success" 或错误或异常原因等。 
@@ -234,12 +234,12 @@ namespace SpaceCG.Net
         /// <para>用于调试分析、延迟统计、日志追踪、超时判断等场景。</para>
         /// </summary>
         public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
-        
+
         /// <summary>
         /// 初始化 <see cref="ResponseMessage"/> 类的新实例。
         /// <para>推荐通过静态工厂方法 <see cref="Create(InvokeMessage, int, string, Type, object)"/> 等重载创建实例。</para>
         /// </summary>
-        public ResponseMessage()
+        internal ResponseMessage()
         {
         }
 
