@@ -155,10 +155,10 @@ namespace Z_TestWpfApp
                 new List<int>(){ 1,2,3, },
                 new List<int>(){ 4,5,6, },
             };
-            Trace.WriteLine($">>{StringExtensions.ConvertToString(a6)}<<");
+            Trace.WriteLine($">>{StringExtensions.SerializeValue(a6)}<<");
 
             var a7 = "'hello world, \"test\" hell.'";
-            Trace.WriteLine($">>{StringExtensions.ConvertToString(a7)}<<");
+            Trace.WriteLine($">>{StringExtensions.SerializeValue(a7)}<<");
 
 
             var bytes = new byte[] {0x01,0x02 };

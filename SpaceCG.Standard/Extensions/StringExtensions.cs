@@ -166,7 +166,7 @@ namespace SpaceCG.Extensions
         /// <para>仅支持 <c>[ ]</c> 方括号嵌套和 <c>'...'</c> 单引号，不支持 <c>()</c> / <c>{}</c> / 双引号 / 转义。</para>
         /// </remarks>
         /// <seealso cref="TryConvertTo(string, Type, out object)"/>
-        /// <seealso cref="ConvertToString"/>
+        /// <seealso cref="SerializeValue"/>
         public static object[] ParseParameters(this string parameters)
         {
             if (string.IsNullOrWhiteSpace(parameters))
@@ -294,7 +294,7 @@ namespace SpaceCG.Extensions
         #region TryConvertTo 将字符串转换为指定值类型
         /// <summary>
         /// 将单个字符串标量转换为指定值类型，"string→强类型值" 的标量转换器。
-        /// <para>被 <see cref="TypeExtensions.TryConvertTo"/> 调用，处理 <see cref="ParseParameters"/> 产出的每个叶子节点字符串。</para>
+        /// <para>被 <see cref="TypeExtensions.TryConvertParameter"/> 调用，处理 <see cref="ParseParameters"/> 产出的每个叶子节点字符串。</para>
         /// <para>支持的类型：</para>
         /// <list type="bullet">
         /// <item>string  → 直接返回。</item>
@@ -312,7 +312,7 @@ namespace SpaceCG.Extensions
         /// <returns>转换成功返回 <c>true</c>；目标类型为引用类型（非 string）或转换失败返回 <c>false</c>。</returns>
         /// <exception cref="ArgumentNullException"><paramref name="targetType"/> 为 <c>null</c> 或 <c>void</c>。</exception>
         /// <seealso cref="ParseParameters"/>
-        /// <seealso cref="TypeExtensions.TryConvertTo"/>
+        /// <seealso cref="TypeExtensions.TryConvertParameter"/>
         public static bool TryConvertTo(this string value, Type targetType, out object targetValue)
         {
             targetValue = null;
@@ -537,6 +537,7 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
+
         /// <summary>
         /// 将对象序列化为字符串表示形式，是 <see cref="ParseParameters"/> 的反向操作（”强类型值→可传输文本“）。
         /// <para>转换规则：</para>
@@ -544,17 +545,15 @@ namespace SpaceCG.Extensions
         /// <item><c>null</c> → 字符串 <c>"null"</c>。</item>
         /// <item>string → 原样返回。</item>
         /// <item>值类型 → 调用 <c>ToString()</c>。</item>
-        /// <item>数组 / IEnumerable&lt;T&gt; → 委托给 <see cref="ConvertEnumerableToString"/>，输出 <c>[elem1,elem2,...]</c> 格式。</item>
+        /// <item>数组 / IEnumerable&lt;T&gt; → 委托给 <see cref="SerializeEnumerable"/>，输出 <c>[elem1,elem2,...]</c> 格式。</item>
         /// <item>其他引用类型 → 调用 <c>ToString()</c> 兜底。</item>
         /// </list>
-        /// <para>注意：本方法不保证产物一定能被 <see cref="ParseParameters"/> 无损还原（例如值内含逗号或括号的场景）。
-        /// 如需可靠往返，调用方应确保值内容不包含分隔符。</para>
         /// </summary>
         /// <param name="value">要序列化的值。</param>
         /// <returns>字符串表示形式。</returns>
         /// <seealso cref="ParseParameters"/>
-        /// <seealso cref="TypeExtensions.TryConvertTo"/>
-        public static string ConvertToString(object value)
+        /// <seealso cref="TypeExtensions.TryConvertParameter"/>
+        public static string SerializeValue(object value)
         {
             if (value == null) return "null";
             if (value is string stringValue)
@@ -592,21 +591,21 @@ namespace SpaceCG.Extensions
             }
             
             // 数组类型
-            if (valueType.IsArray) return ConvertEnumerableToString((IEnumerable)value);
+            if (valueType.IsArray) return SerializeEnumerable((IEnumerable)value);
             
             // IEnumerable<T> 类型
-            if (valueType.IsIEnumerable() && value is IEnumerable enumerable) return ConvertEnumerableToString(enumerable);
+            if (valueType.IsIEnumerable() && value is IEnumerable enumerable) return SerializeEnumerable(enumerable);
 
             return value.ToString();
         }
         /// <summary>
         /// 将 <see cref="IEnumerable"/> 集合序列化为括号包裹的逗号分隔字符串。
-        /// <para>由 <see cref="ConvertToString"/> 在处理数组或 IEnumerable&lt;T&gt; 时调用。</para>
-        /// <para>格式：<c>[elem1,elem2,...]</c>，每个元素通过 <see cref="ConvertToString"/> 递归转换，因此支持多层嵌套。</para>
+        /// <para>由 <see cref="SerializeValue"/> 在处理数组或 IEnumerable&lt;T&gt; 时调用。</para>
+        /// <para>格式：<c>[elem1,elem2,...]</c>，每个元素通过 <see cref="SerializeValue"/> 递归转换，因此支持多层嵌套。</para>
         /// </summary>
         /// <param name="enumerable">要序列化的集合。</param>
         /// <returns>如 <c>"[1,2,3]"</c> 或嵌套 <c>"[[1,2],[3,4]]"</c> 格式的字符串。</returns>
-        public static string ConvertEnumerableToString(IEnumerable enumerable)
+        public static string SerializeEnumerable(IEnumerable enumerable)
         {
             if (enumerable == null) return "null";
 
@@ -617,7 +616,7 @@ namespace SpaceCG.Extensions
             foreach (var item in enumerable)
             {
                 if (hasItems) builder.Append(',');
-                builder.Append(ConvertToString(item));
+                builder.Append(SerializeValue(item));
                 hasItems = true;
             }
 

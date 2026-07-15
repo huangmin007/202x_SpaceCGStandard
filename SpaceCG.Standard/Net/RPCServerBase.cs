@@ -562,25 +562,17 @@ namespace SpaceCG.Net
                 #endregion
 
                 #region 参数转换解析
-                var offset = 0;
-                object[] convertedParameters = null;
                 var methodParameters = methodInfo.GetParameters();
                 var isExtensionMethod = methodInfo.IsDefined(typeof(ExtensionAttribute), false); // 是否是实例类型的扩展方法
-                if (isExtensionMethod)
-                {
-                    offset = 1;
-                    convertedParameters = new object[paramsLength + 1];
-                    convertedParameters[0] = objectInstance;
-                }
-                else
-                {
-                    offset = 0;
-                    convertedParameters = paramsLength == 0 ? null : new object[paramsLength];
-                }
+                var offset = isExtensionMethod ? 1 : 0;
+
+                object[] convertedParameters = new object[methodParameters.Length];
+                if (isExtensionMethod) convertedParameters[0] = objectInstance;
+
                 for (int i = 0; i < paramsLength; i++)
                 {
                     var destinationType = methodParameters[i + offset].ParameterType;
-                    if (!TypeExtensions.TryConvertTo(invokeMessage.Parameters[i], destinationType, out object convertValue))
+                    if (!TypeExtensions.TryConvertParameter(invokeMessage.Parameters[i], destinationType, out object convertValue))
                     {
                         var responseMessage = ResponseMessage.Create(invokeMessage, -13, $"Object method ({objectMethod}) parameter ({i}) convert from ({invokeMessage.Parameters[i]?.GetType()}) to ({destinationType}) failed");
                         await WriteResponseMessageAsync(invokeMessage, responseMessage, cancellationToken).ConfigureAwait(false);
@@ -755,7 +747,7 @@ namespace SpaceCG.Net
                 Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 未找到写入消息信号量。");
             }
         }
-        #endregion
+#endregion
 
         #region 子类重写抽象方法 DeserializeInvokeMessage & SerializeResponseMessage
         /// <summary>

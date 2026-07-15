@@ -141,7 +141,7 @@ namespace SpaceCG.Net
                 if (responseMessage.ReturnType != null && responseMessage.ReturnType != typeof(void))
                 {
                     builder.Append($"{nameof(ResponseMessage.ReturnType)}=\"{SecurityElement.Escape(responseMessage.ReturnType.ToString())}\" ");
-                    builder.Append($"{nameof(ResponseMessage.ReturnValue)}=\"{SecurityElement.Escape(StringExtensions.ConvertToString(responseMessage.ReturnValue))}\" ");
+                    builder.Append($"{nameof(ResponseMessage.ReturnValue)}=\"{SecurityElement.Escape(StringExtensions.SerializeValue(responseMessage.ReturnValue))}\" ");
                 }
 
                 if (!string.IsNullOrWhiteSpace(responseMessage.Description))

@@ -43,7 +43,7 @@ namespace SpaceCG.Net
                 builder.Append($"{nameof(InvokeMessage.MethodName)}=\"{requestMessage.MethodName}\" ");
                 if (requestMessage.Parameters != null && requestMessage.Parameters.Length > 0)
                 {
-                    var parameters = string.Join(",", requestMessage.Parameters.Select(p => StringExtensions.ConvertToString(p)));
+                    var parameters = string.Join(",", requestMessage.Parameters.Select(p => StringExtensions.SerializeValue(p)));
                     builder.Append($"{nameof(InvokeMessage.Parameters)}=\"{SecurityElement.Escape(parameters)}\" ");
                 }
                 builder.Append($"{nameof(InvokeMessage.ResponseMode)}=\"{requestMessage.ResponseMode}\" ");
@@ -107,7 +107,7 @@ namespace SpaceCG.Net
                     try
                     {
                         returnType = Type.GetType(element.Attribute(nameof(ResponseMessage.ReturnType))?.Value, false);
-                        if (returnType != null) TypeExtensions.TryConvertTo(element.Attribute(nameof(ResponseMessage.ReturnValue))?.Value, returnType, out returnValue);
+                        if (returnType != null) TypeExtensions.TryConvertParameter(element.Attribute(nameof(ResponseMessage.ReturnValue))?.Value, returnType, out returnValue);
                     }
                     catch (Exception ex)
                     {
