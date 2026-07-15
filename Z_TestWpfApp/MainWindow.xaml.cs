@@ -88,7 +88,56 @@ namespace Z_TestWpfApp
                 case Key.D0:
                     rpcClient.Close();
                     break;
+
+                case Key.D:
+                    test();
+                    break;
             }
+        }
+
+        Stopwatch stopwatch = new Stopwatch();
+
+        private void test()
+        {
+
+            var s0 = "0x01,True,32,False";
+            var s1 = "0x01,3,[True,True,False]";
+            var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
+            var s3 = "[[#FFDDDDDD,#00DDDDDD]],[15],1.5,-1";
+            var s4 = "[[#FFFFFF00,#FF00FF00],[#FFFFFF00,]]";
+            var s5 = "[#FFFFFF00,#FF00FF00]";
+
+
+            stopwatch.Restart();
+
+            var a0 = StringExtensions.ParseParameters(s0);
+            var a1 = StringExtensions.ParseParameters(s1);
+            var a2 = StringExtensions.ParseParameters(s2);
+            var a3 = StringExtensions.ParseParameters(s3);
+            var a4 = StringExtensions.ParseParameters(s4);
+            var a5 = StringExtensions.ParseParameters(s5);
+
+            var a44 = a4.GetParameterSignature();
+
+            var t0 = a0.Select(x => x.GetType()).ToList();
+            var t1 = a1.Select(x => x.GetType()).ToList();
+            var t2 = a2.Select(x => x.GetType()).ToList();
+            var t3 = a3.Select(x => x.GetType()).ToList();
+            var t4 = a4.Select(x => x.GetType()).ToList();
+            var t5 = a5.Select(x => x.GetType()).ToList();
+
+            var si0 = t0.GetParameterSignature();
+            var si1 = t1.GetParameterSignature();
+            var si2 = t2.GetParameterSignature();
+            var si3 = t3.GetParameterSignature();
+            var si4 = t4.GetParameterSignature();
+            var si5 = t5.GetParameterSignature();
+
+            var ticks = stopwatch.ElapsedTicks;
+
+            Trace.WriteLine($"ticks:{ticks}");
+
+            Trace.WriteLine($"test");
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -100,22 +149,6 @@ namespace Z_TestWpfApp
             rpcClient.Connect();
 
             const string Dictionary = nameof(Dictionary);
-
-            var s0 = "0x01,True,32,False";
-            var s1 = "0x01,3,[True,True,False]";
-            var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
-            var s3 = "[[#FFDDDDDD,#00DDDDDD]],[15],1.5,-1";
-            var s4 = "[[#FFFFFF00,#FF00FF00],[#FFFFFF00]]";
-            var s5 = "[#FFFFFF00,#FF00FF00]";
-
-            var a0 = s0.ToObjectArray();
-            var a1 = s1.ToObjectArray();
-            var a2 = s2.ToObjectArray();
-            var a3 = s3.ToObjectArray();
-            var a4 = s4.ToObjectArray();
-            var a5 = s5.ToObjectArray();
-
-            Trace.WriteLine($"test");
 
             IList<List<int>> a6 = new List<List<int>>()
             {
@@ -166,9 +199,9 @@ namespace Z_TestWpfApp
             return b.Count.ToString();
         }
 
-        public void Echo(string msg)
+        public void Echo(string msg, string msg2)
         {
-            Trace.WriteLine($"ECHO::{msg}");
+            Trace.WriteLine($"ECHO::{msg},,{msg2}");
         }
 
         public bool Echo2(string msg)

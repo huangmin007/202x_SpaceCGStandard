@@ -153,7 +153,7 @@ namespace SpaceCG.Net
         /// <inheritdoc cref="Create(string, string, object[], int, int)"/>
         public static InvokeMessage Create(string objectName, string methodName, string parameters, int id, int responseMode)
         {
-            return Create(objectName, methodName, StringExtensions.ToObjectArray(parameters), id, responseMode);
+            return Create(objectName, methodName, StringExtensions.ParseParameters(parameters), id, responseMode);
         }
 
         /// <summary>

@@ -132,134 +132,169 @@ namespace SpaceCG.Extensions
             return array;
         }
 
+
+        #region 自定义文本参数解析
         /// <summary>
-        /// 将 RPC 参数文本解析为 <see cref="object"/>[] 树结构，是本转换流水线的入口。
+        /// 将逗号分隔的参数文本解析为强类型嵌套数组树。
+        /// <para>适用场景：配置文件参数解析、RPC 调试参数输入、命令行参数列表等高频调用路径。</para>
         /// <para>解析规则：</para>
         /// <list type="bullet">
-        /// <item><b>逗号分隔</b>：顶层按逗号分割为多个元素。</item>
-        /// <item><b>引号保护</b>：单引号或双引号包裹的文本视为一个整体，其内部的逗号和括号被忽略；输出时自动剥离外层引号。</item>
-        /// <item><b>括号嵌套</b>：方括号/圆括号/花括号包裹的文本视为子数组，递归调用本方法解析内部内容。</item>
-        /// <item><b>叶子节点</b>：非引号且非括号的 token 作为原始字符串保留，后续由 <see cref="TryConvertTo(string, Type, out object)"/> 进行类型转换。</item>
+        /// <item><b>逗号分隔</b>：顶层按逗号分割为多个元素，空白行返回空数组。</item>
+        /// <item><b>单引号保护</b>：单引号 <c>'...'</c> 包裹的文本视为一个整体，其内部的逗号和方括号被忽略，输出时自动剥离外层引号。不处理转义。</item>
+        /// <item><b>方括号嵌套</b>：<c>[ ... ]</c> 包裹的文本视为子数组，递归解析内部内容。</item>
+        /// <item><b>叶子节点</b>：非引号且非方括号的 token 经首尾去空白后作为 <c>string</c> 输出，后续由 <see cref="TryConvertTo(string, Type, out object)"/> 进行类型转换。</item>
         /// </list>
-        /// <para>输出结构：顶层始终是 <c>object[]</c>；被括号包裹的部分是嵌套 <c>object[]</c>；叶子是 <c>string</c>。</para>
+        /// <para>
+        /// 输出结构：
+        /// 顶层始终返回 <c>object[]</c>；
+        /// 被 <c>[...]</c> 包裹且内部全为字符串的嵌套返回 <c>string[]</c>；
+        /// 被 <c>[...]</c> 包裹且内部含更深层嵌套的返回 <c>object[]</c>；
+        /// 叶子始终为 <c>string</c>。
+        /// </para>
         /// <code>示例：
         /// "0x01,True,32,False"                        → ["0x01","True","32","False"]
-        /// "0x01,3,[True,True,False]"                  → ["0x01","3",["True","True","False"]]
-        /// "'hello,world',0x01,[True,False]"            → ["hello,world","0x01",["True","False"]]
-        /// "['aaa,bb','ni,hao'],15"                     → [["aaa,bb","ni,hao"],"15"]
+        /// "0x01,3,[True,True,False]"                  → ["0x01","3", string[3]{"True","True","False"}]
+        /// "'hello,world',0x01,[True,False]"            → ["hello,world","0x01", string[2]{"True","False"}]
+        /// "['aaa,bb','ni,hao'],15"                     → [ string[2]{"aaa,bb","ni,hao"} ,"15"]
+        /// "[[1,2],[3,4]]"                              → [ object[2]{string[2]{"1","2"}, string[2]{"3","4"}} ]
         /// </code>
         /// </summary>
-        /// <param name="parameters">RPC 参数列表字符串，格式为逗号分隔的 token 序列。</param>
-        /// <returns>解析后的 object[] 树；<c>null</c> 或空白输入返回空数组。</returns>
+        /// <param name="parameters">待解析的参数文本，逗号分隔的 token 序列。空或空白返回空数组。</param>
+        /// <returns>解析后的 object[] 树。被 <c>[...]</c> 嵌套的全字符串子数组为 <c>string[]</c>，含更深层嵌套的为 <c>object[]</c>。</returns>
+        /// <remarks>
+        /// <para><b>性能特征</b>：单次扫描 O(n)，零反射、零 Regex、零 Split、零 StringBuilder，无中间临时分配。适用于 200fps+ 高频调用。</para>
+        /// <para>仅支持 <c>[ ]</c> 方括号嵌套和 <c>'...'</c> 单引号，不支持 <c>()</c> / <c>{}</c> / 双引号 / 转义。</para>
+        /// </remarks>
         /// <seealso cref="TryConvertTo(string, Type, out object)"/>
         /// <seealso cref="ConvertToString"/>
-        public static object[] ToObjectArray(this string parameters)
+        public static object[] ParseParameters(this string parameters)
         {
-            if (string.IsNullOrWhiteSpace(parameters)) return Array.Empty<object>();
+            if (string.IsNullOrWhiteSpace(parameters))
+                return Array.Empty<string>();
 
-            var depth = 0;
-            var start = 0;
-            var inString = false;
-            var stringChar = '\0';
-            var result = new List<object>(8);   // 预分配容量，减少小数组扩容
+            int position = 0;
+            int length = parameters.Length;
+            var list = new List<object>(8);
 
-            for (int i = 0; i < parameters.Length; i++)
+            while (position < length)
             {
-                char c = parameters[i];
+                SkipWhiteSpace(parameters, ref position, length);
+                if (position >= length) break;
 
-                // ── 引号字符串：忽略内部逗号和括号 ──
-                if (c == '\'' || c == '"')
+                if (parameters[position] == '[')
                 {
-                    if (!inString)
-                    {
-                        inString = true;
-                        stringChar = c;
-                    }
-                    else if (stringChar == c)
-                    {
-                        inString = false;
-                    }
-                    continue;
+                    position++;
+                    list.Add(ParseList(parameters, ref position, length, ']'));
+                    if (position < length && parameters[position] == ']') position++;
+                }
+                else
+                {
+                    list.Add(ParseLeafString(parameters, ref position, length));
                 }
 
-                if (inString)
-                    continue;
-
-                // ── 括号嵌套深度 ──
-                if (IsOpenBracket(c))
-                {
-                    depth++;
-                    continue;
-                }
-
-                if (IsCloseBracket(c))
-                {
-                    if (depth > 0)
-                        depth--;
-                    continue;
-                }
-
-                // ── 顶层逗号：分割元素 ──
-                if (c == ',' && depth == 0)
-                {
-                    AddTokenOptimized(parameters, start, i, result);
-                    start = i + 1;
-                }
+                SkipWhiteSpace(parameters, ref position, length);
+                if (position >= length) break;
+                if (parameters[position] == ',') position++;
             }
 
-            // 最后一个元素
-            AddTokenOptimized(parameters, start, parameters.Length, result);
-
-            return result.ToArray();
+            return list.ToArray();
         }
         /// <summary>
-        /// 从源字符串中提取指定范围的 token，并解析其类型（普通值 / 字符串 / 嵌套数组）。
-        /// 使用索引范围替代 Substring 减少中间分配。
+        /// 解析括号内部的逗号分隔列表。全 string → 返回 string[]；含嵌套 → 返回 object[]。
         /// </summary>
-        private static void AddTokenOptimized(string source, int tokenStart, int tokenEnd, List<object> result)
+        private static Array ParseList(string text, ref int position, int length, char stopChar)
         {
-            // 跳过前导空白
-            while (tokenStart < tokenEnd && char.IsWhiteSpace(source[tokenStart])) tokenStart++;
+            if (position >= length || text[position] == stopChar)
+                return Array.Empty<string>();
 
-            // 跳过尾随空白
-            while (tokenEnd > tokenStart && char.IsWhiteSpace(source[tokenEnd - 1])) tokenEnd--;
+            var list = new List<object>(8);
+            bool allStrings = true;
 
-            // 空 token
-            if (tokenStart >= tokenEnd)
+            while (position < length)
             {
-                result.Add("");
-                return;
+                SkipWhiteSpace(text, ref position, length);
+                if (position >= length || text[position] == stopChar) break;
+
+                if (text[position] == '[')
+                {
+                    position++;
+                    list.Add(ParseList(text, ref position, length, ']'));
+                    if (position < length && text[position] == ']') position++;
+                    allStrings = false;
+                }
+                else
+                {
+                    list.Add(ParseLeafString(text, ref position, length));
+                }
+
+                SkipWhiteSpace(text, ref position, length);
+                if (position >= length) break;
+                if (text[position] == stopChar) break;
+                if (text[position] == ',') position++;
             }
 
-            var firstChar = source[tokenStart];
-            var lastChar = source[tokenEnd - 1];
+            int count = list.Count;
+            if (count == 0)
+                return Array.Empty<string>();
 
-            // ── 引号字符串：剥离外层引号 ──
-            if ((firstChar == '\'' && lastChar == '\'') || (firstChar == '"' && lastChar == '"'))
+            if (allStrings)
             {
-                result.Add(source.Substring(tokenStart + 1, tokenEnd - tokenStart - 2));
-                return;
+                var result = new string[count];
+                for (int i = 0; i < count; i++)
+                    result[i] = (string)list[i];
+                return result;
             }
 
-            // ── 嵌套括号数组：递归解析内部内容 ──
-            if (IsOpenBracket(firstChar) && IsCloseBracket(lastChar))
+            return list.ToArray();
+        }
+        /// <summary>
+        /// 解析叶子字符串：'...' 或普通 token。
+        /// </summary>
+        private static string ParseLeafString(string text, ref int position, int length)
+        {
+            SkipWhiteSpace(text, ref position, length);
+            if (position >= length) return string.Empty;
+
+            // 单引号字符串
+            if (text[position] == '\'')
             {
-                // 仅剥离最外层括号，递归解析内部逗号列表
-                result.Add(ToObjectArray(source.Substring(tokenStart + 1, tokenEnd - tokenStart - 2)));
-                return;
+                position++;
+                int start = position;
+                while (position < length && text[position] != '\'') position++;
+                int end = position;
+                if (position < length) position++;
+                return start >= end ? string.Empty : text.Substring(start, end - start);
             }
 
-            // ── 普通值 ──
-            result.Add(source.Substring(tokenStart, tokenEnd - tokenStart));
+            // 普通 token
+            int tStart = position;
+            while (position < length)
+            {
+                char c = text[position];
+                if (c == ',' || c == ']') break;
+                position++;
+            }
+            int tEnd = position;
+
+            while (tStart < tEnd && IsWhiteSpaceFast(text[tStart])) tStart++;
+            while (tEnd > tStart && IsWhiteSpaceFast(text[tEnd - 1])) tEnd--;
+
+            return tStart >= tEnd ? string.Empty : text.Substring(tStart, tEnd - tStart);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsOpenBracket(char c) => c == '[' || c == '(' || c == '{';
+        private static void SkipWhiteSpace(string text, ref int position, int length)
+        {
+            while (position < length && IsWhiteSpaceFast(text[position])) position++;
+        }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsCloseBracket(char c) => c == ']' || c == ')' || c == '}';
+        private static bool IsWhiteSpaceFast(char c) => c == ' ' || c == '\r' || c == '\n' || c == '\t';
+        #endregion
 
+
+        #region TryConvertTo 将字符串转换为指定值类型
         /// <summary>
-        /// 将单个字符串标量转换为指定值类型，是流水线中负责做 "string→强类型值" 的标量转换器。
-        /// <para>被 <see cref="TypeExtensions.TryConvertTo"/> 调用，处理 <see cref="ToObjectArray"/> 产出的每个叶子节点字符串。</para>
+        /// 将单个字符串标量转换为指定值类型，"string→强类型值" 的标量转换器。
+        /// <para>被 <see cref="TypeExtensions.TryConvertTo"/> 调用，处理 <see cref="ParseParameters"/> 产出的每个叶子节点字符串。</para>
         /// <para>支持的类型：</para>
         /// <list type="bullet">
         /// <item>string  → 直接返回。</item>
@@ -271,12 +306,12 @@ namespace SpaceCG.Extensions
         /// </list>
         /// <para>空或空白字符串视为默认值，转换成功返回对应类型的默认实例。</para>
         /// </summary>
-        /// <param name="value">待转换的字符串（来自 <see cref="ToObjectArray"/> 的叶子节点）。</param>
+        /// <param name="value">待转换的字符串（来自 <see cref="ParseParameters"/> 的叶子节点）。</param>
         /// <param name="targetType">目标值类型（必须为值类型或 string）。</param>
         /// <param name="targetValue">转换成功时输出强类型值；否则为 <c>null</c>。</param>
         /// <returns>转换成功返回 <c>true</c>；目标类型为引用类型（非 string）或转换失败返回 <c>false</c>。</returns>
         /// <exception cref="ArgumentNullException"><paramref name="targetType"/> 为 <c>null</c> 或 <c>void</c>。</exception>
-        /// <seealso cref="ToObjectArray"/>
+        /// <seealso cref="ParseParameters"/>
         /// <seealso cref="TypeExtensions.TryConvertTo"/>
         public static bool TryConvertTo(this string value, Type targetType, out object targetValue)
         {
@@ -348,7 +383,45 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
-            
+
+            // Guid,TimeSpan,DateTime,DateTimeOffset
+            if (targetType == typeof(Guid))
+            {
+                if (Guid.TryParse(value, out var guidValue))
+                {
+                    targetValue = guidValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(TimeSpan))
+            {
+                if (TimeSpan.TryParse(value, out var timeSpanValue))
+                {
+                    targetValue = timeSpanValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(DateTime))
+            {
+                if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTimeValue))
+                {
+                    targetValue = dateTimeValue;
+                    return true;
+                }
+                return false;
+            }
+            if (targetType == typeof(DateTimeOffset))
+            {
+                if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTimeOffsetValue))
+                {
+                    targetValue = dateTimeOffsetValue;
+                    return true;
+                }
+                return false;
+            }
+
             var valueTrim = value.Trim();
             var isHexNumber = value.StartsWith("0X", StringComparison.OrdinalIgnoreCase);
             var numberStyles = isHexNumber ? NumberStyles.HexNumber : NumberStyles.Integer;
@@ -426,44 +499,6 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
-
-            // Guid,TimeSpan,DateTime,DateTimeOffset
-            if (targetType == typeof(Guid))
-            {
-                if (Guid.TryParse(value, out var guidValue))
-                {
-                    targetValue = guidValue;
-                    return true;
-                }
-                return false;
-            }
-            if (targetType == typeof(TimeSpan))
-            {
-                if (TimeSpan.TryParse(value, out var timeSpanValue))
-                {
-                    targetValue = timeSpanValue;
-                    return true;
-                }
-                return false;
-            }
-            if (targetType == typeof(DateTime))
-            {
-                if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTimeValue))
-                {
-                    targetValue = dateTimeValue;
-                    return true;
-                }
-                return false;
-            }
-            if (targetType == typeof(DateTimeOffset))
-            {
-                if (DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateTimeOffsetValue))
-                {
-                    targetValue = dateTimeOffsetValue;
-                    return true;
-                }
-                return false;
-            }
             
             // 通用性值类型转换
             try
@@ -482,7 +517,6 @@ namespace SpaceCG.Extensions
 
             return false;
         }
-
         /// <inheritdoc cref="TryConvertTo(string, Type, out object)"/>
         /// <typeparam name="T">值类型</typeparam>
         /// <param name="value"></param>
@@ -501,9 +535,10 @@ namespace SpaceCG.Extensions
 
             return false;
         }
+        #endregion
 
         /// <summary>
-        /// 将对象序列化为字符串表示形式，是 <see cref="ToObjectArray"/> 的反向操作（”强类型值→可传输文本“）。
+        /// 将对象序列化为字符串表示形式，是 <see cref="ParseParameters"/> 的反向操作（”强类型值→可传输文本“）。
         /// <para>转换规则：</para>
         /// <list type="bullet">
         /// <item><c>null</c> → 字符串 <c>"null"</c>。</item>
@@ -512,25 +547,53 @@ namespace SpaceCG.Extensions
         /// <item>数组 / IEnumerable&lt;T&gt; → 委托给 <see cref="ConvertEnumerableToString"/>，输出 <c>[elem1,elem2,...]</c> 格式。</item>
         /// <item>其他引用类型 → 调用 <c>ToString()</c> 兜底。</item>
         /// </list>
-        /// <para>注意：本方法不保证产物一定能被 <see cref="ToObjectArray"/> 无损还原（例如值内含逗号或括号的场景）。
+        /// <para>注意：本方法不保证产物一定能被 <see cref="ParseParameters"/> 无损还原（例如值内含逗号或括号的场景）。
         /// 如需可靠往返，调用方应确保值内容不包含分隔符。</para>
         /// </summary>
-        /// <param name="value">要序列化的对象。</param>
+        /// <param name="value">要序列化的值。</param>
         /// <returns>字符串表示形式。</returns>
-        /// <seealso cref="ToObjectArray"/>
+        /// <seealso cref="ParseParameters"/>
         /// <seealso cref="TypeExtensions.TryConvertTo"/>
         public static string ConvertToString(object value)
         {
             if (value == null) return "null";
-
-            // 字符串类型
-            if (value is string stringValue) return stringValue;
+            if (value is string stringValue)
+            {
+                //if (stringValue.IndexOf(',') != -1)  return $"\'{stringValue}\'";  //不想支持 ' 保护了
+                return stringValue;
+            }
 
             var valueType = value.GetType();
-            // 基本值类型
-            if (valueType.IsValueType) return value.ToString();
+
+            // 值类型：针对常见类型做专门优化
+            if (valueType.IsValueType)
+            {
+                if (valueType == typeof(bool))
+                    return ((bool)value) ? "true" : "false";
+                if (valueType == typeof(int))
+                    return ((int)value).ToString(CultureInfo.InvariantCulture);
+                if (valueType == typeof(long))
+                    return ((long)value).ToString(CultureInfo.InvariantCulture);
+                if (valueType == typeof(float))
+                    return ((float)value).ToString("R", CultureInfo.InvariantCulture);
+                if (valueType == typeof(double))
+                    return ((double)value).ToString("R", CultureInfo.InvariantCulture);
+                if (valueType == typeof(decimal))
+                    return ((decimal)value).ToString(CultureInfo.InvariantCulture);
+                if (valueType == typeof(DateTime))
+                    return ((DateTime)value).ToString("O", CultureInfo.InvariantCulture);
+                if (valueType == typeof(DateTimeOffset))
+                    return ((DateTimeOffset)value).ToString("O", CultureInfo.InvariantCulture);
+
+                if (valueType.IsEnum)
+                    return value.ToString();
+
+                return value.ToString();
+            }
+            
             // 数组类型
             if (valueType.IsArray) return ConvertEnumerableToString((IEnumerable)value);
+            
             // IEnumerable<T> 类型
             if (valueType.IsIEnumerable() && value is IEnumerable enumerable) return ConvertEnumerableToString(enumerable);
 

@@ -165,7 +165,7 @@ namespace SpaceCG.Net
                 if (method.IsVirtual || method.IsSpecialName) continue;
 
                 var parameters = method.GetParameters();
-                var paramsSign = parameters.Select(p => p.ParameterType).GetTypesSignature();
+                var paramsSign = parameters.GetParameterSignature();
 
                 if (paramsSign.Contains("REF")) continue;
                 var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
@@ -180,7 +180,7 @@ namespace SpaceCG.Net
                 //Debug.WriteLine($"{objectMethodKeyClone}");
                 CacheMethodInfos.TryAdd(objectMethodKeyClone, method);
             }
-            // Debug.WriteLine("------------------------------ Extension ");
+            //Debug.WriteLine("------------------------------ Extension ");
             // 缓存实例的公共扩展方法            
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -198,7 +198,7 @@ namespace SpaceCG.Net
                         // 类型相同，或是父级类
                         if (parameters[0].ParameterType == instanceType || instanceType.IsSubclassOf(parameters[0].ParameterType))
                         {
-                            var paramsSign = parameters.Skip(1).Select(p => p.ParameterType).GetTypesSignature();
+                            var paramsSign = parameters.Skip(1).GetParameterSignature();
                             var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
 
                             var count = 0;
@@ -549,7 +549,7 @@ namespace SpaceCG.Net
                 #region 跟据输入的参数签名查找方法
                 var paramsSign = "";
                 var paramsLength = invokeMessage.Parameters?.Length ?? 0;
-                if (paramsLength > 0) paramsSign = invokeMessage.Parameters.GetParametersSignature();
+                if (paramsLength > 0) paramsSign = invokeMessage.Parameters.GetParameterSignature();
                 var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsSign})";
                 //Debug.WriteLine($"methodCacheKey:{methodCacheKey}");
 
