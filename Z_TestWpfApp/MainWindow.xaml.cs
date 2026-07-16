@@ -24,6 +24,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Xml.Linq;
 using SpaceCG.Extensions;
+using SpaceCG.Generic;
 using SpaceCG.Net;
 
 namespace Z_TestWpfApp
@@ -40,6 +41,10 @@ namespace Z_TestWpfApp
         public MainWindow()
         {
             InitializeComponent();
+            
+            Trace.Listeners.Add(new LoggerTraceListener(true));
+
+            Trace.TraceInformation("Hello...");
 
             rpcServer = new RpcServer4X(2000);
             rpcServer.RegisterObject("Demo", this);
@@ -56,7 +61,7 @@ namespace Z_TestWpfApp
         protected override async void OnKeyDown(KeyEventArgs e)
         {
             base.OnKeyDown(e);
-            Trace.WriteLine($"Key: {e.Key}");
+            Trace.TraceInformation($"Key: {e.Key}");
 
             switch(e.Key)
             {
@@ -66,9 +71,9 @@ namespace Z_TestWpfApp
 
                 case Key.D2:
                     var result = await rpcClient.InvokeFuncAsync("Demo", "SetColor", new object[] { "#FF00FF00" });
-                    Trace.WriteLine($"Response::{result}");
-                    Trace.WriteLine($"ReturnType::{result.ReturnType}");
-                    Trace.WriteLine($"ReturnValue::{result.ReturnValue}");
+                    Trace.TraceInformation($"Response::{result}");
+                    Trace.TraceInformation($"ReturnType::{result.ReturnType}");
+                    Trace.TraceInformation($"ReturnValue::{result.ReturnValue}");
 
                     if (result.ReturnValue is IEnumerable<IEnumerable<int>> resultEnumerable)
                     {
@@ -135,15 +140,18 @@ namespace Z_TestWpfApp
 
             var ticks = stopwatch.ElapsedTicks;
 
-            Trace.WriteLine($"ticks:{ticks}");
+            Trace.TraceInformation($"ticks:{ticks}");
 
-            Trace.WriteLine($"test");
+            Trace.TraceInformation($"test");
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            Trace.TraceInformation("Hello..111.");
+
             //var str = "System.Collections.Generic.IEnumerable`1[System.Collections.Generic.IEnumerable`1[System.Int32]]";
             //var returnType = Type.GetType(str, true);
+            SecurityElement.Escape("");
 
             rpcClient = new RpcClient4X("127.0.0.1", 2001);
             rpcClient.Connect();

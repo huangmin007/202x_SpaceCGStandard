@@ -7,17 +7,22 @@ using SpaceCG.Extensions;
 namespace SpaceCG.Generic
 {
     /// <summary>
-    /// CRC 即循环冗余校 (Cyclic Redundancy Check) 帮助类，提供 CRC8、CRC16、CRC32、CRC64 等常用 CRC 计算方法。
+    /// CRC 即循环冗余校验 (Cyclic Redundancy Check) 帮助类，提供 CRC8、CRC16、CRC32、CRC64 等常用 CRC 计算方法。
     /// </summary>
-    public static class CRCheckHelper
+    public static class CRCCheckHelper
     {
+        /// <summary>
+        /// 校验 offset 和 length 参数是否在 bytes 的有效范围内。
+        /// </summary>
+        /// <exception cref="ArgumentNullException">bytes 为 null。</exception>
+        /// <exception cref="ArgumentOutOfRangeException">offset 或 length 越界。</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ValidateCheck(IReadOnlyList<byte> bytes, int offset, int length)
         {
             if (bytes == null)
                 throw new ArgumentNullException(nameof(bytes));
             if (offset < 0 || length < 0 || offset + length > bytes.Count)
-                throw new ArgumentOutOfRangeException("offset,length", "超出集合的范围");
+                throw new ArgumentOutOfRangeException(offset < 0 ? nameof(offset) : nameof(length), $"offset={offset}, length={length} 超出字节数组范围（Count={bytes.Count}）");
         }
 
 
@@ -101,7 +106,7 @@ namespace SpaceCG.Generic
         /// <param name="refOut">输出结果是否按位反转。通常与 refIn 保持一致。</param>
         /// <param name="xorOut">最终结果异或值</param>
         /// <returns>计算得出的 8 位 CRC 校验值 (纯数学值)</returns>
-        public static byte ComputeCRC8(IReadOnlyList<byte> bytes, int offset, int length, byte poly = 0x07, byte init = 0x00, bool refIn = false, bool refOut = false, byte xorOut = 0x00)
+        public static byte ComputeCRC8(this IReadOnlyList<byte> bytes, int offset, int length, byte poly = 0x07, byte init = 0x00, bool refIn = false, bool refOut = false, byte xorOut = 0x00)
         {
             ValidateCheck(bytes, offset, length);
 
@@ -127,7 +132,7 @@ namespace SpaceCG.Generic
         /// <summary>
         /// 计算整个集合的 CRC8。
         /// </summary>
-        public static byte ComputeCRC8(IReadOnlyList<byte> bytes, byte poly = 0x07, byte init = 0x00, bool refIn = false, bool refOut = false, byte xorOut = 0x00)
+        public static byte ComputeCRC8(this IReadOnlyList<byte> bytes, byte poly = 0x07, byte init = 0x00, bool refIn = false, bool refOut = false, byte xorOut = 0x00)
             => ComputeCRC8(bytes, 0, bytes.Count, poly, init, refIn, refOut, xorOut);
 
         /// <summary>
@@ -138,9 +143,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static byte ComputeCRC8_ITU(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC8(bytes, offset, length, 0x07, 0x00, false, false, 0x55);
+        public static byte ComputeCRC8_ITU(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC8(bytes, offset, length, 0x07, 0x00, false, false, 0x55);
         /// <inheritdoc cref="ComputeCRC8_ITU(IReadOnlyList{byte}, int, int)"/> 
-        public static byte ComputeCRC8_ITU(IReadOnlyList<byte> bytes) => ComputeCRC8(bytes, 0x07, 0x00, false, false, 0x55);
+        public static byte ComputeCRC8_ITU(this IReadOnlyList<byte> bytes) => ComputeCRC8(bytes, 0x07, 0x00, false, false, 0x55);
 
         /// <summary>
         /// 计算 CRC-8/ROHC (常用于 ROHC 协议)。
@@ -150,17 +155,17 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static byte ComputeCRC8_ROHC(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC8(bytes, offset, length, 0x07, 0xFF, true, true, 0x00);
+        public static byte ComputeCRC8_ROHC(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC8(bytes, offset, length, 0x07, 0xFF, true, true, 0x00);
         /// <inheritdoc cref="ComputeCRC8_ROHC(IReadOnlyList{byte}, int, int)"/> 
-        public static byte ComputeCRC8_ROHC(IReadOnlyList<byte> bytes) => ComputeCRC8(bytes, 0x07, 0xFF, true, true, 0x00);
+        public static byte ComputeCRC8_ROHC(this IReadOnlyList<byte> bytes) => ComputeCRC8(bytes, 0x07, 0xFF, true, true, 0x00);
 
         /// <summary>
         /// 计算 CRC-8/Dallas/Maxim (广泛应用于 Maxim 1-Wire 总线设备，如 DS18B20 温度传感器)。
         /// <para>参数特征：Poly=0x31, Init=0x00, RefIn=true, RefOut=true, XorOut=0x00</para>
         /// </summary>
-        public static byte ComputeCRC8_MAXIM(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC8(bytes, offset, length, 0x31, 0x00, true, true, 0x00);
+        public static byte ComputeCRC8_MAXIM(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC8(bytes, offset, length, 0x31, 0x00, true, true, 0x00);
         /// <inheritdoc cref="ComputeCRC8_MAXIM(IReadOnlyList{byte}, int, int)"/> 
-        public static byte ComputeCRC8_MAXIM(IReadOnlyList<byte> bytes) => ComputeCRC8(bytes, 0x31, 0x00, true, true, 0x00);
+        public static byte ComputeCRC8_MAXIM(this IReadOnlyList<byte> bytes) => ComputeCRC8(bytes, 0x31, 0x00, true, true, 0x00);
         #endregion
 
 
@@ -237,7 +242,7 @@ namespace SpaceCG.Generic
         /// <param name="refOut">输出结果是否按位反转。通常与 refIn 保持一致。</param>
         /// <param name="xorOut">最终结果异或值</param>
         /// <returns>计算得出的 16 位 CRC 校验值 (纯数学值)</returns>
-        public static ushort ComputeCRC16(IReadOnlyList<byte> bytes, int offset, int length, ushort poly, ushort init = 0x0000, bool refIn = true, bool refOut = true, ushort xorOut = 0x0000)
+        public static ushort ComputeCRC16(this IReadOnlyList<byte> bytes, int offset, int length, ushort poly, ushort init = 0x0000, bool refIn = true, bool refOut = true, ushort xorOut = 0x0000)
         {
             ValidateCheck(bytes, offset, length);
 
@@ -277,7 +282,7 @@ namespace SpaceCG.Generic
         }
         /// <inheritdoc cref="ComputeCRC16(IReadOnlyList{byte}, int, int, ushort, ushort, bool, bool, ushort)"/> 
         /// <summary> 计算整个集合的 CRC16。 </summary>
-        public static ushort ComputeCRC16(IReadOnlyList<byte> bytes, ushort poly, ushort init = 0x0000, bool refIn = true, bool refOut = true, ushort xorOut = 0x0000)
+        public static ushort ComputeCRC16(this IReadOnlyList<byte> bytes, ushort poly, ushort init = 0x0000, bool refIn = true, bool refOut = true, ushort xorOut = 0x0000)
             => ComputeCRC16(bytes, 0, bytes.Count, poly, init, refIn, refOut, xorOut);
 
         /// <summary>
@@ -288,9 +293,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_IBM(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0x0000, true, true, 0x0000);
+        public static ushort ComputeCRC16_IBM(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0x0000, true, true, 0x0000);
         /// <inheritdoc cref="ComputeCRC16_IBM(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_IBM(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0x0000, true, true, 0x0000);
+        public static ushort ComputeCRC16_IBM(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0x0000, true, true, 0x0000);
 
         /// <summary>
         /// 计算 CRC-16/MAXIM 校验值。
@@ -300,9 +305,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_MAXIM(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0x0000, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_MAXIM(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0x0000, true, true, 0xFFFF);
         /// <inheritdoc cref="ComputeCRC16_MAXIM(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_MAXIM(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0x0000, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_MAXIM(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0x0000, true, true, 0xFFFF);
 
         /// <summary>
         /// 计算 CRC-16/USB 校验值。
@@ -312,9 +317,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_USB(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0xFFFF, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_USB(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0xFFFF, true, true, 0xFFFF);
         /// <inheritdoc cref="ComputeCRC16_USB(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_USB(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0xFFFF, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_USB(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0xFFFF, true, true, 0xFFFF);
 
         /// <summary>
         /// 计算 CRC-16/MODBUS 校验值。
@@ -324,9 +329,9 @@ namespace SpaceCG.Generic
         /// <param name="offset">起始偏移</param>
         /// <param name="length">计算长度</param>
         /// <returns>Modbus CRC16 校验值</returns>
-        public static ushort ComputeCRC16_MODBUS(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0xFFFF, true, true, 0x0000);
+        public static ushort ComputeCRC16_MODBUS(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8005, 0xFFFF, true, true, 0x0000);
         /// <inheritdoc cref="ComputeCRC16_MODBUS(IReadOnlyList{byte}, int, int)" />
-        public static ushort ComputeCRC16_MODBUS(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0xFFFF, true, true, 0x0000);
+        public static ushort ComputeCRC16_MODBUS(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8005, 0xFFFF, true, true, 0x0000);
 
         /// <summary>
         /// 计算 CRC-16/CCITT-KERMIT 校验值。
@@ -336,9 +341,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_CCITT(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0x0000, true, true, 0x0000);
+        public static ushort ComputeCRC16_CCITT(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0x0000, true, true, 0x0000);
         /// <inheritdoc cref="ComputeCRC16_CCITT(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_CCITT(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0x0000, true, true, 0x0000);
+        public static ushort ComputeCRC16_CCITT(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0x0000, true, true, 0x0000);
 
         /// <summary>
         /// 计算 CRC-16/CCITT-FALSE 校验值。
@@ -348,9 +353,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_CCITTFALSE(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0xFFFF, false, false, 0x0000);
+        public static ushort ComputeCRC16_CCITTFALSE(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0xFFFF, false, false, 0x0000);
         /// <inheritdoc cref="ComputeCRC16_CCITTFALSE(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_CCITTFALSE(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0xFFFF, false, false, 0x0000);
+        public static ushort ComputeCRC16_CCITTFALSE(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0xFFFF, false, false, 0x0000);
 
         /// <summary>
         /// 计算 CRC-16/CCITT-TRUE 校验值。
@@ -360,9 +365,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_X25(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0xFFFF, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_X25(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0xFFFF, true, true, 0xFFFF);
         /// <inheritdoc cref="ComputeCRC16_X25(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_X25(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0xFFFF, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_X25(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0xFFFF, true, true, 0xFFFF);
 
         /// <summary>
         /// 计算 CRC-16/CCITT-XMODEM 校验值。
@@ -371,10 +376,10 @@ namespace SpaceCG.Generic
         /// <param name="bytes">数据源</param>
         /// <param name="offset">起始偏移</param>
         /// <param name="length">计算长度</param>
-        /// <returns>CCITT-FALSE CRC16 校验值</returns>
-        public static ushort ComputeCRC16_XMODEM(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0x0000, false, false, 0x0000);
+        /// <returns>XMODEM CRC16 校验值</returns>
+        public static ushort ComputeCRC16_XMODEM(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x1021, 0x0000, false, false, 0x0000);
         /// <inheritdoc cref="ComputeCRC16_XMODEM(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_XMODEM(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0x0000, false, false, 0x0000);
+        public static ushort ComputeCRC16_XMODEM(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x1021, 0x0000, false, false, 0x0000);
 
         /// <summary>
         /// 计算 CRC-16/CCITT-XMODEM2 校验值。
@@ -384,9 +389,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_XMODEM2(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8408, 0x0000, true, true, 0x0000);
+        public static ushort ComputeCRC16_XMODEM2(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x8408, 0x0000, true, true, 0x0000);
         /// <inheritdoc cref="ComputeCRC16_XMODEM2(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_XMODEM2(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8408, 0x0000, true, true, 0x0000);
+        public static ushort ComputeCRC16_XMODEM2(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x8408, 0x0000, true, true, 0x0000);
 
         /// <summary>
         /// 计算 CRC-16/DNP 校验值。
@@ -396,9 +401,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ushort ComputeCRC16_DNP(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x3D65, 0x0000, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_DNP(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC16(bytes, offset, length, 0x3D65, 0x0000, true, true, 0xFFFF);
         /// <inheritdoc cref="ComputeCRC16_DNP(IReadOnlyList{byte}, int, int)"/>
-        public static ushort ComputeCRC16_DNP(IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x3D65, 0x0000, true, true, 0xFFFF);
+        public static ushort ComputeCRC16_DNP(this IReadOnlyList<byte> bytes) => ComputeCRC16(bytes, 0x3D65, 0x0000, true, true, 0xFFFF);
         #endregion
 
 
@@ -473,7 +478,7 @@ namespace SpaceCG.Generic
         /// <param name="refOut">输出结果是否按位反转。通常与 refIn 保持一致。</param>
         /// <param name="xorOut">最终结果异或值 (注意：最常用的 ISO-HDLC 标准此处为 0xFFFFFFFF)</param>
         /// <returns>计算得出的 32 位 CRC 校验值 (纯数学值)</returns>
-        public static uint ComputeCRC32(IReadOnlyList<byte> bytes, int offset, int length, uint poly = 0x04C11DB7, uint init = 0xFFFFFFFF, bool refIn = true, bool refOut = true, uint xorOut = 0xFFFFFFFF)
+        public static uint ComputeCRC32(this IReadOnlyList<byte> bytes, int offset, int length, uint poly = 0x04C11DB7, uint init = 0xFFFFFFFF, bool refIn = true, bool refOut = true, uint xorOut = 0xFFFFFFFF)
         {
             ValidateCheck(bytes, offset, length);
 
@@ -510,7 +515,7 @@ namespace SpaceCG.Generic
         /// <summary>
         /// 计算整个集合的 CRC32。
         /// </summary>
-        public static uint ComputeCRC32(IReadOnlyList<byte> bytes, uint poly = 0x04C11DB7, uint init = 0xFFFFFFFF, bool refIn = true, bool refOut = true, uint xorOut = 0xFFFFFFFF)
+        public static uint ComputeCRC32(this IReadOnlyList<byte> bytes, uint poly = 0x04C11DB7, uint init = 0xFFFFFFFF, bool refIn = true, bool refOut = true, uint xorOut = 0xFFFFFFFF)
             => ComputeCRC32(bytes, 0, bytes.Count, poly, init, refIn, refOut, xorOut);
 
         /// <summary>
@@ -521,9 +526,9 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static uint ComputeCRC32_C(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC32(bytes, offset, length, 0x1EDC6F41, 0xFFFFFFFF, true, true, 0xFFFFFFFF);
+        public static uint ComputeCRC32_C(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC32(bytes, offset, length, 0x1EDC6F41, 0xFFFFFFFF, true, true, 0xFFFFFFFF);
         /// <inheritdoc cref="ComputeCRC32_C(IReadOnlyList{byte}, int, int)"/>
-        public static uint ComputeCRC32_C(IReadOnlyList<byte> bytes) => ComputeCRC32(bytes, 0x1EDC6F41, 0xFFFFFFFF, true, true, 0xFFFFFFFF);
+        public static uint ComputeCRC32_C(this IReadOnlyList<byte> bytes) => ComputeCRC32(bytes, 0x1EDC6F41, 0xFFFFFFFF, true, true, 0xFFFFFFFF);
 
         /// <summary>
         /// 计算 CRC-32/MPEG-2 (常用于视频流、DVB、DVD 等)。
@@ -534,9 +539,9 @@ namespace SpaceCG.Generic
         /// <param name="offset">起始偏移</param>
         /// <param name="length">计算长度</param>
         /// <returns>MPEG-2 CRC32 校验值</returns>
-        public static uint ComputeCRC32_MPEG2(IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC32(bytes, offset, length, 0x04C11DB7, 0xFFFFFFFF, false, false, 0x00000000);
+        public static uint ComputeCRC32_MPEG2(this IReadOnlyList<byte> bytes, int offset, int length) => ComputeCRC32(bytes, offset, length, 0x04C11DB7, 0xFFFFFFFF, false, false, 0x00000000);
         /// <inheritdoc cref="ComputeCRC32_MPEG2(IReadOnlyList{byte}, int, int)"/>
-        public static uint ComputeCRC32_MPEG2(IReadOnlyList<byte> bytes) => ComputeCRC32(bytes, 0x04C11DB7, 0xFFFFFFFF, false, false, 0x00000000);
+        public static uint ComputeCRC32_MPEG2(this IReadOnlyList<byte> bytes) => ComputeCRC32(bytes, 0x04C11DB7, 0xFFFFFFFF, false, false, 0x00000000);
         #endregion
 
 
@@ -594,7 +599,7 @@ namespace SpaceCG.Generic
         /// <param name="refOut">输出结果是否按位反转。通常与 refIn 保持一致。</param>
         /// <param name="xorOut">最终结果异或值 (注意：最常用的 ISO-HDLC 标准此处为 0xFFFFFFFF)</param>
         /// <returns>计算得出的 64 位 CRC 校验值 (纯数学值)</returns>
-        public static ulong ComputeCRC64(IReadOnlyList<byte> bytes, int offset, int length, ulong poly, ulong init = 0xFFFFFFFFFFFFFFFFUL, bool refIn = true, bool refOut = true, ulong xorOut = 0xFFFFFFFFFFFFFFFFUL)
+        public static ulong ComputeCRC64(this IReadOnlyList<byte> bytes, int offset, int length, ulong poly, ulong init = 0xFFFFFFFFFFFFFFFFUL, bool refIn = true, bool refOut = true, ulong xorOut = 0xFFFFFFFFFFFFFFFFUL)
         {
             ValidateCheck(bytes, offset, length);
 
@@ -627,7 +632,7 @@ namespace SpaceCG.Generic
             return crc ^ xorOut;
         }
         /// <inheritdoc cref="ComputeCRC64(IReadOnlyList{byte}, int, int, ulong, ulong, bool, bool, ulong)"/>
-        public static ulong ComputeCRC64(IReadOnlyList<byte> bytes, ulong poly, ulong init = 0xFFFFFFFFFFFFFFFFUL, bool refIn = true, bool refOut = true, ulong xorOut = 0xFFFFFFFFFFFFFFFFUL)
+        public static ulong ComputeCRC64(this IReadOnlyList<byte> bytes, ulong poly, ulong init = 0xFFFFFFFFFFFFFFFFUL, bool refIn = true, bool refOut = true, ulong xorOut = 0xFFFFFFFFFFFFFFFFUL)
             => ComputeCRC64(bytes, 0, bytes.Count, poly, init, refIn, refOut, xorOut);
 
         /// <summary>
@@ -638,10 +643,10 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ulong ComputeCRC64_ISO(IReadOnlyList<byte> bytes, int offset, int length)
+        public static ulong ComputeCRC64_ISO(this IReadOnlyList<byte> bytes, int offset, int length)
             => ComputeCRC64(bytes, offset, length, 0x000000000000001BUL, 0xFFFFFFFFFFFFFFFFUL, true, true, 0xFFFFFFFFFFFFFFFFUL);
         /// <inheritdoc cref="ComputeCRC64_ISO(IReadOnlyList{byte}, int, int)"/>
-        public static ulong ComputeCRC64_ISO(IReadOnlyList<byte> bytes)
+        public static ulong ComputeCRC64_ISO(this IReadOnlyList<byte> bytes)
             => ComputeCRC64(bytes, 0x000000000000001BUL, 0xFFFFFFFFFFFFFFFFUL, true, true, 0xFFFFFFFFFFFFFFFFUL);
 
         /// <summary>
@@ -652,12 +657,11 @@ namespace SpaceCG.Generic
         /// <param name="offset"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        public static ulong ComputeCRC64_ECMA(IReadOnlyList<byte> bytes, int offset, int length)
+        public static ulong ComputeCRC64_ECMA(this IReadOnlyList<byte> bytes, int offset, int length)
             => ComputeCRC64(bytes, offset, length, 0x42F0E1EBA9EA3693UL, 0xFFFFFFFFFFFFFFFFUL, true, true, 0xFFFFFFFFFFFFFFFFUL);
         /// <inheritdoc cref="ComputeCRC64_ECMA(IReadOnlyList{byte}, int, int)"/>
-        public static ulong ComputeCRC64_ECMA(IReadOnlyList<byte> bytes)
+        public static ulong ComputeCRC64_ECMA(this IReadOnlyList<byte> bytes)
             => ComputeCRC64(bytes, 0x42F0E1EBA9EA3693UL, 0xFFFFFFFFFFFFFFFFUL, true, true, 0xFFFFFFFFFFFFFFFFUL);
-
         #endregion
 
     }

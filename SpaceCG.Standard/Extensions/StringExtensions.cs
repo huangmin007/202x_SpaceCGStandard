@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Security;
 using System.Text;
 
 namespace SpaceCG.Extensions
@@ -16,17 +15,49 @@ namespace SpaceCG.Extensions
     /// 字符串扩展方法
     /// </summary>
     public static partial class StringExtensions
-    {        
+    {
         /// <summary>
-        /// 是否为视频文件扩展名
+        /// XML 转义字符对照表，与 <see cref="SecurityElement.Escape(string)"/> 的转义规则一致。
         /// </summary>
-        /// <param name="fileName"></param>
-        /// <returns></returns>
+        public static IReadOnlyDictionary<char, string> EscapeCharacters { get; } = new Dictionary<char, string>()
+        {
+            { '<', "&lt;" },
+            { '>', "&gt;" },
+            { '&', "&amp;" },
+            { '"', "&quot;" },
+            { '\'', "&apos;" },
+        };
+        /// <summary>
+        /// 将 XML 转义字符还原为原始字符（<see cref="SecurityElement.Escape(string)"/> 的逆操作）。
+        /// <para>注意：<c>&amp;amp;</c> 先还原为 <c>&amp;</c>，避免后续替换产生二次匹配。</para>
+        /// </summary>
+        /// <param name="value">包含 XML 转义字符的字符串。</param>
+        /// <returns>还原后的原始字符串；null 或空白返回原值。</returns>
+        public static string Unescape(this string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return value;
+            if (value.IndexOf('&') < 0) return value;
+
+            // &amp; 必须最先替换，否则 &lt; &gt; 等中的 & 被替换后会产生错误的二次匹配
+            return value
+                .Replace("&amp;", "&")
+                .Replace("&lt;", "<")
+                .Replace("&gt;", ">")
+                .Replace("&quot;", "\"")
+                .Replace("&apos;", "'");
+        }
+
+        /// <summary>
+        /// 判断文件名（或路径）的扩展名是否为常见视频格式。
+        /// <para>扩展名比较忽略大小写，支持：mp4, mkv, m4v, mov, avi, webm, ts, mts, m2ts, flv, wmv。</para>
+        /// </summary>
+        /// <param name="fileName">文件名或文件路径</param>
+        /// <returns>是视频文件扩展名返回 <c>true</c>；null/空白/无扩展名返回 <c>false</c></returns>
         public static bool IsVideoExtension(this string fileName)
         {
             if (string.IsNullOrWhiteSpace(fileName)) return false;
 
-            var extension = Path.GetExtension(fileName)?.ToLower();
+            var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
             if (string.IsNullOrWhiteSpace(extension)) return false;
 
             switch (extension)
@@ -48,15 +79,16 @@ namespace SpaceCG.Extensions
             return false;
         }
         /// <summary>
-        /// 是否为图片文件扩展名
+        /// 判断文件名（或路径）的扩展名是否为常见图片格式。
+        /// <para>扩展名比较忽略大小写，支持：jpg, jpeg, png, bmp, webp, gif, tif, tiff, ico, heic, heif。</para>
         /// </summary>
-        /// <param name="fileName"></param>
-        /// <returns></returns>
+        /// <param name="fileName">文件名或文件路径</param>
+        /// <returns>是图片文件扩展名返回 <c>true</c>；null/空白/无扩展名返回 <c>false</c></returns>
         public static bool IsImageExtension(this string fileName)
         {
             if (string.IsNullOrWhiteSpace(fileName)) return false;
 
-            var extension = Path.GetExtension(fileName)?.ToLower();
+            var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
             if (string.IsNullOrWhiteSpace(extension)) return false;
 
             switch (extension)
@@ -79,25 +111,28 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 判断字符串是否为合法的十六进制字符串（仅包含 0-9, A-F, a-f 字符）。
+        /// 判断字符串是否仅包含十六进制字符（0-9, A-F, a-f）。
+        /// <para>注意：会检查字符集合法性，以及验证长度是否为偶数。如需转换为字节数组请使用 <see cref="ToByteArray"/>。</para>
         /// </summary>
-        /// <param name="value"></param>
-        /// <returns></returns>
+        /// <param name="value">待检查的字符串</param>
+        /// <returns>全部字符均为十六进制字符返回 <c>true</c>；null/奇数/空白返回 <c>false</c></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsHexString(this string value)
         {
             if (string.IsNullOrWhiteSpace(value)) return false;
+            if (value.Length % 2 != 0) return false;
+
             return value.All(c => (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f'));
         }
 
         /// <summary>
-        /// 将单个十六进制字符转换为 4 位整数值（nibble）。
+        /// 将单个十六进制字符转换为 4 位整数值（nibble，0-15）。
         /// </summary>
         /// <param name="c">十六进制字符（0-9, A-F, a-f）</param>
         /// <returns>0-15 之间的整数</returns>
         /// <exception cref="FormatException">字符不是合法的十六进制字符</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int ToByte(this char c)
+        public static int HexCharToNibble(this char c)
         {
             if (c >= '0' && c <= '9') return c - '0';
             if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -106,10 +141,11 @@ namespace SpaceCG.Extensions
             throw new FormatException($"格式错误：'{c}' 不是有效的十六进制字符");
         }
         /// <summary>
-        /// 将十六进制字符串转换为字节数组
-        /// <para>示例：字符串 "0102030D0A" 转换为字节数组 {0x01, 0x02, 0x03，0x0D, 0x0A}</para>
+        /// 将十六进制字符串转换为字节数组。
+        /// <para>示例：字符串 "0102030D0A" 转换为字节数组 {0x01, 0x02, 0x03, 0x0D, 0x0A}</para>
+        /// <para>注意：不处理 "0x" 前缀，若字符串含前缀请先手动去除。</para>
         /// </summary>
-        /// <param name="hex">十六进制字符串，字母不区分大小写</param>
+        /// <param name="hex">十六进制字符串（不含前缀），字母不区分大小写，长度必须为偶数</param>
         /// <returns>对应的字节数组</returns>
         /// <exception cref="ArgumentNullException">hex 为 null 或空白</exception>
         /// <exception cref="FormatException">hex 长度非偶数，或包含非十六进制字符</exception>
@@ -124,8 +160,8 @@ namespace SpaceCG.Extensions
             var array = new byte[hex.Length / 2];
             for (int i = 0; i < array.Length; i++)
             {
-                var hi = ToByte(hex[i * 2]);        // high
-                var lo = ToByte(hex[i * 2 + 1]);    // low
+                var hi = HexCharToNibble(hex[i * 2]);        // high
+                var lo = HexCharToNibble(hex[i * 2 + 1]);    // low
                 array[i] = (byte)((hi << 4) | lo);
             }
 
@@ -139,7 +175,7 @@ namespace SpaceCG.Extensions
         /// <para>适用场景：配置文件参数解析、RPC 调试参数输入、命令行参数列表等高频调用路径。</para>
         /// <para>解析规则：</para>
         /// <list type="bullet">
-        /// <item><b>逗号分隔</b>：顶层按逗号分割为多个元素，空白行返回空数组。</item>
+        /// <item><b>逗号分隔</b>：顶层按逗号分割为多个元素。连续逗号之间的空 token 输出为空字符串 <c>""</c>，例如 <c>",,"</c> → <c>["", "", ""]</c>。空白行返回空数组。</item>
         /// <item><b>单引号保护</b>：单引号 <c>'...'</c> 包裹的文本视为一个整体，其内部的逗号和方括号被忽略，输出时自动剥离外层引号。不处理转义。</item>
         /// <item><b>方括号嵌套</b>：<c>[ ... ]</c> 包裹的文本视为子数组，递归解析内部内容。</item>
         /// <item><b>叶子节点</b>：非引号且非方括号的 token 经首尾去空白后作为 <c>string</c> 输出，后续由 <see cref="TryConvertTo(string, Type, out object)"/> 进行类型转换。</item>
@@ -157,6 +193,7 @@ namespace SpaceCG.Extensions
         /// "'hello,world',0x01,[True,False]"            → ["hello,world","0x01", string[2]{"True","False"}]
         /// "['aaa,bb','ni,hao'],15"                     → [ string[2]{"aaa,bb","ni,hao"} ,"15"]
         /// "[[1,2],[3,4]]"                              → [ object[2]{string[2]{"1","2"}, string[2]{"3","4"}} ]
+        /// ",,"                                         → ["", "", ""]
         /// </code>
         /// </summary>
         /// <param name="parameters">待解析的参数文本，逗号分隔的 token 序列。空或空白返回空数组。</param>
@@ -186,6 +223,11 @@ namespace SpaceCG.Extensions
                     position++;
                     list.Add(ParseList(parameters, ref position, length, ']'));
                     if (position < length && parameters[position] == ']') position++;
+                }
+                else if (parameters[position] == ',')
+                {                    
+                    position++; // 连续逗号：当前 token 为空字符串
+                    list.Add(string.Empty);
                 }
                 else
                 {
@@ -221,6 +263,11 @@ namespace SpaceCG.Extensions
                     list.Add(ParseList(text, ref position, length, ']'));
                     if (position < length && text[position] == ']') position++;
                     allStrings = false;
+                }
+                else if (text[position] == ',')
+                {
+                    position++; // 连续逗号：当前 token 为空字符串
+                    list.Add(string.Empty);
                 }
                 else
                 {
@@ -297,14 +344,14 @@ namespace SpaceCG.Extensions
         /// <para>被 <see cref="TypeExtensions.TryConvertParameter"/> 调用，处理 <see cref="ParseParameters"/> 产出的每个叶子节点字符串。</para>
         /// <para>支持的类型：</para>
         /// <list type="bullet">
-        /// <item>string  → 直接返回。</item>
+        /// <item>string  → 直接返回原值。</item>
         /// <item>bool / float / double / decimal → 对应 TryParse。</item>
-        /// <item>byte / sbyte / short / ushort / int / uint / long / ulong → 支持十进制和 0x 十六进制前缀。</item>
+        /// <item>byte / sbyte / short / ushort / int / uint / long / ulong → 支持十进制和 0x 十六进制前缀（十六进制仅无符号语义）。</item>
         /// <item>枚举 → Enum.Parse（忽略大小写）。</item>
         /// <item>Guid / TimeSpan / DateTime / DateTimeOffset → 标准 TryParse。</item>
         /// <item>其他值类型 → 通过 <see cref="TypeDescriptor.GetConverter(object)"/> 尝试转换。</item>
         /// </list>
-        /// <para>空或空白字符串视为默认值，转换成功返回对应类型的默认实例。</para>
+        /// <para>null 或空白字符串始终返回 <c>false</c>（包括目标类型为 string 时）。</para>
         /// </summary>
         /// <param name="value">待转换的字符串（来自 <see cref="ParseParameters"/> 的叶子节点）。</param>
         /// <param name="targetType">目标值类型（必须为值类型或 string）。</param>
@@ -316,6 +363,7 @@ namespace SpaceCG.Extensions
         public static bool TryConvertTo(this string value, Type targetType, out object targetValue)
         {
             targetValue = null;
+            if (string.IsNullOrWhiteSpace(value)) return false;
             if (targetType == null || targetType == typeof(void)) 
                 throw new ArgumentNullException(nameof(targetType));
 
@@ -327,12 +375,7 @@ namespace SpaceCG.Extensions
             }
             // 只支持值类型转换，引用类型不支持(除字符本身)
             if (!targetType.IsValueType) return false;
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                targetValue = Activator.CreateInstance(targetType);
-                return true;
-            }
-
+            
             // 枚举类型
             if (targetType.IsEnum)
             {
@@ -342,7 +385,7 @@ namespace SpaceCG.Extensions
                     targetValue = boolValue;
                     return true;
                 }
-                catch { }
+                catch (Exception) { }
                 return false;
             }
             if (targetType == typeof(bool))
@@ -355,7 +398,7 @@ namespace SpaceCG.Extensions
                 return false;
             }
 
-            // float / double / decimal
+            #region float / double / decimal
             if (targetType == typeof(float))
             {
                 if (float.TryParse(value, out var floatValue))
@@ -383,8 +426,9 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
+            #endregion
 
-            // Guid,TimeSpan,DateTime,DateTimeOffset
+            #region Guid,TimeSpan,DateTime,DateTimeOffset
             if (targetType == typeof(Guid))
             {
                 if (Guid.TryParse(value, out var guidValue))
@@ -421,12 +465,14 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
+            #endregion
 
             var valueTrim = value.Trim();
             var isHexNumber = value.StartsWith("0X", StringComparison.OrdinalIgnoreCase);
             var numberStyles = isHexNumber ? NumberStyles.HexNumber : NumberStyles.Integer;
             if (isHexNumber) valueTrim = valueTrim.Substring(2);
-            // Integer
+            
+            #region Integer
             if (targetType == typeof(byte))
             {
                 if (byte.TryParse(valueTrim, numberStyles, CultureInfo.InvariantCulture, out var byteValue))
@@ -499,7 +545,7 @@ namespace SpaceCG.Extensions
                 }
                 return false;
             }
-            
+            #endregion
             // 通用性值类型转换
             try
             {
@@ -510,22 +556,25 @@ namespace SpaceCG.Extensions
                     return true;
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is NotSupportedException || ex is FormatException)
             {
                 Trace.TraceWarning($"将字符 '{value}' 转换为指定类型 {targetType} 异常：{ex.Message}");
             }
 
             return false;
         }
-        /// <inheritdoc cref="TryConvertTo(string, Type, out object)"/>
-        /// <typeparam name="T">值类型</typeparam>
-        /// <param name="value"></param>
-        /// <param name="targetValue"></param>
-        /// <returns></returns>
+        /// <summary>
+        /// 将字符串转换为指定值类型的泛型版本。
+        /// <para>null 或空白字符串返回 <c>false</c>，<paramref name="targetValue"/> 为 <c>default(T)</c>。</para>
+        /// </summary>
+        /// <typeparam name="T">目标值类型</typeparam>
+        /// <param name="value">待转换的字符串</param>
+        /// <param name="targetValue">转换成功时输出强类型值；否则为 <c>default(T)</c></param>
+        /// <returns>转换成功返回 <c>true</c>；否则返回 <c>false</c></returns>
         public static bool TryConvertTo<T>(this string value, out T targetValue) where T : struct
         {
             targetValue = default;
-            if (string.IsNullOrWhiteSpace(value)) return true;
+            if (string.IsNullOrWhiteSpace(value)) return false;
 
             if (TryConvertTo(value, typeof(T), out object objectValue))
             {
@@ -539,7 +588,7 @@ namespace SpaceCG.Extensions
 
 
         /// <summary>
-        /// 将对象序列化为字符串表示形式，是 <see cref="ParseParameters"/> 的反向操作（”强类型值→可传输文本“）。
+        /// 将对象序列化为字符串表示形式，是 <see cref="ParseParameters"/> 的反向操作（强类型值→可传输文本）。
         /// <para>转换规则：</para>
         /// <list type="bullet">
         /// <item><c>null</c> → 字符串 <c>"null"</c>。</item>
@@ -558,7 +607,8 @@ namespace SpaceCG.Extensions
             if (value == null) return "null";
             if (value is string stringValue)
             {
-                //if (stringValue.IndexOf(',') != -1)  return $"\'{stringValue}\'";  //不想支持 ' 保护了
+                // 已知限制：含逗号的字符串未启用单引号保护，序列化后无法被 ParseParameters 正确还原
+                //if (stringValue.IndexOf(',') != -1)  return $"\'{stringValue}\'";
                 return stringValue;
             }
 
@@ -568,7 +618,7 @@ namespace SpaceCG.Extensions
             if (valueType.IsValueType)
             {
                 if (valueType == typeof(bool))
-                    return ((bool)value) ? "true" : "false";
+                    return ((bool)value) ? "True" : "False";
                 if (valueType == typeof(int))
                     return ((int)value).ToString(CultureInfo.InvariantCulture);
                 if (valueType == typeof(long))
@@ -594,7 +644,7 @@ namespace SpaceCG.Extensions
             if (valueType.IsArray) return SerializeEnumerable((IEnumerable)value);
             
             // IEnumerable<T> 类型
-            if (valueType.IsIEnumerable() && value is IEnumerable enumerable) return SerializeEnumerable(enumerable);
+            if (valueType.IsEnumerableOfT() && value is IEnumerable enumerable) return SerializeEnumerable(enumerable);
 
             return value.ToString();
         }

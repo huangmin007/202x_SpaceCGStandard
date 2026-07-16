@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -11,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using SpaceCG;
 using SpaceCG.Extensions;
 
 namespace SpaceCG.Net
@@ -42,18 +41,18 @@ namespace SpaceCG.Net
         private SynchronizationContext _syncContext;
 
         #region Public Properties
-        /// <summary> 获取服务是否正在运行。 </summary>
-        public bool IsRunning => _tcpListener != null && _cts != null;
+        /// <summary> 获取服务是否正在运行（监听器已启动且未取消）。 </summary>
+        public bool IsRunning => _tcpListener != null && _cts != null && !_cts.IsCancellationRequested;
         /// <summary> 监听的本地 IP 地址和端口号。 </summary>
         public IPEndPoint LocalEndPoint { get; private set; }
         /// <summary> 当前已连接的 <see cref="TcpClient"/> 只读集合。 </summary>
-        public IReadOnlyList<TcpClient> Clients => ClientWriteSemaphores.Keys.ToList();
+        public IEnumerable<TcpClient> Clients => ClientWriteSemaphores.Keys;
         /// <summary> 获取或设置发送缓冲区大小，单位字节，默认 32KB。 </summary>
         public int SendBufferSize { get; set; } = 1024 * 32;
         /// <summary> 获取或设置接收缓冲区大小，单位字节，默认 64KB。 </summary>
         public int ReceiveBufferSize { get; set; } = 1024 * 64;
-        /// <summary> 注册的对象实例的缓存方法签名的集合。 </summary>
-        public IEnumerable<string> MethodSignatures => CacheMethodInfos.Keys;
+        /// <summary> 已注册的可调用方法标识符集合。格式：<c>"Object.Method(SVT,...)"</c>。 </summary>
+        public IEnumerable<string> AvailableMethods => RegisteredMethods.Keys;
         #endregion
 
         #region events
@@ -63,7 +62,7 @@ namespace SpaceCG.Net
         public event EventHandler<IPEndPoint> ClientDisconnected;
         /// <summary>
         /// 客户端执行调用请求事件。
-        /// <para>通过设置 <see cref="CancelEventArgs.Cancel"/> 为 <c>true</c> 可拦截、取消客户端调用消息的执行。</para>
+        /// <para>通过设置 <see cref="InvokeMessageEventArgs.Cancel"/> 为 <c>true</c> 可拦截、取消客户端调用消息的执行。</para>
         /// </summary>
         public event EventHandler<InvokeMessageEventArgs> ClientInvokeRequest;
         #endregion
@@ -71,9 +70,9 @@ namespace SpaceCG.Net
         #region readonly fields
         /// <summary>
         /// 方法调用并发控制信号量。
-        /// <para>初始许可数 25，最大许可数 60，用于限制同时执行反射调用的并发数量，防止 ThreadPool 线程因 <see cref="SynchronizationContext.Send(SendOrPostCallback, object)"/> 阻塞而过度膨胀。</para>
+        /// <para>初始许可数 8，最大许可数 64，用于限制同时执行反射调用的并发数量，防止 ThreadPool 线程因 <see cref="SynchronizationContext.Send(SendOrPostCallback, object)"/> 阻塞而过度膨胀。</para>
         /// </summary>
-        private readonly SemaphoreSlim ProcessInvokeSemaphore = new SemaphoreSlim(25, 60);
+        private readonly SemaphoreSlim ProcessInvokeSemaphore = new SemaphoreSlim(8, 64);
         /// <summary> 客户端写入消息并发控制信号量。 </summary>
         private readonly ConcurrentDictionary<TcpClient, SemaphoreSlim> ClientWriteSemaphores = new ConcurrentDictionary<TcpClient, SemaphoreSlim>();
         
@@ -86,7 +85,7 @@ namespace SpaceCG.Net
         /// <summary> 注册对象的实例集合 </summary>
         protected readonly ConcurrentDictionary<string, object> RegisterObjects = new ConcurrentDictionary<string, object>();
         /// <summary> 注册对象的实例缓存的方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预缓存在字典中。 </summary>
-        protected readonly ConcurrentDictionary<string, MethodInfo> CacheMethodInfos = new ConcurrentDictionary<string, MethodInfo>();
+        protected readonly ConcurrentDictionary<string, MethodInfo> RegisteredMethods = new ConcurrentDictionary<string, MethodInfo>();
 
         //private readonly RpcMessagePool<InvokeMessage> InvokeMessagePool = new RpcMessagePool<InvokeMessage>(25, 128);
         //private readonly RpcMessagePool<ResponseMessage> ResponseMessagePool = new RpcMessagePool<ResponseMessage>(25, 128);
@@ -112,6 +111,9 @@ namespace SpaceCG.Net
         /// </summary>
         /// <param name="localPort">服务器监听的本地端口号，范围 1-65535。</param>
         public RpcServerBase(int localPort) : this(IPAddress.Any, localPort) { }
+        /// <inheritdoc cref="RpcServerBase(IPAddress, int)"/>
+        public RpcServerBase(string ipAddress, int localPort) : this(IPAddress.Parse(ipAddress), localPort) { }
+
         #endregion
 
         #region Register object & Cache methods
@@ -148,7 +150,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 缓存注册对象实例的公共方法和公共扩展方法。
         /// <para>扫描注册对象类型的所有公共实例方法（排除 virtual/special-name 方法、含 ref 参数的方法），
-        /// 以及当前 AppDomain 中所有程序集的公共扩展方法，生成方法签名缓存键存入 <see cref="CacheMethodInfos"/>。</para>
+        /// 以及当前 AppDomain 中所有程序集的公共扩展方法，生成方法签名缓存键存入 <see cref="RegisteredMethods"/>。</para>
         /// <para>注意：扩展方法扫描涉及 AppDomain 全局反射，时间复杂度较高。</para>
         /// </summary>
         /// <param name="objectName">注册对象名称，用于生成方法缓存键前缀。</param>
@@ -172,20 +174,32 @@ namespace SpaceCG.Net
 
                 var count = 0;
                 var objectMethodKeyClone = objectMethodKey;
-                while (CacheMethodInfos.ContainsKey(objectMethodKeyClone))
+                while (RegisteredMethods.ContainsKey(objectMethodKeyClone))
                 {
                     objectMethodKeyClone = $"{objectMethodKey}_{count++}";
                 }
 
                 //Debug.WriteLine($"{objectMethodKeyClone}");
-                CacheMethodInfos.TryAdd(objectMethodKeyClone, method);
+                RegisteredMethods.TryAdd(objectMethodKeyClone, method);
             }
             //Debug.WriteLine("------------------------------ Extension ");
-            // 缓存实例的公共扩展方法            
+            // 缓存实例的公共扩展方法  
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 if (assembly.GlobalAssemblyCache) continue;
-                foreach (var type in assembly.GetExportedTypes())
+
+                Type[] exportedTypes;
+                try
+                {
+                    exportedTypes = assembly.GetExportedTypes();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning($"{assembly.FullName} GetExprotedTypes Exception: {ex.Message}");
+                    continue;
+                }
+
+                foreach (var type in exportedTypes)
                 {
                     if (!type.IsSealed || type.IsGenericType || type.IsNested || !type.IsAbstract) continue;
                     foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly))
@@ -203,13 +217,13 @@ namespace SpaceCG.Net
 
                             var count = 0;
                             var objectMethodKeyClone = objectMethodKey;
-                            while (CacheMethodInfos.ContainsKey(objectMethodKeyClone))
+                            while (RegisteredMethods.ContainsKey(objectMethodKeyClone))
                             {
                                 objectMethodKeyClone = $"{objectMethodKey}_{count++}";
                             }
 
                             //Debug.WriteLine($"{objectMethodKeyClone}");
-                            CacheMethodInfos.TryAdd(objectMethodKeyClone, method);
+                            RegisteredMethods.TryAdd(objectMethodKeyClone, method);
                         }
                     }
                 }
@@ -236,7 +250,7 @@ namespace SpaceCG.Net
             try
             {
                 _tcpListener.Start();
-                Trace.WriteLine($"RPC 服务已启动，监听地址：{_tcpListener.LocalEndpoint}");
+                Trace.TraceInformation($"RPC 服务已启动，监听地址：{_tcpListener.LocalEndpoint}");
             }
             catch (Exception ex)
             {
@@ -253,8 +267,6 @@ namespace SpaceCG.Net
         /// </summary>
         public void Stop()
         {
-            if (!IsRunning) return;
-
             try { _cts?.Cancel(); }
             catch (Exception) { }
 
@@ -304,7 +316,7 @@ namespace SpaceCG.Net
         }
         #endregion
 
-        #region AcceptClient -> HandleClientSession(ReadAsync) -> ProcessClientMessage -> ProcessInvokeMessage(Send) -> WriteResponseMessage
+        #region AcceptClient -> HandleClientSession(ReadAsync -> ProcessClientMessage -> ProcessInvokeMessage -> WriteResponseMessage)
         /// <summary>
         /// 异步接受 TCP 客户端连接的主循环。
         /// </summary>
@@ -553,7 +565,7 @@ namespace SpaceCG.Net
                 var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsSign})";
                 //Debug.WriteLine($"methodCacheKey:{methodCacheKey}");
 
-                if (!CacheMethodInfos.TryGetValue(methodCacheKey, out var methodInfo))
+                if (!RegisteredMethods.TryGetValue(methodCacheKey, out var methodInfo))
                 {
                     var responseMessage = ResponseMessage.Create(invokeMessage, -12, $"Object method ({methodCacheKey}) is not available");
                     await WriteResponseMessageAsync(invokeMessage, responseMessage, cancellationToken).ConfigureAwait(false);
@@ -656,20 +668,19 @@ namespace SpaceCG.Net
                 return;
             }
 
+            if (responseBytes == null || responseBytes.Length == 0) return;
+
             if (ClientWriteSemaphores.TryGetValue(client, out var semaphoreSlim))
             {
                 try
                 {
                     await semaphoreSlim.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-                    if (responseBytes != null && responseBytes.Length > 0)
-                    {
-                        var clientStream = client.GetStream();
-                        await clientStream.WriteAsync(responseBytes, 0, responseBytes.Length, cancellationToken).ConfigureAwait(false);
-                        await clientStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                    }
+                    var clientStream = client.GetStream();
+                    await clientStream.WriteAsync(responseBytes, 0, responseBytes.Length, cancellationToken).ConfigureAwait(false);
+                    await clientStream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 }
-                catch (ObjectDisposedException)
+                catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
                 {
                     return;
                 }
@@ -715,20 +726,19 @@ namespace SpaceCG.Net
                 return;
             }
 
+            if (responseBytes == null || responseBytes.Length == 0) return;
+
             if (ClientWriteSemaphores.TryGetValue(invokeMessage.TcpClient, out var semaphoreSlim))
             {
                 try
                 {
                     await semaphoreSlim.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-                    if (responseBytes != null && responseBytes.Length > 0)
-                    {
-                        var stream = invokeMessage.TcpClient.GetStream();
-                        await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancellationToken).ConfigureAwait(false);
-                        await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-                    }
+                    var stream = invokeMessage.TcpClient.GetStream();
+                    await stream.WriteAsync(responseBytes, 0, responseBytes.Length, cancellationToken).ConfigureAwait(false);
+                    await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
                 }
-                catch (ObjectDisposedException)
+                catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
                 {
                     return;
                 }
@@ -747,7 +757,7 @@ namespace SpaceCG.Net
                 Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 未找到写入消息信号量。");
             }
         }
-#endregion
+        #endregion
 
         #region 子类重写抽象方法 DeserializeInvokeMessage & SerializeResponseMessage
         /// <summary>
@@ -780,7 +790,7 @@ namespace SpaceCG.Net
             Stop();
 
             RegisterObjects.Clear();
-            CacheMethodInfos.Clear();
+            RegisteredMethods.Clear();
 
             try
             {

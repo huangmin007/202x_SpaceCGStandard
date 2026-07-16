@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using SpaceCG;
 using SpaceCG.Extensions;
 
 namespace SpaceCG.Net
@@ -58,7 +58,7 @@ namespace SpaceCG.Net
         private readonly object _lock = new object();
 
         private bool _isDisposed;
-        private bool _manualClosed;
+        private bool _isManualClosed;
 
         private TcpClient _tcpClient;
         private CancellationTokenSource _cts;
@@ -109,7 +109,14 @@ namespace SpaceCG.Net
         /// <summary>
         /// 获取或设置默认的远程方法调用请求超时时间，默认 3 秒。
         /// </summary>
-        public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(3);
+        public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(3.0);
+        /// <summary>
+        /// 获取或设置自动重连的延迟时间，默认 3 秒。
+        /// <para>连接断开后等待此间隔再尝试重新连接。</para>
+        /// <para>设置 <see cref="TimeSpan.MaxValue"/> 时禁用自动重连。</para>
+        /// <para>设置 &lt;= 0 时立即重连（不等待），非常不建议。</para>
+        /// </summary>
+        public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(3.0);
         #endregion
 
         #region Constructors
@@ -154,9 +161,9 @@ namespace SpaceCG.Net
             if (RemoteEndPoint.Port != port) RemoteEndPoint.Port = port;
             if (RemoteEndPoint.Address != address) RemoteEndPoint.Address = address;
 
-            _manualClosed = false;
+            _isManualClosed = false;
             _cts = new CancellationTokenSource();
-            _ = ConnectLoopAsync(RemoteEndPoint.Address, RemoteEndPoint.Port, _cts.Token);
+            _ = ConnectWithRetryAsync(RemoteEndPoint.Address, RemoteEndPoint.Port, _cts.Token);
         }
         /// <inheritdoc cref="Connect(IPAddress, int)"/>
         public void Connect() => Connect(RemoteEndPoint.Address, RemoteEndPoint.Port);
@@ -169,14 +176,14 @@ namespace SpaceCG.Net
         /// </summary>
         public void Close()
         {
-            _manualClosed = true;
+            _isManualClosed = true;
 
             try { _cts?.Cancel(); }
             catch (Exception) { }
 
             lock (_lock)
             {
-                CloseTcpClientInternal();
+                CloseTcpClient();
             }
 
             try { _cts?.Dispose(); }
@@ -188,7 +195,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 关闭并释放内部 TcpClient (未加锁)。
         /// </summary>
-        private void CloseTcpClientInternal()
+        private void CloseTcpClient()
         {
             if (_tcpClient == null) return;
 
@@ -218,22 +225,21 @@ namespace SpaceCG.Net
         /// <param name="port"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        private async Task ConnectLoopAsync(IPAddress address, int port, CancellationToken cancellationToken)
+        private async Task ConnectWithRetryAsync(IPAddress address, int port, CancellationToken cancellationToken)
         {
-            TimeSpan delay = TimeSpan.FromSeconds(3.0);
             while (!cancellationToken.IsCancellationRequested)
             {
                 lock (_lock)
                 {
                     LocalEndPoint = null;
-                    CloseTcpClientInternal();
-                    if (_isDisposed || _manualClosed) return;
+                    CloseTcpClient();
+                    if (_isDisposed || _isManualClosed) return;
                 }
 
                 var newClient = new TcpClient();
                 lock (_lock)
                 {
-                    if (_isDisposed || _manualClosed)
+                    if (_isDisposed || _isManualClosed)
                     {
                         newClient?.Dispose();
                         return;
@@ -247,9 +253,9 @@ namespace SpaceCG.Net
 
                     lock (_lock)
                     {
-                        if (_manualClosed || _isDisposed || cancellationToken.IsCancellationRequested)
+                        if (_isManualClosed || _isDisposed || cancellationToken.IsCancellationRequested)
                         {
-                            CloseTcpClientInternal();
+                            CloseTcpClient();
                             return;
                         }
                     }
@@ -265,12 +271,18 @@ namespace SpaceCG.Net
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"RPC 客户端连接失败: {ex.Message}，重试中 .....");
-                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    var delay = ReconnectDelay;
+                    if (delay == TimeSpan.MaxValue) break;
+                    Trace.TraceWarning($"RPC 客户端连接失败: {ex.Message}，重试中 .....");
+
+                    if (delay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    }
                     continue;
                 }
 
-                await HandleSessionAsync(_tcpClient, cancellationToken).ConfigureAwait(false);
+                await HandleServerSessionAsync(_tcpClient, cancellationToken).ConfigureAwait(false);
             }
         }
         /// <summary>
@@ -279,7 +291,7 @@ namespace SpaceCG.Net
         /// </summary>
         /// <param name="tcpClient">已连接的 TCP 客户端。</param>
         /// <param name="cancelToken">用于取消读取操作的令牌。</param>
-        private async Task HandleSessionAsync(TcpClient tcpClient, CancellationToken cancelToken)
+        private async Task HandleServerSessionAsync(TcpClient tcpClient, CancellationToken cancelToken)
         {
             if (tcpClient == null) return;
 
@@ -300,7 +312,7 @@ namespace SpaceCG.Net
                     var count = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancelToken).ConfigureAwait(false);
                     if (count == 0) break;
 
-                    Debug.WriteLine($"RPC 客户端收到来自 {RemoteEndPoint} 的数据 {count} bytes");
+                    //Trace.WriteLine($"RPC 客户端收到来自 {RemoteEndPoint} 的数据 {count} bytes");
 
                     writePosition += count;
                     pendingLength += count;
@@ -309,7 +321,7 @@ namespace SpaceCG.Net
                     while (readPosition < pendingLength)
                     {
                         var endIndex = clientBuffer.IndexOf(NewLine, readPosition, pendingLength - readPosition);
-                        if (endIndex < 0) break;
+                        if (endIndex < 0 || endIndex == readPosition) break;
 
                         // 提取完整的数据行（不含 NewLine）
                         var messageBytes = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
@@ -583,6 +595,11 @@ namespace SpaceCG.Net
                 return ResponseMessage.Create(invokeMessage, -105, "Message serialization failed");
             }
 
+            if (messageBytes == null || messageBytes.Length == 0)
+            {
+                return ResponseMessage.Create(invokeMessage, -106, "Message serialize result is empty");
+            }
+
             var tcs = new TaskCompletionSource<ResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
             var pending = new PendingCall 
             { 
@@ -595,16 +612,7 @@ namespace SpaceCG.Net
             }
 
             try
-            {
-                if (messageBytes == null || messageBytes.Length == 0)
-                {
-                    if (_pendingCalls.TryRemove(invokeMessage.Id, out var removed))
-                    {
-                        removed.SetError(-106, "Message serialize result is empty");
-                    }
-                    return await tcs.Task.ConfigureAwait(false);
-                }
-
+            {                
                 // 序列化后再检查连接状态
                 if (!Connected)
                 {
@@ -661,7 +669,7 @@ namespace SpaceCG.Net
             if (_isDisposed) return;
 
             _isDisposed = true;
-            _manualClosed = true;
+            _isManualClosed = true;
 
             Close();
 

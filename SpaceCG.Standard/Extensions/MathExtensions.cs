@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace SpaceCG.Extensions
 {
@@ -11,22 +9,27 @@ namespace SpaceCG.Extensions
     public static partial class MathExtensions
     {
         /// <summary>
-        /// 映射一个值到另一个值区间
-        /// <para>映射公式： (value - min) * (outputMax - outputMin) / (max - min) + outputMin </para>
+        /// 将一个值从源区间线性映射到目标区间。
+        /// <para>映射公式：<c>(value - min) × (outputMax - outputMin) ÷ (max - min) + outputMin</c></para>
+        /// <para>不执行 Clamp：若 <paramref name="value"/> 超出 <c>[min, max]</c>，结果将超出 <c>[outputMin, outputMax]</c>。</para>
+        /// <para><see cref="double.NaN"/> 输入将导致 <see cref="double.NaN"/> 输出（静默传播）。</para>
         /// </summary>
-        /// <param name="value"></param>
-        /// <param name="min"></param>
-        /// <param name="max"></param>
-        /// <param name="outputMin"></param>
-        /// <param name="outputMax"></param>
-        /// <returns></returns>
+        /// <param name="value">待映射的源值</param>
+        /// <param name="min">源区间下界</param>
+        /// <param name="max">源区间上界（必须 &gt;= <paramref name="min"/>）</param>
+        /// <param name="outputMin">目标区间下界，默认 0.0</param>
+        /// <param name="outputMax">目标区间上界，默认 1.0</param>
+        /// <returns>映射到目标区间的值</returns>
+        /// <exception cref="ArgumentException">
+        /// <paramref name="min"/> &gt; <paramref name="max"/> 或 <paramref name="outputMin"/> &gt; <paramref name="outputMax"/>
+        /// </exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double Map(double value, double min, double max, double outputMin = 0.0, double outputMax = 1.0)
+        public static double Map(this double value, double min, double max, double outputMin = 0.0, double outputMax = 1.0)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
             if (outputMin > outputMax) throw new ArgumentException($"最小值 {outputMin} 应该小于等于最大值 {outputMax}");
 
-            if (max - min == 0) return outputMin;
+            if (max - min == 0.0) return outputMin;
             return (value - min) * (outputMax - outputMin) / (max - min) + outputMin;
         }
 
@@ -34,13 +37,16 @@ namespace SpaceCG.Extensions
         #region Clamp
 #if NET5_0_OR_GREATER
         /// <summary>
-        /// 通用类型 INumber 的 Clamp 方法。
+        /// 将值限制在 [min, max] 闭区间内（通用泛型版本，需 .NET 5+）。
+        /// <para>若 <paramref name="value"/> 小于 <paramref name="min"/>，返回 <paramref name="min"/>；
+        /// 若大于 <paramref name="max"/>，返回 <paramref name="max"/>；否则返回原值。</para>
         /// </summary>
-        /// <param name="value"></param>
-        /// <param name="min"></param>
-        /// <param name="max"></param>
-        /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
+        /// <typeparam name="T">实现 <see cref="INumber{T}"/> 的数值类型</typeparam>
+        /// <param name="value">待限制的值</param>
+        /// <param name="min">区间下界</param>
+        /// <param name="max">区间上界（必须 &gt;= <paramref name="min"/>）</param>
+        /// <returns>限制在 [min, max] 内的值</returns>
+        /// <exception cref="ArgumentException"><paramref name="min"/> &gt; <paramref name="max"/></exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static T Clamp<T>(T value, T min, T max) where T : INumber<T>
         {
@@ -53,14 +59,18 @@ namespace SpaceCG.Extensions
         }
 #else
         /// <summary>
-        /// 返回 value 固定到 min 和 max 的非独占范围。
+        /// 将值限制在 [min, max] 闭区间内。
+        /// <para>若 <paramref name="value"/> 小于 <paramref name="min"/>，返回 <paramref name="min"/>；
+        /// 若大于 <paramref name="max"/>，返回 <paramref name="max"/>；否则返回原值。</para>
         /// </summary>
-        /// <param name="value"></param>
-        /// <param name="min"></param>
-        /// <param name="max"></param>
-        /// <returns></returns>
+        /// <param name="value">待限制的值</param>
+        /// <param name="min">区间下界</param>
+        /// <param name="max">区间上界（必须 &gt;= <paramref name="min"/>）</param>
+        /// <returns>限制在 [min, max] 内的值</returns>
+        /// <exception cref="ArgumentException"><paramref name="min"/> &gt; <paramref name="max"/></exception>
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte Clamp(byte value, byte min, byte max)
+        public static byte Clamp(this byte value, byte min, byte max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -71,7 +81,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static short Clamp(short value, short min, short max)
+        public static short Clamp(this short value, short min, short max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -82,7 +92,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ushort Clamp(ushort value, ushort min, ushort max)
+        public static ushort Clamp(this ushort value, ushort min, ushort max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -93,7 +103,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Clamp(int value, int min, int max)
+        public static int Clamp(this int value, int min, int max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -104,7 +114,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static uint Clamp(uint value, uint min, uint max)
+        public static uint Clamp(this uint value, uint min, uint max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -115,7 +125,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static long Clamp(long value, long min, long max)
+        public static long Clamp(this long value, long min, long max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -126,7 +136,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong Clamp(ulong value, ulong min, ulong max)
+        public static ulong Clamp(this ulong value, ulong min, ulong max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -137,7 +147,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static float Clamp(float value, float min, float max)
+        public static float Clamp(this float value, float min, float max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -148,7 +158,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="Clamp(byte, byte, byte)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static double Clamp(double value, double min, double max)
+        public static double Clamp(this double value, double min, double max)
         {
             if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
 
@@ -163,13 +173,13 @@ namespace SpaceCG.Extensions
 
         #region ReverseBits
         /// <summary>
-        /// 8位 数据按位反转。
-        /// 例如：0x31 (0011 0001) -> 0x8C (1000 1100)
+        /// 8 位数据按位反转（bit-reverse），使用分治法逐级交换相邻位组。
+        /// <para>例如：0x31 (0011 0001) → 0x8C (1000 1100)</para>
         /// </summary>
         /// <param name="value">需要反转的 8 位无符号整数</param>
         /// <returns>反转后的 8 位无符号整数</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte ReverseBits(byte value)
+        public static byte ReverseBits(this byte value)
         {
             value = (byte)(((value & 0xF0) >> 4) | ((value & 0x0F) << 4));      // 交换相邻的 4 位
             value = (byte)(((value & 0xCC) >> 2) | ((value & 0x33) << 2));      // 交换相邻的 2 位
@@ -178,13 +188,13 @@ namespace SpaceCG.Extensions
             return value;
         }
         /// <summary>
-        /// 16位 数据按位反转。
-        /// 例如：0x8005 (1000 0000 0000 0101) -> 0xA001 (1010 0000 0000 0001)
+        /// 16 位数据按位反转（bit-reverse），使用分治法逐级交换相邻位组。
+        /// <para>例如：0x8005 (1000 0000 0000 0101) → 0xA001 (1010 0000 0000 0001)</para>
         /// </summary>
         /// <param name="value">需要反转的 16 位无符号整数</param>
         /// <returns>反转后的 16 位无符号整数</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ushort ReverseBits(ushort value)
+        public static ushort ReverseBits(this ushort value)
         {
             value = (ushort)(((value & 0xFF00) >> 8) | ((value & 0x00FF) << 8));    // 交换相邻的 8 位
             value = (ushort)(((value & 0xF0F0) >> 4) | ((value & 0x0F0F) << 4));    // 交换相邻的 4 位
@@ -194,12 +204,13 @@ namespace SpaceCG.Extensions
             return value;
         }
         /// <summary>
-        /// 32位 数据按位反转。
+        /// 32 位数据按位反转（bit-reverse），使用分治法逐级交换相邻位组。
+        /// <para>例如：0x12345678 → 0x1E6A2C48</para>
         /// </summary>
         /// <param name="value">需要反转的 32 位无符号整数</param>
         /// <returns>反转后的 32 位无符号整数</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static uint ReverseBits(uint value)
+        public static uint ReverseBits(this uint value)
         {
             value = ((value & 0xFFFF0000) >> 16) | ((value & 0x0000FFFF) << 16);    // 交换相邻的 16 位            
             value = ((value & 0xFF00FF00) >> 8) | ((value & 0x00FF00FF) << 8);      // 交换相邻的 8 位            
@@ -210,12 +221,13 @@ namespace SpaceCG.Extensions
             return value;
         }
         /// <summary>
-        /// 64位 数据按位反转。
+        /// 64 位数据按位反转（bit-reverse），使用分治法逐级交换相邻位组。
+        /// <para>例如：0x0123456789ABCDEF → 0xF7B3D591E6A2C480</para>
         /// </summary>
         /// <param name="value">需要反转的 64 位无符号整数</param>
         /// <returns>反转后的 64 位无符号整数</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong ReverseBits(ulong value)
+        public static ulong ReverseBits(this ulong value)
         {
             value = ((value & 0xFFFFFFFF00000000UL) >> 32) | ((value & 0x00000000FFFFFFFFUL) << 32);    // 交换相邻的 32 位
             value = ((value & 0xFFFF0000FFFF0000UL) >> 16) | ((value & 0x0000FFFF0000FFFFUL) << 16);    // 交换相邻的 16 位
@@ -231,29 +243,35 @@ namespace SpaceCG.Extensions
 
         #region ReverseBytes
         /// <summary>
-        /// 16位 数据字节顺序反转 (大小端转换)。
-        /// 例如：0x1234 -> 0x3412
+        /// 16 位数据字节顺序反转（大小端转换，endian swap）。
+        /// <para>例如：0x1234 → 0x3412</para>
         /// </summary>
+        /// <param name="value">需要反转字节序的 16 位无符号整数</param>
+        /// <returns>字节序反转后的 16 位无符号整数</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ushort ReverseBytes(ushort value)
+        public static ushort ReverseBytes(this ushort value)
         {
             return (ushort)(((value & 0x00FF) << 8) | ((value & 0xFF00) >> 8));
         }
         /// <summary>
-        /// 32位 数据字节顺序反转 (大小端转换)。
-        /// 例如：0x12345678 -> 0x78563412
+        /// 32 位数据字节顺序反转（大小端转换，endian swap）。
+        /// <para>例如：0x12345678 → 0x78563412</para>
         /// </summary>
+        /// <param name="value">需要反转字节序的 32 位无符号整数</param>
+        /// <returns>字节序反转后的 32 位无符号整数</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static uint ReverseBytes(uint value)
+        public static uint ReverseBytes(this uint value)
         {
             return ((value & 0x000000FF) << 24) | ((value & 0x0000FF00) << 8) | ((value & 0x00FF0000) >> 8) | ((value & 0xFF000000) >> 24);
         }
         /// <summary>
-        /// 64位 数据字节顺序反转 (大小端转换)。
-        /// 例如：0x1122334455667788 -> 0x8877665544332211
+        /// 64 位数据字节顺序反转（大小端转换，endian swap）。
+        /// <para>例如：0x1122334455667788 → 0x8877665544332211</para>
         /// </summary>
+        /// <param name="value">需要反转字节序的 64 位无符号整数</param>
+        /// <returns>字节序反转后的 64 位无符号整数</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong ReverseBytes(ulong value)
+        public static ulong ReverseBytes(this ulong value)
         {
             value = ((value & 0x00000000000000FFUL) << 56) | ((value & 0x000000000000FF00UL) << 40) | ((value & 0x0000000000FF0000UL) << 24) | ((value & 0x00000000FF000000UL) << 8) |
                     ((value & 0x000000FF00000000UL) >> 8) | ((value & 0x0000FF0000000000UL) >> 24) | ((value & 0x00FF000000000000UL) >> 40) | ((value & 0xFF00000000000000UL) >> 56);

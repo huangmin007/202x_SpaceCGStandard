@@ -19,7 +19,7 @@
 | [`RpcClient4X`](./RPC%20服务框架.md) | sealed class | 基于 XML 协议的 RPC 客户端实现 |
 | [`InvokeMessage`](./RPC%20服务框架.md#32-invokemessage) | class | 客户端调用请求的数据对象 |
 | [`ResponseMessage`](./RPC%20服务框架.md#33-responsemessage) | class | 方法调用结果的数据对象 |
-| [`InvokeMessageEventArgs`](./RPC%20服务框架.md#34-invokemessageeventargs) | class | 消息拦截事件参数（继承 `CancelEventArgs`） |
+| [`InvokeMessageEventArgs`](./RPC%20服务框架.md#34-invokemessageeventargs) | class | 消息拦截事件参数 |
 | [`TcpClientEx`](#TcpClientEx) | sealed class | 带自动重连功能的独立 TCP 客户端封装 |
 | [`TcpClientExtensions`](#tcpclientextensions) | static class | `TcpClient` 扩展方法 |
 

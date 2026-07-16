@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.ComponentModel;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -236,6 +235,43 @@ namespace SpaceCG.Net
         public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
 
         /// <summary>
+        /// 判断调用结果是否有返回值。
+        /// <para>条件：<see cref="Code"/> == 1 且 <see cref="ReturnType"/> 不为 <c>null</c> 且不为 <c>typeof(void)</c>。</para>
+        /// <para>注意：不检查 <see cref="ReturnValue"/> 是否为 <c>null</c>——方法返回 null 仍视为有返回值（如返回类型为 string? 且值为 null）。</para>
+        /// </summary>
+        public bool HasReturnValue => Code == 1 && ReturnType != null && ReturnType != typeof(void);
+
+        /// <summary>
+        /// 将 <see cref="ReturnValue"/> 转换为指定的强类型。
+        /// <para>转换失败或 <see cref="HasReturnValue"/> 为 <c>false</c> 时返回 <c>default(T)</c>。</para>
+        /// <para>支持基础类型直接转换和 <see cref="IConvertible"/> 类型转换。</para>
+        /// </summary>
+        /// <typeparam name="T">目标类型。</typeparam>
+        /// <returns>转换后的强类型值；无有效返回值或转换失败时返回 <c>default(T)</c>。</returns>
+        public T GetReturnValue<T>()
+        {
+            if (!HasReturnValue) return default(T);
+
+            try
+            {
+                // 类型完全匹配或可赋值
+                if (ReturnValue is T typedValue)
+                    return typedValue;
+
+                // 尝试通过 IConvertible 转换（如 int → double）
+                if (ReturnValue is IConvertible)
+                    return (T)Convert.ChangeType(ReturnValue, typeof(T));
+
+                // 尝试直接强转（如子类 → 父类）
+                return (T)ReturnValue;
+            }
+            catch
+            {
+                return default(T);
+            }
+        }
+
+        /// <summary>
         /// 初始化 <see cref="ResponseMessage"/> 类的新实例。
         /// <para>推荐通过静态工厂方法 <see cref="Create(InvokeMessage, int, string, Type, object)"/> 等重载创建实例。</para>
         /// </summary>
@@ -331,17 +367,17 @@ namespace SpaceCG.Net
 
     /// <summary>
     /// 客户端调用消息事件参数，用于 <see cref="RpcServerBase.ClientInvokeRequest"/> 事件。
-    /// <para>继承 <see cref="CancelEventArgs"/>，可通过设置 <see cref="CancelEventArgs.Cancel"/> 为 <c>true</c> 来拦截取消执行调用。</para>
+    /// <para>通过设置 <see cref="Cancel"/> 为 <c>true</c> 来拦截取消执行调用。</para>
     /// </summary>
-    public class InvokeMessageEventArgs : CancelEventArgs
+    public class InvokeMessageEventArgs : EventArgs
     {
-        /// <summary>
-        /// 发送消息的远程客户端端点地址。
-        /// </summary>
+        /// <summary> 获取或设置是否取消本次调用。默认 <c>false</c>。 </summary>
+        public bool Cancel { get; set; }
+
+        /// <summary> 发送消息的远程客户端端点地址。 </summary>
         public IPEndPoint RemoteEndPoint { get; internal set; }
-        /// <summary>
-        /// 客户端调用的消息实例。可读取消息属性，通过设置 <see cref="CancelEventArgs.Cancel"/> 为 <c>true</c> 拦截取消本次调用。
-        /// </summary>
+
+        /// <summary> 客户端调用的消息实例。 </summary>
         public InvokeMessage InvokeMessage { get; internal set; }
 
         /// <summary>
@@ -349,8 +385,9 @@ namespace SpaceCG.Net
         /// </summary>
         /// <param name="invokeMessage">客户端调用的消息实例。</param>
         /// <param name="clientEndPoint">发送消息的远程客户端端点地址。</param>
-        public InvokeMessageEventArgs(InvokeMessage invokeMessage, IPEndPoint clientEndPoint) : base(false)
+        public InvokeMessageEventArgs(InvokeMessage invokeMessage, IPEndPoint clientEndPoint)
         {
+            Cancel = false;
             InvokeMessage = invokeMessage;
             RemoteEndPoint = clientEndPoint;
         }
