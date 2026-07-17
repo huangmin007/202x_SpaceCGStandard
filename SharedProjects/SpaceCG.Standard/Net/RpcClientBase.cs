@@ -283,7 +283,7 @@ namespace SpaceCG.Net
             if (tcpClient == null) return;
 
             var clientStream = tcpClient.GetStream();
-            var localEndPoint = tcpClient.Client.LocalEndPoint as IPEndPoint;
+            var clientEndPoint = tcpClient.Client.LocalEndPoint as IPEndPoint;
 
             var bufferSize = tcpClient.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];
@@ -300,98 +300,64 @@ namespace SpaceCG.Net
                 NewLine.CopyTo(delimiter, 0);
             }
 
-            var writePosition = 0;      // 缓冲区写入位置（写指针）
-            var pendingLength = 0;      // 缓冲区中未消费数据的长度
-            var readPosition = 0;       // 数据消费的起始位置（读指针）
+            var readPosition = 0;       // 数据分析的起始位置 (读指针)
+            var writePosition = 0;      // 写入数据的末尾位置（下一次 ReadAsync 的写入起点，写指针）
+            var minBufferSize = bufferSize / 8;
 
             try
             {
                 while (!cancelToken.IsCancellationRequested && tcpClient.IsConnected())
                 {
+                    #region 整理缓冲区
+                    // 0. 数据正好分析完 → 所有指针归零
+                    if (readPosition == writePosition)
+                    {
+                        readPosition = 0;
+                        writePosition = 0;
+                    }
+                    // 1. 整理缓冲区：如果尾部剩余空间不足，且前方有已消费的空间，则向前移动有效数据
+                    else if (readPosition > 0 && writePosition > readPosition && (bufferSize - writePosition < minBufferSize))
+                    {
+                        var pendingLength = writePosition - readPosition;
+                        Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, pendingLength);
+                        Trace.TraceInformation($"客户端 {clientEndPoint} 整理缓冲区，移动 {pendingLength} bytes");
+
+                        readPosition = 0;
+                        writePosition = pendingLength;
+                    }
+                    // 2. 防御性处理：如果缓冲区依然满了（说明单条消息超大或恶意攻击），清空以防死锁
+                    if (writePosition == bufferSize)
+                    {
+                        var pendingLength = writePosition - readPosition;
+                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满且无完整消息，丢弃 {pendingLength} bytes。请检查协议或客户端行为。");
+                        // break;
+
+                        readPosition = 0;
+                        writePosition = 0;
+                    }
+                    #endregion
+
                     var count = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancelToken).ConfigureAwait(false);
                     if (count == 0) break;
 
+                    writePosition += count;
                     //Trace.WriteLine($"RPC 客户端收到来自 {RemoteEndPoint} 的数据 {count} bytes");
 
-                    writePosition += count;
-                    pendingLength += count;
-
                     #region 扫描缓冲区中所有完整的数据字节消息
-                    while (readPosition < pendingLength)
+                    while (readPosition < writePosition)
                     {
-                        var endIndex = clientBuffer.IndexOf(delimiter, readPosition, pendingLength - readPosition);
-                        if (endIndex < 0 || endIndex == readPosition) break;
+                        var delimiterPosition = clientBuffer.IndexOf(delimiter, readPosition, writePosition - readPosition);
+                        if (delimiterPosition < 0) break;
 
-                        // 提取完整的数据字节消息（含 delimiter）
-                        var messageBytes = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition + delimiter.Length);
-                        readPosition = endIndex + delimiter.Length;
+                        // 提取完整的数据字节消息（含 delimiter 分割符本身）
+                        var messageLength = delimiterPosition - readPosition + delimiter.Length;
+                        var responseMessage = new ArraySegment<byte>(clientBuffer, readPosition, messageLength);
 
-                        // 解析响应消息并分派
-                        ResponseMessage response = null;
-                        try
-                        {
-                            response = DeserializeResponseMessage(messageBytes);
-                        }
-                        catch (Exception ex)
-                        {
-                            Trace.TraceWarning($"RPC 客户端 {localEndPoint} 解析响应消息反序列化异常：({ex.GetType().Name}) {ex.Message}");
-                            continue;
-                        }
+                        // 移动读指针，跳过已消费的数据和分割符
+                        readPosition = delimiterPosition + delimiter.Length;
 
-                        // 将接收到的响应消息分派到对应的 PendingCall
-                        if (response != null && response.Id > 0)
-                        {
-                            if (_pendingCalls.TryRemove(response.Id, out var pending))
-                            {
-                                pending.SetResult(response);
-                            }
-                            else
-                            {
-                                Trace.TraceWarning($"RPC 客户端 {localEndPoint} 收到未匹配的响应消息 Id:{response.Id}");
-                            }
-                        }
-                    }
-                    #endregion
-
-                    #region 跳过尾随的空白/零值数据
-                    while (readPosition < pendingLength)
-                    {
-                        var b = clientBuffer[readPosition];
-                        if (b == 0x00 || b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D)
-                        {
-                            readPosition++;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    #endregion
-
-                    #region 环形缓冲收尾：根据消费情况移动指针
-                    if (readPosition == pendingLength)
-                    {
-                        writePosition = 0;
-                        pendingLength = 0;
-                        readPosition = 0;
-                    }
-                    else if (readPosition > 0 && bufferSize - pendingLength < bufferSize / 8)
-                    {
-                        var remaining = pendingLength - readPosition;
-                        Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, remaining);
-                        Trace.TraceInformation($"RPC 客户端 {localEndPoint} 移动缓冲区数据 {remaining} bytes");
-
-                        writePosition = remaining;
-                        pendingLength = remaining;
-                        readPosition = 0;
-                    }
-
-                    if (writePosition == bufferSize)
-                    {
-                        Trace.TraceWarning($"RPC 客户端 {localEndPoint} 接收缓冲区已满且无完整消息，清空 {pendingLength} bytes");
-                        writePosition = 0;
-                        pendingLength = 0;
-                        readPosition = 0;
+                        // 处理服务端响应的字节数据
+                        _ = ProcessServerMessageAsync(clientEndPoint, responseMessage, cancelToken);
                     }
                     #endregion
                 }
@@ -402,15 +368,51 @@ namespace SpaceCG.Net
             }
             catch (Exception ex)
             {
-                Trace.TraceError($"RPC 客户端 {localEndPoint} 接收数据异常：({ex.GetType().Name}) {ex.Message}");
+                Trace.TraceError($"RPC 客户端 {clientEndPoint} 接收数据异常：({ex.GetType().Name}) {ex.Message}");
             }
             finally
             {
                 // 将所有待响应的 PendingCall 以连接断开错误完成
                 CancelAllPendingCalls(-102, "Connection closed");
                 // 断开后的处理
-                Trace.TraceInformation($"RPC 客户端 {localEndPoint} 已断开连接");
+                Trace.TraceInformation($"RPC 客户端 {clientEndPoint} 已断开连接");
             }
+        }
+        /// <summary>
+        /// 处理服务端响应的字节数据
+        /// </summary>
+        /// <param name="clientEndPoint"></param>
+        /// <param name="responseMessage"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        private async Task ProcessServerMessageAsync(IPEndPoint clientEndPoint, ArraySegment<byte> responseMessage, CancellationToken cancellationToken)
+        {
+            // 解析响应消息并分派
+            ResponseMessage response = null;
+            try
+            {
+                response = DeserializeResponseMessage(responseMessage);
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"RPC 客户端 {clientEndPoint} 解析响应消息反序列化异常：({ex.GetType().Name}) {ex.Message}");
+                return;
+            }
+
+            // 将接收到的响应消息分派到对应的 PendingCall
+            if (response != null && response.Id > 0)
+            {
+                if (_pendingCalls.TryRemove(response.Id, out var pending))
+                {
+                    pending.SetResult(response);
+                }
+                else
+                {
+                    Trace.TraceWarning($"RPC 客户端 {clientEndPoint} 收到未匹配的响应消息 Id:{response.Id}");
+                }
+            }
+
+            await Task.Yield();
         }
 
         /// <summary>

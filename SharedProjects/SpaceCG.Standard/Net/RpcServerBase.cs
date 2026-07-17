@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -387,9 +388,9 @@ namespace SpaceCG.Net
                 NewLine.CopyTo(delimiter, 0);
             }
 
-            var writePosition = 0;      // buffer 中已写入数据的末尾位置（下一次 ReadAsync 的写入起点，写指针）
-            var pendingLength = 0;      // buffer 中有效数据的长度 (未分析读取的数据量)
             var readPosition = 0;       // 数据分析的起始位置 (读指针)
+            var writePosition = 0;      // 写入数据的末尾位置（下一次 ReadAsync 的写入起点，写指针）
+            var minBufferSize = bufferSize / 8;
 
             // 客户端写入消息同步锁，保证消息的完整性
             var clientSemaphore = new SemaphoreSlim(1, 1);
@@ -407,78 +408,62 @@ namespace SpaceCG.Net
                 var clientStream = client.GetStream();
                 while (!cancellationToken.IsCancellationRequested && client.IsConnected())
                 {
-                    var count = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancellationToken);
-                    if (count == 0) break;  // 客户端已断开了连接
-                    //Debug.WriteLine($"接收客户端 {clientEndPoint} 的数据 {count} bytes ");
-
-                    writePosition += count;
-                    pendingLength += count;
-
-                    #region 扫描缓冲区中所有完整的数据字节消息
-                    while (readPosition < pendingLength)
+                    #region 整理缓冲区
+                    // 0. 数据正好分析完 → 所有指针归零
+                    if (readPosition == writePosition)
                     {
-                        var endIndex = clientBuffer.IndexOf(delimiter, readPosition, pendingLength - readPosition);
-                        if (endIndex < 0 || endIndex == readPosition) break;
-
-                        // 提取完整的数据字节消息（含 delimiter 分割符本身）
-                        var clientMessage = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition + delimiter.Length);
-
-                        // 移动读指针，跳过已消费的数据和分割符
-                        readPosition = endIndex + delimiter.Length;
-
-                        // 处理客户端的数据消息
-                        _ = ProcessClientMessageAsync(client, clientMessage, cancellationToken);
-                    }
-                    #endregion
-
-                    #region 跳过尾随的空白/零值数据
-                    // 00 空字符、20 空格、09 水平制表符、0A 换行符、0D 回车符
-                    while (readPosition < pendingLength)
-                    {
-                        var b = clientBuffer[readPosition];                        
-                        if (b == 0x00 || b == 0x20 || b == 0x09 || b == 0x0A || b == 0x0D)
-                        {
-                            readPosition++;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    #endregion
-
-                    #region 环形缓冲收尾：根据消费情况移动指针
-                    // 数据正好分析完 → 所有指针归零
-                    if (readPosition == pendingLength)  
-                    {                        
+                        readPosition = 0;
                         writePosition = 0;
-                        pendingLength = 0;
-                        readPosition = 0;
                     }
-                    // 缓冲区剩余空间不足 1/8，紧凑：将未处理数据移到开头
-                    else if (readPosition > 0 && bufferSize - pendingLength < bufferSize / 8)
+                    // 1. 整理缓冲区：如果尾部剩余空间不足，且前方有已消费的空间，则向前移动有效数据
+                    else if (readPosition > 0 && writePosition > readPosition && (bufferSize - writePosition < minBufferSize))
                     {
-                        var remaining = pendingLength - readPosition;
-                        Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, remaining);
-                        Trace.TraceInformation($"客户端 {clientEndPoint} 移动缓冲区数据 {remaining} bytes");
+                        var pendingLength = writePosition - readPosition;
+                        Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, pendingLength);
+                        Trace.TraceInformation($"客户端 {clientEndPoint} 整理缓冲区，移动 {pendingLength} bytes");
 
-                        writePosition = remaining;
-                        pendingLength = remaining;
                         readPosition = 0;
+                        writePosition = pendingLength;
                     }
-
-                    // 缓冲区已经满了，清空防止死锁
+                    // 2. 防御性处理：如果缓冲区依然满了（说明单条消息超大或恶意攻击），清空以防死锁
                     if (writePosition == bufferSize)
                     {
-                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满，且没有完整的数据消息，清空缓冲区 {pendingLength} bytes");
-                        writePosition = 0;
-                        pendingLength = 0;
+                        var pendingLength = writePosition - readPosition;
+                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满且无完整消息，丢弃 {pendingLength} bytes。请检查协议或客户端行为。");
+                        // break;
+
                         readPosition = 0;
+                        writePosition = 0;
+                    }
+                    #endregion
+
+                    // 读取数据
+                    var count = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancellationToken);
+                    if (count == 0) break;  // 客户端已断开了连接
+                    
+                    writePosition += count;
+                    //System.Diagnostics.Debug.WriteLine($"接收客户端 {clientEndPoint} 的数据 {count} bytes ");
+
+                    #region 扫描缓冲区中所有完整的数据字节消息
+                    while (readPosition < writePosition)
+                    {
+                        var delimiterPosition = clientBuffer.IndexOf(delimiter, readPosition, writePosition - readPosition);
+                        if (delimiterPosition < 0) break;
+
+                        // 提取完整的数据字节消息（含 delimiter 分割符本身）
+                        var messageLength = delimiterPosition - readPosition + delimiter.Length;
+                        var requestMessage = new ArraySegment<byte>(clientBuffer, readPosition, messageLength);
+
+                        // 移动读指针，跳过已消费的数据和分割符
+                        readPosition = delimiterPosition + delimiter.Length;
+
+                        // 处理客户端请求的字节数据
+                        _ = ProcessClientMessageAsync(client, requestMessage, cancellationToken);
                     }
                     #endregion
                 }
             }
-            catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException)
+            catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException || ex is IOException)
             {
                 // 正常退出
             }            
@@ -501,12 +486,12 @@ namespace SpaceCG.Net
         /// 处理客户端的数据消息（反序列化 -> 事件拦截 -> 方法调用分发）。
         /// </summary>
         /// <param name="client">发送数据的 TCP 客户端连接。</param>
-        /// <param name="clientMessage">一条完整的字节数据消息。</param>
+        /// <param name="requestMessage">一条完整的字节数据消息。</param>
         /// <param name="cancellationToken">用于取消操作的令牌。</param>
         /// <returns>一个表示异步操作的任务。</returns>
-        protected async Task ProcessClientMessageAsync(TcpClient client, ArraySegment<byte> clientMessage, CancellationToken cancellationToken)
+        protected async Task ProcessClientMessageAsync(TcpClient client, ArraySegment<byte> requestMessage, CancellationToken cancellationToken)
         {
-            if (client == null || clientMessage == null || clientMessage.Count == 0) return;
+            if (client == null || requestMessage == null || requestMessage.Count == 0) return;
             
             InvokeMessage invokeMessage = null;
             var clientEndPoint = client.Client.RemoteEndPoint as IPEndPoint;
@@ -514,7 +499,7 @@ namespace SpaceCG.Net
             try
             {
                 // 反序列化客户端的数据消息
-                invokeMessage = DeserializeInvokeMessage(clientMessage, clientEndPoint);
+                invokeMessage = DeserializeInvokeMessage(requestMessage, clientEndPoint);
             }
             catch (Exception ex)
             {

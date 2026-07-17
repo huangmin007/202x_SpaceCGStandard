@@ -21,6 +21,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Generic\CRCCheckHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Generic\LoggerTraceListener.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Generic\ObjectPool.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Generic\ProtocolParser.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcClient4X.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcClientBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcMessages.cs" />

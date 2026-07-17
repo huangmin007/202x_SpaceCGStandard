@@ -29,7 +29,7 @@ namespace SpaceCG.Net
         }
         /// <summary>
         /// 使用指定的端口创建 <see cref="RpcServer4X"/> 实例。
-        /// <para>为了兼容 XML-RPC v1.0，保留了 delimiters 分割符设置。 </para>
+        /// <para>为了兼容 XML-RPC 最期版本，保留了 delimiters 分割符设置。 </para>
         /// </summary>
         public RpcServer4X(int localPort, byte[] delimiters) : this(IPAddress.Any, localPort)
         {

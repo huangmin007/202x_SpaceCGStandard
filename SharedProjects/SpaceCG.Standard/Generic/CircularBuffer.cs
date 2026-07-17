@@ -104,7 +104,7 @@ namespace SpaceCG.Generic
                 {
                     throw new IndexOutOfRangeException(string.Format("无法访问索引 {0}，缓冲区为空。", index));
                 }
-                if (index >= _size)
+                if (index < 0 || index >= _size)
                 {
                     throw new IndexOutOfRangeException(string.Format("无法访问索引 {0}，缓冲区大小为 {1}。", index, _size));
                 }
@@ -117,7 +117,7 @@ namespace SpaceCG.Generic
                 {
                     throw new IndexOutOfRangeException(string.Format("无法访问索引 {0}，缓冲区为空。", index));
                 }
-                if (index >= _size)
+                if (index < 0 || index >= _size)
                 {
                     throw new IndexOutOfRangeException(string.Format("无法访问索引 {0}，缓冲区大小为 {1}。", index, _size));
                 }
@@ -133,16 +133,14 @@ namespace SpaceCG.Generic
         /// <param name="item">要添加到缓冲区尾部的元素。</param>
         public void AddBack(T item)
         {
+            _buffer[_end] = item;
+            Increment(ref _end);
             if (IsFull)
             {
-                _buffer[_end] = item;
-                Increment(ref _end);
                 _start = _end;  // 头部指针同步移动，相当于弹出最旧元素
             }
             else
             {
-                _buffer[_end] = item;
-                Increment(ref _end);
                 ++_size;
             }
         }
@@ -153,16 +151,15 @@ namespace SpaceCG.Generic
         /// <param name="item">要添加到缓冲区头部的元素。</param>
         public void AddFront(T item)
         {
+            Decrement(ref _start);
+            _buffer[_start] = item;
+
             if (IsFull)
             {
-                Decrement(ref _start);
                 _end = _start;          // 尾部指针同步移动，相当于弹出最旧元素
-                _buffer[_start] = item;
             }
             else
             {
-                Decrement(ref _start);
-                _buffer[_start] = item;
                 ++_size;
             }
         }
@@ -176,6 +173,7 @@ namespace SpaceCG.Generic
             ThrowIfEmpty();
             return _buffer[(_end != 0 ? _end : Capacity) - 1];
         }
+        
         /// <summary>
         /// 查看缓冲区头部的元素，即 this[0]，不将其移除。
         /// </summary>
@@ -246,6 +244,20 @@ namespace SpaceCG.Generic
             }
             return newArray;
         }
+        /// <summary>
+        /// 将缓冲区的逻辑内容按顺序复制到目标数组中。
+        /// </summary>
+        /// <param name="destination"></param>
+        /// <param name="destinationIndex"></param>
+        public void CopyTo(T[] destination, int destinationIndex)
+        {
+            var segments = GetSegments();
+            foreach (var segment in segments)
+            {
+                Array.Copy(segment.Array, segment.Offset, destination, destinationIndex, segment.Count);
+                destinationIndex += segment.Count;
+            }
+        }
 
         /// <summary>
         /// 获取缓冲区内容的逻辑段列表，按插入顺序排列。
@@ -279,7 +291,7 @@ namespace SpaceCG.Generic
         #region IEnumerable 实现
         IEnumerator IEnumerable.GetEnumerator()
         {
-            return (IEnumerator)GetEnumerator();
+            return GetEnumerator();
         }
         #endregion
 
@@ -335,7 +347,6 @@ namespace SpaceCG.Generic
             if (actual >= Capacity) actual -= Capacity;
             return actual;
         }
-
 
         #region 内部段访问
         // 内部缓冲区数组最多由两个不连续的段组成。
