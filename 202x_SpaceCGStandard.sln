@@ -20,6 +20,8 @@ Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard", "SharedP
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Wpf", "Builder\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj", "{AB345686-8084-4A9F-9356-DD91336AFE43}"
 EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard.Wpf", "SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.shproj", "{837B66E2-9B60-4626-9B4A-0E739B683993}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -46,12 +48,14 @@ Global
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{9635A542-CC5A-4BD8-9359-55D2D9410B4E} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
 		{AB345686-8084-4A9F-9356-DD91336AFE43} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{837B66E2-9B60-4626-9B4A-0E739B683993} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems*{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}*SharedItemsImports = 5
+		SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.projitems*{837b66e2-9b60-4626-9b4a-0e739b683993}*SharedItemsImports = 13
 		SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems*{9635a542-cc5a-4bd8-9359-55d2d9410b4e}*SharedItemsImports = 13
 		SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems*{e2cf9c8a-adf0-4a43-a2d4-d1251155552f}*SharedItemsImports = 4
 	EndGlobalSection
