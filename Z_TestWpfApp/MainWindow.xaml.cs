@@ -70,7 +70,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D2:
-                    var result = await rpcClient.InvokeFuncAsync("Demo", "SetColor", new object[] { "#FF00FF00" });
+                    var result = await rpcClient.InvokeFuncAsync("Demo", "SetColor2", new object[] { "#FF00FF00" });
                     Trace.TraceInformation($"Response::{result}");
                     Trace.TraceInformation($"ReturnType::{result.ReturnType}");
                     Trace.TraceInformation($"ReturnValue::{result.ReturnValue}");
@@ -103,8 +103,7 @@ namespace Z_TestWpfApp
         Stopwatch stopwatch = new Stopwatch();
 
         private void test()
-        {
-
+        {            
             var s0 = "0x01,True,32,False";
             var s1 = "0x01,3,[True,True,False]";
             var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
@@ -147,10 +146,9 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            var bs = new byte[] { 0x01, 0x02 };
-            byte[] clone = null;// = new byte[bs.Length]; ;
-            bs.CopyTo(clone, 0);
-            Trace.TraceInformation("Hello..111.");
+            var ss0 = "System.Windows.Media.Color";
+            var type = Type.GetType(ss0, false);
+
 
             var config2 = XElementExtensions.LoadConfig($"Resources/Config.xml");
             Trace.WriteLine($"config...{config2}");
@@ -159,7 +157,8 @@ namespace Z_TestWpfApp
             //var returnType = Type.GetType(str, true);
             SecurityElement.Escape("");
 
-            rpcClient = new RpcClient4X("127.0.0.1", 2001);
+            rpcClient = new RpcClient4X("127.0.0.1", 2000);
+            rpcClient.ResponseTimeout = TimeSpan.FromSeconds(100);
             rpcClient.Connect();
 
             const string Dictionary = nameof(Dictionary);
@@ -174,12 +173,6 @@ namespace Z_TestWpfApp
             var a7 = "'hello world, \"test\" hell.'";
             Trace.WriteLine($">>{StringExtensions.SerializeValue(a7)}<<");
 
-
-            var bytes = new byte[] {0x01,0x02 };
-            var type = bytes.GetType();
-            Trace.WriteLine(bytes.GetType());
-
-            F2(bytes);
 #if false
             var type = this.GetType();
             foreach(var method in type.GetMethods())
@@ -224,7 +217,7 @@ namespace Z_TestWpfApp
             return true;
         }
 
-        public IEnumerable<IEnumerable<int>> SetColor(Color color)
+        public IEnumerable<IEnumerable<int>> SetColor0(Color color)
         {
             Rectangle_0.Fill = new SolidColorBrush(color);
 
@@ -232,6 +225,24 @@ namespace Z_TestWpfApp
             var a1 = new List<int>() { 6, 7, 8, 9, 10 };
 
             return new List<List<int>>() { a0, a1 };
+        }
+        public IEnumerable<int> SetColor1(Color color)
+        {
+            Rectangle_0.Fill = new SolidColorBrush(color);
+
+            var a0 = new List<int>() { 1, 2, 3, 4, 5 };
+            var a1 = new List<int>() { 6, 7, 8, 9, 10 };
+
+            return a0;
+        }
+        public Color SetColor2(Color color)
+        {
+            Rectangle_0.Fill = new SolidColorBrush(color);
+
+            var a0 = new List<int>() { 1, 2, 3, 4, 5 };
+            var a1 = new List<int>() { 6, 7, 8, 9, 10 };
+
+            return Colors.Red;
         }
         public IEnumerable<int> SetColors(IEnumerable<Color> colors)
         {

@@ -7,7 +7,9 @@ using System.Runtime.CompilerServices;
 namespace SpaceCG.Generic
 {
     /// <summary>
-    /// 环形缓冲区（循环缓冲区）。双端操作数组，当缓冲区已满时，添加新元素会移除另一端的元素以腾出空间。
+    /// 环形缓冲区（循环缓冲区），支持双端添加和移除元素。
+    /// <para>当缓冲区已满时，从任意一端添加新元素会自动从另一端移除最旧的元素，确保缓冲区大小始终不超过容量。</para>
+    /// <para>线程安全：此类不保证线程安全，多线程并发访问需要外部同步。支持通过索引器按逻辑索引随机访问。</para>
     /// </summary>
     /// <typeparam name="T">缓冲区中元素的类型。</typeparam>
     [DebuggerDisplay("Count = {Count}")]
@@ -125,11 +127,11 @@ namespace SpaceCG.Generic
         }
 
         /// <summary>
-        /// 向缓冲区尾部推送一个新元素。执行后，Back()/this[Size-1] 将返回此元素。
-        /// <para>当缓冲区已满时，头部元素 Front()/this[0] 将被弹出，以便为新元素腾出空间。</para>
+        /// 向缓冲区尾部添加一个元素。执行后，<see cref="PeekBack"/> / this[<see cref="Count"/> - 1] 将返回此元素。
+        /// <para>当缓冲区已满时，头部元素（<see cref="PeekFront"/>）将被移除，以便为新元素腾出空间。</para>
         /// </summary>
-        /// <param name="item">要推送到缓冲区尾部的元素</param>
-        public void PushBack(T item)
+        /// <param name="item">要添加到缓冲区尾部的元素。</param>
+        public void AddBack(T item)
         {
             if (IsFull)
             {
@@ -145,11 +147,11 @@ namespace SpaceCG.Generic
             }
         }
         /// <summary>
-        /// 向缓冲区头部推送一个新元素。执行后，Front()/this[0] 将返回此元素。
-        /// <para>当缓冲区已满时，尾部元素 Back()/this[Size-1] 将被弹出，以便为新元素腾出空间。</para>
+        /// 向缓冲区头部添加一个元素。执行后，<see cref="PeekFront"/> / this[0] 将返回此元素。
+        /// <para>当缓冲区已满时，尾部元素（<see cref="PeekBack"/>）将被移除，以便为新元素腾出空间。</para>
         /// </summary>
-        /// <param name="item">要推送到缓冲区头部的元素</param>
-        public void PushFront(T item)
+        /// <param name="item">要添加到缓冲区头部的元素。</param>
+        public void AddFront(T item)
         {
             if (IsFull)
             {
@@ -166,28 +168,29 @@ namespace SpaceCG.Generic
         }
 
         /// <summary>
-        /// 获取缓冲区尾部的元素 - 即 this[Size - 1]。
+        /// 查看缓冲区尾部的元素，即 this[<see cref="Count"/> - 1]，不将其移除。
         /// </summary>
-        /// <returns>缓冲区尾部类型为 T 的元素值。</returns>
-        public T Back()
+        /// <returns>缓冲区尾部类型为 <typeparamref name="T"/> 的元素值。</returns>
+        public T PeekBack()
         {
             ThrowIfEmpty();
             return _buffer[(_end != 0 ? _end : Capacity) - 1];
         }
         /// <summary>
-        /// 获取缓冲区头部的元素 - 即 this[0]。
+        /// 查看缓冲区头部的元素，即 this[0]，不将其移除。
         /// </summary>
-        /// <returns>缓冲区头部类型为 T 的元素值。</returns>
-        public T Front()
+        /// <returns>缓冲区头部类型为 <typeparamref name="T"/> 的元素值。</returns>
+        public T PeekFront()
         {
             ThrowIfEmpty();
             return _buffer[_start];
-        }        
+        }
 
         /// <summary>
-        /// 移除缓冲区尾部的元素，缓冲区大小减 1。
+        /// 移除并返回缓冲区尾部的元素，<see cref="Count"/> 减 1。
         /// </summary>
-        public T PopBack()
+        /// <returns>被移除的尾部元素。</returns>
+        public T RemoveBack()
         {
             ThrowIfEmpty("无法从空缓冲区中移除元素。");
             Decrement(ref _end);
@@ -199,9 +202,10 @@ namespace SpaceCG.Generic
             return value;
         }
         /// <summary>
-        /// 移除缓冲区头部的元素，缓冲区大小减 1。
+        /// 移除并返回缓冲区头部的元素，<see cref="Count"/> 减 1。
         /// </summary>
-        public T PopFront()
+        /// <returns>被移除的头部元素。</returns>
+        public T RemoveFront()
         {
             ThrowIfEmpty("无法从空缓冲区中移除元素。");
 
@@ -215,9 +219,8 @@ namespace SpaceCG.Generic
         }
 
         /// <summary>
-        /// 清空缓冲区内容。大小重置为 0，容量保持不变。
+        /// 清空缓冲区内容。<see cref="Count"/> 重置为 0，<see cref="Capacity"/> 保持不变。
         /// </summary>
-        /// <exception cref="NotImplementedException"></exception>
         public void Clear()
         {
             // 清空操作只需重置所有指针和大小
@@ -228,14 +231,14 @@ namespace SpaceCG.Generic
         }
 
         /// <summary>
-        /// 将缓冲区的逻辑内容复制到一个新数组中（独立于内部存储顺序）。
+        /// 将缓冲区的逻辑内容按顺序复制到一个新数组中。
         /// </summary>
         /// <returns>包含缓冲区内容副本的新数组。</returns>
         public T[] ToArray()
         {
             T[] newArray = new T[Count];
             int newArrayOffset = 0;
-            var segments = ToArraySegments();
+            var segments = GetSegments();
             foreach (ArraySegment<T> segment in segments)
             {
                 Array.Copy(segment.Array, segment.Offset, newArray, newArrayOffset, segment.Count);
@@ -245,28 +248,24 @@ namespace SpaceCG.Generic
         }
 
         /// <summary>
-        /// 将缓冲区内容表示为最多 2 个 ArraySegment。
-        /// 遵循缓冲区的逻辑顺序，每个段及段内元素均按插入顺序排列。
-        ///
-        /// 高效：不复制数组元素，仅返回视图。
-        /// 适用于类似 <c>Send(IList&lt;ArraySegment&lt;Byte&gt;&gt;)</c> 的方法。
-        /// 
-        /// <remarks>返回的段可能为空。</remarks>
+        /// 获取缓冲区内容的逻辑段列表，按插入顺序排列。
+        /// <para>高效：不复制元素，仅返回 <see cref="ArraySegment{T}"/> 视图，适用于 <c>Send(IList&lt;ArraySegment&lt;Byte&gt;&gt;)</c> 等零拷贝场景。</para>
+        /// <para>返回的段可能为空（当缓冲区为空时）。</para>
         /// </summary>
-        /// <returns>包含最多 2 个段的列表，对应缓冲区的逻辑内容。</returns>
-        public IList<ArraySegment<T>> ToArraySegments()
+        /// <returns>包含最多 2 个段的列表，按逻辑顺序对应缓冲区内容。</returns>
+        public IList<ArraySegment<T>> GetSegments()
         {
-            return new[] { ArrayOne(), ArrayTwo() };
+            return new[] { GetFirstSegment(), GetSecondSegment() };
         }
 
-        #region IEnumerable<T> implementation
+        #region IEnumerable<T> 实现
         /// <summary>
-        /// 返回一个枚举器，用于遍历缓冲区中的元素（按逻辑顺序）。
+        /// 返回一个按逻辑顺序遍历缓冲区元素的枚举器。
         /// </summary>
         /// <returns>可用于迭代此集合的枚举器。</returns>
         public IEnumerator<T> GetEnumerator()
         {
-            var segments = ToArraySegments();
+            var segments = GetSegments();
             foreach (ArraySegment<T> segment in segments)
             {
                 for (int i = 0; i < segment.Count; i++)
@@ -325,28 +324,27 @@ namespace SpaceCG.Generic
         }
 
         /// <summary>
-        /// 将外部逻辑索引转换为内部 _buffer 数组的实际物理索引。
+        /// 将外部逻辑索引转换为内部物理缓冲区数组的实际索引。
         /// </summary>
-        /// <returns>转换后的内部索引。</returns>
-        /// <param name='index'>外部逻辑索引（范围 [0, Size)）。</param>
+        /// <param name="index">外部逻辑索引，有效范围 [0, <see cref="Count"/>)。</param>
+        /// <returns>转换后的内部物理索引。</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private int InternalIndex(int index)
         {
             int actual = _start + index;
             if (actual >= Capacity) actual -= Capacity;
             return actual;
-            //return _start + (index < (Capacity - _start) ? index : index - Capacity);
         }
 
 
-        #region Array items easy access.
-        // 内部数组最多由两个不连续的段组成，
-        // 以下两个方法提供对这两个段的便捷访问。
+        #region 内部段访问
+        // 内部缓冲区数组最多由两个不连续的段组成。
+        // 以下两个方法提供对这两个段的便捷访问，供 GetSegments() 使用。
 
         /// <summary>
-        /// 获取缓冲区的第一个逻辑段（从 _start 开始到数组末尾或 _end 结束）。
+        /// 获取缓冲区的第一个逻辑段（从 _start 到数组末尾或 _end）。
         /// </summary>
-        private ArraySegment<T> ArrayOne()
+        private ArraySegment<T> GetFirstSegment()
         {
             if (IsEmpty)
             {
@@ -354,20 +352,20 @@ namespace SpaceCG.Generic
             }
             else if (_start < _end)
             {
-                // 数据连续存储在 [ _start, _end ) 区间
+                // 数据连续存储在 [_start, _end) 区间
                 return new ArraySegment<T>(_buffer, _start, _end - _start);
             }
             else
             {
-                // 数据跨越数组末尾：第一段从 _start 到数组结尾
+                // 数据跨越数组末尾：第一段从 _start 到数组末尾
                 return new ArraySegment<T>(_buffer, _start, _buffer.Length - _start);
             }
         }
 
         /// <summary>
-        /// 获取缓冲区的第二个逻辑段（仅在数据跨越数组末尾时存在）。
+        /// 获取缓冲区的第二个逻辑段（仅在数据跨越数组末尾时非空）。
         /// </summary>
-        private ArraySegment<T> ArrayTwo()
+        private ArraySegment<T> GetSecondSegment()
         {
             if (IsEmpty)
             {

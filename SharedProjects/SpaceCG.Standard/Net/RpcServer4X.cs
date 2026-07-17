@@ -12,20 +12,28 @@ namespace SpaceCG.Net
 {
     /// <summary>
     /// 基于 XML 消息协议的 RPC 服务端实现（XML-RPC v2.0）。
-    /// <para>默认以 CRLF 作为字节数据分割。请求和响应均使用 XElement 解析 / StringBuilder 拼接 XML。</para>
-    /// <para>用法示例：<code>new RpcServer4X(port).Start()</code></para>
     /// </summary>
     public sealed class RpcServer4X : RpcServerBase
     {
         /// <summary> 使用 "/>"（0x2F, 0x3E）的消息分隔符。 </summary>
-        public static readonly byte[] XMLEndMarker = new byte[] { 0x2F, 0x3E };
+        public static readonly byte[] XmlTerminate = new byte[] { 0x2F, 0x3E };
 
         /// <summary> XML 元素属性正则表达式。 </summary>
         private static readonly Regex AttributeRegex = new Regex(@"(\w+)\s*=\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        /// <inheritdoc /> 
+        /// <summary>
+        /// 使用指定的端口创建 <see cref="RpcServer4X"/> 实例。
+        /// </summary>
         public RpcServer4X(int localPort = 2000) : this(IPAddress.Any, localPort)
         {
+        }
+        /// <summary>
+        /// 使用指定的端口创建 <see cref="RpcServer4X"/> 实例。
+        /// <para>为了兼容 XML-RPC v1.0，保留了 delimiters 分割符设置。 </para>
+        /// </summary>
+        public RpcServer4X(int localPort, byte[] delimiters) : this(IPAddress.Any, localPort)
+        {
+            this.Delimiters = delimiters;
         }
         /// <inheritdoc /> 
         public RpcServer4X(IPAddress ipAddress, int localPort) : base(ipAddress, localPort)

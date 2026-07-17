@@ -105,8 +105,14 @@ namespace SpaceCG.Net
                 {
                     try
                     {
-                        returnType = Type.GetType(element.Attribute(nameof(ResponseMessage.ReturnType))?.Value, false);
-                        if (returnType != null) TypeExtensions.TryConvertParameter(element.Attribute(nameof(ResponseMessage.ReturnValue))?.Value, returnType, out returnValue);
+                        returnType = TypeExtensions.GetType(element.Attribute(nameof(ResponseMessage.ReturnType))?.Value);
+                        var returnValueContent = element.Attribute(nameof(ResponseMessage.ReturnValue))?.Value;
+
+                        if (returnType != null && !string.IsNullOrWhiteSpace(returnValueContent))
+                        {
+                            var parameters = returnValueContent.ParseParameters();
+                            if (parameters?.Length == 1) TypeExtensions.TryConvertParameter(parameters[0], returnType, out returnValue);
+                        }
                     }
                     catch (Exception ex)
                     {

@@ -54,14 +54,14 @@ namespace SpaceCG.Net
         /// <summary> 已注册的可调用方法标识符集合。格式：<c>"Object.Method(SVT,...)"</c>。 </summary>
         public IEnumerable<string> AvailableMethods => RegisteredMethods.Keys;
         /// <summary>
-        /// 获取或设置消息分隔符字节数组，用于在 TCP 流中标识一条完整消息的边界。如果为空则默认使用 <see cref="NewLine"/>。
+        /// 获取或设置字节数据的分隔符，用于在 TCP 流中标识一条完整消息的边界。如果为空则默认使用 <see cref="NewLine"/>。
         /// <para>默认值为 CRLF（<c>0x0D, 0x0A</c>），即 <see cref="NewLine"/>。</para>
         /// <para>可设置为其他自定义分隔符，如：LFLF (<c>0x0A0A</c>)、多个 NULL 字符 (<c>0x0000</c>)、或自定义多字节序列。</para>
         /// <para>注意：分隔符必须能唯一标识消息边界，避免与消息体内容冲突。修改此值会影响所有新连接的会话，
         /// 已建立的连接不受影响（每个会话在连接建立时快照当前值）。</para>
         /// <para>线程安全：读取线程安全，写入操作应在服务启动前完成。</para>
         /// </summary>
-        public byte[] MessageDelimiter { get; protected set; } = NewLine;
+        public byte[] Delimiters { get; protected set; } = NewLine;
         #endregion
 
         #region events
@@ -357,7 +357,7 @@ namespace SpaceCG.Net
         }
         /// <summary>
         /// 处理 TCP 客户端连接会话(循环读取数据 -> 处理数据 -> 写入响应数据)。
-        /// <para>使用环形缓冲（Ring Buffer）模式，以 <see cref="MessageDelimiter" /> 分隔数据消息，通过 <see cref="DeserializeInvokeMessage"/> 反序列化数据消息。</para>
+        /// <para>使用环形缓冲（Ring Buffer）模式，以 <see cref="Delimiters" /> 分隔数据消息，通过 <see cref="DeserializeInvokeMessage"/> 反序列化数据消息。</para>
         /// </summary>
         /// <param name="client">已接受的 TCP 客户端连接。</param>
         /// <param name="cancellationToken">用于取消读取操作的取消令牌。</param>
@@ -376,10 +376,10 @@ namespace SpaceCG.Net
             var clientBuffer = new byte[bufferSize];
 
             byte[] delimiter = null;
-            if (MessageDelimiter?.Length > 0)
+            if (Delimiters?.Length > 0)
             {
-                delimiter = new byte[MessageDelimiter.Length];
-                MessageDelimiter.CopyTo(delimiter, 0);
+                delimiter = new byte[Delimiters.Length];
+                Delimiters.CopyTo(delimiter, 0);
             }
             else
             {
@@ -420,8 +420,8 @@ namespace SpaceCG.Net
                         var endIndex = clientBuffer.IndexOf(delimiter, readPosition, pendingLength - readPosition);
                         if (endIndex < 0 || endIndex == readPosition) break;
 
-                        // 提取完整的数据字节消息（不含 delimiter 分割符本身）
-                        var clientMessage = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
+                        // 提取完整的数据字节消息（含 delimiter 分割符本身）
+                        var clientMessage = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition + delimiter.Length);
 
                         // 移动读指针，跳过已消费的数据和分割符
                         readPosition = endIndex + delimiter.Length;
@@ -501,7 +501,7 @@ namespace SpaceCG.Net
         /// 处理客户端的数据消息（反序列化 -> 事件拦截 -> 方法调用分发）。
         /// </summary>
         /// <param name="client">发送数据的 TCP 客户端连接。</param>
-        /// <param name="clientMessage">一条完整的数据消息。</param>
+        /// <param name="clientMessage">一条完整的字节数据消息。</param>
         /// <param name="cancellationToken">用于取消操作的令牌。</param>
         /// <returns>一个表示异步操作的任务。</returns>
         protected async Task ProcessClientMessageAsync(TcpClient client, ArraySegment<byte> clientMessage, CancellationToken cancellationToken)
@@ -782,20 +782,20 @@ namespace SpaceCG.Net
 
         #region 子类重写抽象方法 DeserializeInvokeMessage & SerializeResponseMessage
         /// <summary>
-        /// 解析客户端发送的一条完整数据消息（以 <see cref="MessageDelimiter"/> 数据分割的消息）。
+        /// 解析客户端发送的一条完整字节数据消息（结尾以 <see cref="Delimiters"/> 标识符结束）。
         /// <para>子类继承重写该方法，实现不同协议的数据解析逻辑。</para>
         /// </summary>
-        /// <param name="requestMessage">客户端的请求消息，数据消息字节数据（不含尾部的 <see cref="MessageDelimiter"/>）。</param>
+        /// <param name="requestMessage">客户端的请求消息，字节数据消息（结尾以 <see cref="Delimiters"/> 标识符结束）。</param>
         /// <param name="clientEndPoint">发送数据的客户端远程端点地址。</param>
         /// <returns>解析成功返回一条 <see cref="InvokeMessage"/> 待服务端调用的消息；可过滤、修改、或解析失败则返回空。</returns>
         protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> requestMessage, IPEndPoint clientEndPoint);
         /// <summary>
-        /// 将执行调用后的响应信息序列化为响应字节数组，用于发送回客户端。
+        /// 将执行调用后的响应信息，序列化为响应字节数组（结尾应以 <see cref="Delimiters"/> 标识符结束），用于发送回客户端。
         /// <para>子类继承重写该方法，实现不同协议的响应格式。</para>
         /// </summary>
         /// <param name="responseMessage">执行调用后的响应对象。</param>
         /// <param name="clientEndPoint">目标客户端的远程端点地址。</param>
-        /// <returns>序列化后的响应 UTF-8 字节数组；如果不响应则时返回空数组。 </returns>
+        /// <returns>序列化后的响应字节数组（结尾应以 <see cref="Delimiters"/> 标识符结束）；如果不响应则时返回空数组。 </returns>
         protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint clientEndPoint);
         #endregion
 

@@ -12,7 +12,7 @@ namespace SpaceCG.Net
 {
     /// <summary>
     /// RPC 客户端抽象基类，与服务端 <see cref="RpcServerBase"/> 镜像对称设计。
-    /// <para>提供 TCP 连接管理、环形缓冲使用 <see cref="MessageDelimiter"/> 拆分数据字节、请求/响应 Id 匹配、超时管理、自动重连等基础能力。</para>
+    /// <para>提供 TCP 连接管理、环形缓冲使用 <see cref="Delimiters"/> 拆分数据字节、请求/响应 Id 匹配、超时管理、自动重连等基础能力。</para>
     /// <para>
     /// <list type="bullet">
     ///     <item>基类默认以 CRLF (0x0D 0x0A) 为分割字节数据，每次拆分作为一个数据消息。</item>
@@ -76,7 +76,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 获取或设置默认的远程方法调用请求超时时间，默认 3 秒。
         /// </summary>
-        public TimeSpan DefaultTimeout { get; set; } = TimeSpan.FromSeconds(3.0);
+        public TimeSpan ResponseTimeout { get; set; } = TimeSpan.FromSeconds(3.0);
         /// <summary>
         /// 获取或设置自动重连的延迟时间，默认 3 秒。
         /// <para>连接断开后等待此间隔再尝试重新连接。</para>
@@ -85,14 +85,14 @@ namespace SpaceCG.Net
         /// </summary>
         public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(3.0);
         /// <summary>
-        /// 获取或设置消息分隔符字节数组，用于在 TCP 流中标识一条完整消息的边界。如果为空则默认使用 <see cref="NewLine"/>。
+        /// 获取或设置字节数据的分隔符，用于在 TCP 流中标识一条完整消息的边界。如果为空则默认使用 <see cref="NewLine"/>。
         /// <para>默认值为 CRLF（<c>0x0D, 0x0A</c>），即 <see cref="NewLine"/>。</para>
         /// <para>可设置为其他自定义分隔符，如：LFLF (<c>0x0A0A</c>)、多个 NULL 字符 (<c>0x0000</c>)、或自定义多字节序列。</para>
         /// <para>注意：分隔符必须能唯一标识消息边界，避免与消息体内容冲突。修改此值会影响所有新连接的会话，
         /// 已建立的连接不受影响（每个会话在连接建立时快照当前值）。</para>
         /// <para>线程安全：读取线程安全，写入操作应在服务启动前完成。</para>
         /// </summary>
-        public byte[] MessageDelimiter { get; protected set; } = NewLine;
+        public byte[] Delimiters { get; protected set; } = NewLine;
         #endregion
 
         #region Constructors
@@ -273,7 +273,7 @@ namespace SpaceCG.Net
             }
         }
         /// <summary>
-        /// 处理与服务端的会话：使用环形缓冲（Ring Buffer）模式以 <see cref="MessageDelimiter"/> 拆分字节数据，每个拆分数据对应一条响应消息。
+        /// 处理与服务端的会话：使用环形缓冲（Ring Buffer）模式以 <see cref="Delimiters"/> 拆分字节数据，每个拆分数据对应一条响应消息。
         /// <para>解析出的响应通过 Id 匹配分派到对应的 <see cref="_pendingCalls"/>，断开时取消所有待响应调用。</para>
         /// </summary>
         /// <param name="tcpClient">已连接的 TCP 客户端。</param>
@@ -289,10 +289,10 @@ namespace SpaceCG.Net
             var clientBuffer = new byte[bufferSize];
 
             byte[] delimiter = null;
-            if (MessageDelimiter?.Length > 0)
+            if (Delimiters?.Length > 0)
             {
-                delimiter = new byte[MessageDelimiter.Length];
-                MessageDelimiter.CopyTo(delimiter, 0);
+                delimiter = new byte[Delimiters.Length];
+                Delimiters.CopyTo(delimiter, 0);
             }
             else
             {
@@ -322,8 +322,8 @@ namespace SpaceCG.Net
                         var endIndex = clientBuffer.IndexOf(delimiter, readPosition, pendingLength - readPosition);
                         if (endIndex < 0 || endIndex == readPosition) break;
 
-                        // 提取完整的数据字节消息（不含 delimiter）
-                        var messageBytes = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
+                        // 提取完整的数据字节消息（含 delimiter）
+                        var messageBytes = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition + delimiter.Length);
                         readPosition = endIndex + delimiter.Length;
 
                         // 解析响应消息并分派
@@ -570,7 +570,7 @@ namespace SpaceCG.Net
         /// <param name="objectName">目标对象名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="methodName">目标方法名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="parameters">方法参数对象数组，可为 null 表示无参调用。</param>
-        /// <param name="timeout">超时时间，null 表示使用 <see cref="DefaultTimeout"/>。</param>
+        /// <param name="timeout">超时时间，null 表示使用 <see cref="ResponseTimeout"/>。</param>
         /// <returns>包含状态码、描述信息和原始返回值的响应消息。</returns>
         /// <exception cref="ObjectDisposedException">实例已释放时抛出。</exception>
         public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters = null, TimeSpan? timeout = null)
@@ -634,25 +634,25 @@ namespace SpaceCG.Net
             }
 
             // 等待响应（带超时）
-            return await WaitResponseMessageAsync(tcs, invokeMessage, timeout ?? DefaultTimeout).ConfigureAwait(false);
+            return await WaitResponseMessageAsync(tcs, invokeMessage, timeout ?? ResponseTimeout).ConfigureAwait(false);
         }
         #endregion
 
 
         #region Abstract Methods (Subclass Protocol Layer)
         /// <summary>
-        /// 将调用消息序列化为待发送的字节数组。
+        /// 将调用消息序列化为待发送的字节数组（结尾应以 <see cref="Delimiters"/> 标识符结束）。
         /// <para>子类实现不同协议格式（XML / JSON 等），与 <see cref="RpcServerBase.SerializeResponseMessage"/> 镜像对称。</para>
         /// </summary>
         /// <param name="requestMessage">待序列化的调用消息。</param>
-        /// <returns>可直接写入 NetworkStream 的字节数组（应以 <see cref="MessageDelimiter"/> 结尾以标识符结束）。</returns>
+        /// <returns>序列化后的请求字节数组（结尾应以 <see cref="Delimiters"/> 标识符结束）。</returns>
         protected abstract byte[] SerializeInvokeMessage(InvokeMessage requestMessage);
 
         /// <summary>
-        /// 将接收到的字节数据解析为一条响应消息。
-        /// <para>一条数据消息对应一条响应消息，子类实现不同协议的响应解析。</para>
+        /// 将接收到的响应字节数据（结尾以 <see cref="Delimiters"/> 标识符结束）解析为一条响应消息。
+        /// <para>一条响应字节数据对应一条响应消息，子类实现不同协议的响应解析。</para>
         /// </summary>
-        /// <param name="responseMessage">一个完整的数据字节消息（不含尾部 <see cref="MessageDelimiter"/>）。</param>
+        /// <param name="responseMessage">一条完整的字节数据消息（结尾以 <see cref="Delimiters"/> 标识符结束）。</param>
         /// <returns>解析出的响应消息；无法解析则返回 <c>null</c>。</returns>
         protected abstract ResponseMessage DeserializeResponseMessage(ArraySegment<byte> responseMessage);
         #endregion

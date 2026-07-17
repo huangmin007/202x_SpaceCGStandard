@@ -15,13 +15,21 @@ namespace SpaceCG.Extensions
     public static partial class TypeExtensions
     {
         /// <summary>
-        /// 缓存类型实现的接口数组，避免每次调用 <see cref="Type.GetInterfaces"/> 的反射开销。
+        /// 类型名称缓存，避免每次调用 <see cref="Type.GetType(string)"/> 的反射开销。
+        /// <para>Key: 类型名称，Value: 类型实例。</para>
+        /// </summary>
+        internal static readonly ConcurrentDictionary<string, Type> TypeNameCache = new ConcurrentDictionary<string, Type>();
+        /// <summary>
+        /// 缓存类型是否实现类型 <see cref="IEnumerable{T}"/> 接口。
+        /// <para>Key: 类型实例，Value: 是否实现 <see cref="IEnumerable{T}"/> 接口。</para>
         /// </summary>
         internal static readonly ConcurrentDictionary<Type, bool> EnumerableOfTCache = new ConcurrentDictionary<Type, bool>();
         /// <summary>
         /// 缓存类型的 <see cref="TypeConverter"/> 实例，避免每次调用 <see cref="TypeDescriptor.GetConverter(Type)"/> 的反射开销。
+        /// <para>Key: 类型实例，Value: 类型转换器实例。</para>
         /// </summary>
         internal static readonly ConcurrentDictionary<Type, TypeConverter> TypeConverterCache = new ConcurrentDictionary<Type, TypeConverter>();
+
 
         #region Type & Value Signature
         /// <summary>
@@ -120,7 +128,6 @@ namespace SpaceCG.Extensions
         public static bool IsEnumerableOfT(this Type type)
         {
             if (type == null) return false;
-
             return EnumerableOfTCache.GetOrAdd(type, t =>
             {
                 foreach (var i in t.GetInterfaces())
@@ -129,6 +136,52 @@ namespace SpaceCG.Extensions
                         return true;
                 }
                 return false;
+            });
+        }
+
+        /// <summary>
+        /// 通过类型名称获取 <see cref="Type"/> 对象，支持带缓存的全域类型查找。
+        /// <para>查找策略：</para>
+        /// <list type="number">
+        ///     <item>先检查 <see cref="TypeNameCache"/> 缓存，命中则直接返回。</item>
+        ///     <item>使用 <see cref="Type.GetType(string, bool)"/> 在当前程序集中查找。</item>
+        ///     <item>未找到则遍历 <see cref="AppDomain.CurrentDomain"/> 中所有已加载程序集，调用 <see cref="Assembly.GetType(string, bool)"/> 查找。</item>
+        ///     <item>所有程序集均未找到时返回 <c>null</c>。</item>
+        /// </list>
+        /// <para>注意：此方法仅查找已加载程序集中的类型，不会触发程序集加载。类型名称应包含命名空间全路径。</para>
+        /// <para>线程安全：使用 <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> 保证并发安全。</para>
+        /// </summary>
+        /// <param name="typeName">类型的完整限定名（含命名空间），如 <c>"System.Int32"</c> 或 <c>"SpaceCG.Net.RpcServerBase"</c>。</param>
+        /// <param name="throwOnError">未找到时是否抛出异常，默认 <c>false</c>。</param>
+        /// <returns>找到则返回对应的 <see cref="Type"/> 对象；未找到或 <paramref name="typeName"/> 为 <c>null</c>/空字符串时返回 <c>null</c>。</returns>
+        /// <example>
+        /// <code>
+        /// var type = TypeExtensions.GetType("System.Int32");
+        /// var type2 = TypeExtensions.GetType("SpaceCG.Net.RpcServerBase");
+        /// </code>
+        /// </example>
+        public static Type GetType(string typeName, bool throwOnError = false)
+        {
+            if (string.IsNullOrWhiteSpace(typeName)) return null;
+            return TypeNameCache.GetOrAdd(typeName, tn =>
+            {
+                Type type = Type.GetType(tn, throwOnError);
+                if (type != null) return type;
+
+                try
+                {
+                    foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        type = assembly.GetType(tn, throwOnError);
+                        if (type != null) return type;
+                    }
+                }
+                catch (Exception ex) 
+                {
+                    Trace.TraceWarning($"获取具用指定名称 {tn} 的 Type 时发生异常：{ex.Message}");
+                }
+
+                return null;
             });
         }
 
@@ -157,7 +210,7 @@ namespace SpaceCG.Extensions
 
             Type valueType = value.GetType();
             // 类型兼容检查（含接口实现关系）
-            if (!targetType.IsArray && (valueType == targetType || targetType.IsAssignableFrom(valueType)))
+            if (!targetType.IsArray && !targetType.IsGenericType && (valueType == targetType || targetType.IsAssignableFrom(valueType)))
             {
                 convertedParameter = value;
                 return true;
