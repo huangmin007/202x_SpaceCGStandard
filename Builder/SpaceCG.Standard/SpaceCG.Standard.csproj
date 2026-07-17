@@ -6,8 +6,9 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
-    <Title>SpaceCG.Standard</Title>
     <Company>SpaceCG.CN</Company>
   </PropertyGroup>
+
+  <Import Project="..\..\SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems" Label="Shared" />
 
 </Project>

@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+
+<Configuration>
+	<Configuration.Templates>
+		<Template Name="BtnTemplate1">
+			<Button Width="{Width}" Height="40"/>
+		</Template>
+	</Configuration.Templates>
+	<Configuration.Dictionary Comment="针对全局的字典配置项">
+		<Item Key="深蓝色" Value="#FF001EFF" />
+		<Item Key="绿色"	  Value="#FF00FF00" />
+		<Item Key="青蓝色" Value="#FF008EFF" />
+		<Item Key="橙黄色" Value="#FFFFFF00" />
+		<Item Key="红色"   Value="#FFFF0000" />
+		<Item Key="熄灭"   Value="#00000000" />
+	</Configuration.Dictionary>
+
+	<!-- 子级作用域：定义了自己的模板，覆盖父级 -->
+	<Scene Id="1">
+		<Scene.Dictionary>
+			<Item Key="橙黄色1" Value="#FFFF800F" />
+		</Scene.Dictionary>
+		<Scene.Templates>
+			<Template Name="BtnTemplate2">
+				<Button Width="{Width}" Height="60" Color="{橙黄色1}" />
+			</Template>
+		</Scene.Templates>
+
+		<RefTemplate Name="BtnTemplate2" Width="200"/>
+	</Scene>
+
+	<RefTemplate Name="BtnTemplate1" Width="100"/>
+
+</Configuration>

@@ -97,11 +97,12 @@
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
-    <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj">
-      <Project>{da4a7c0c-6ce2-4a42-a089-c19a1baf5a53}</Project>
-      <Name>SpaceCG.Standard</Name>
-    </ProjectReference>
+    <None Include="Resources\Config.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
+  <Import Project="..\SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems" Label="Shared" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

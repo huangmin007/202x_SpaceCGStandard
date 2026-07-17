@@ -33,7 +33,7 @@ namespace SpaceCG
     /// </code>
     /// </example>
     /// <seealso cref="System.Diagnostics.Trace"/>
-    public static class Trace
+    public static partial class Trace
     {
         #region 平台检测与初始化
         /// <summary>当前是否运行在 Unity3D 环境中。</summary>

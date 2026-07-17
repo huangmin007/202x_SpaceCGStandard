@@ -60,6 +60,7 @@ namespace SpaceCG.Net
         private bool _isDisposed;
         private bool _isManualClosed;
 
+        private Task _connectTask;
         private TcpClient _tcpClient;
         private CancellationTokenSource _cts;
 
@@ -163,7 +164,7 @@ namespace SpaceCG.Net
 
             _isManualClosed = false;
             _cts = new CancellationTokenSource();
-            _ = ConnectWithRetryAsync(RemoteEndPoint.Address, RemoteEndPoint.Port, _cts.Token);
+            _connectTask = ConnectWithRetryAsync(RemoteEndPoint.Address, RemoteEndPoint.Port, _cts.Token);
         }
         /// <inheritdoc cref="Connect(IPAddress, int)"/>
         public void Connect() => Connect(RemoteEndPoint.Address, RemoteEndPoint.Port);
@@ -184,6 +185,17 @@ namespace SpaceCG.Net
             lock (_lock)
             {
                 CloseTcpClient();
+            }
+
+            try
+            {
+                _connectTask?.Wait(100);
+                _connectTask?.Dispose();
+            }
+            catch (Exception) { }
+            finally
+            {
+                _connectTask = null;
             }
 
             try { _cts?.Dispose(); }
@@ -217,7 +229,7 @@ namespace SpaceCG.Net
         }
         #endregion
 
-        #region ConnectLoop & HandleSessionAsync
+        #region ConnectWithRetryAsync & HandleServerSessionAsync
         /// <summary>
         /// 连接循环任务，内部会启动异步循环连接任务，连接成功后自动开始接收数据任务。
         /// </summary>
@@ -673,21 +685,9 @@ namespace SpaceCG.Net
 
             Close();
 
-            try
-            {
-                _cts?.Dispose();
-            }
+            try { _sendSemaphore?.Dispose(); }
             catch (Exception) { }
-
-            try
-            {
-                _sendSemaphore?.Dispose();
-            }
-            catch (Exception) { }
-
-            _cts = null;
         }
-
         #endregion
 
 

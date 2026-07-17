@@ -146,8 +146,11 @@ namespace Z_TestWpfApp
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
+        {            
             Trace.TraceInformation("Hello..111.");
+
+            var config2 = XElementExtensions.LoadConfig($"Resources/Config.xml");
+            Trace.WriteLine($"config...{config2}");
 
             //var str = "System.Collections.Generic.IEnumerable`1[System.Collections.Generic.IEnumerable`1[System.Int32]]";
             //var returnType = Type.GetType(str, true);

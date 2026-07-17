@@ -1,0 +1,38 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>9635a542-cc5a-4bd8-9359-55d2d9410b4e</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>SpaceCG</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\Extensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\FileExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\MathExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\StringExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\TypeExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\XElementExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Generic\ChecksumHelper.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Generic\CircularBuffer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Generic\CRCCheckHelper.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Generic\LoggerTraceListener.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Generic\ObjectPool.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\RpcClient4X.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\RpcClientBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\RpcMessages.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\RpcServer4X.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\RpcServerBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\TcpClientEx.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Trace.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)Extensions\XElementConfigExample.xml" />
+    <None Include="$(MSBuildThisFileDirectory)Generic\README.md" />
+    <None Include="$(MSBuildThisFileDirectory)Net\README.md" />
+    <None Include="$(MSBuildThisFileDirectory)Net\RPC 服务框架.md" />
+    <None Include="$(MSBuildThisFileDirectory)Net\远程过程调用(XML-RPC)消息协议.md" />
+  </ItemGroup>
+</Project>

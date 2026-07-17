@@ -634,7 +634,7 @@ namespace SpaceCG.Net
                 var description = $"Process invoke method ({objectMethod}) exception: ({ex.GetType().Name}) {ex.Message}";
                 Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 处理执行调用消息异常： {description}");
 
-                var responseMessage = ResponseMessage.Create(invokeMessage, -15, description);
+                var responseMessage = ResponseMessage.Create(invokeMessage, -20, description);
                 await WriteResponseMessageAsync(invokeMessage, responseMessage, cancellationToken).ConfigureAwait(false);
             }
             finally

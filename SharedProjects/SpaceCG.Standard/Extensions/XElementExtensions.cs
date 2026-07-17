@@ -11,11 +11,17 @@ namespace SpaceCG.Extensions
     /// XElement Extensions
     /// </summary>
     public static partial class XElementExtensions
-    {        
+    {
         #region 模板引用替换
         /// <summary>
-        /// 递归替换 XML 元素树中所有 <c>&lt;RefTemplate Name="..." /&gt;</c> 引用为对应的模板内容。
-        /// <para>模板定义在 <c>&lt;ElementName.Templates&gt;</c> 子元素中，支持嵌套模板引用和多层递归。</para>
+        /// 递归展开 XML 元素树中所有 <c>&lt;RefTemplate Name="..." /&gt;</c> 引用为对应的模板内容。
+        /// <para><b>处理顺序（深度优先，从上到下）：</b></para>
+        /// <para>
+        /// 1. 根元素先用自己的 <c>&lt;ElementName.Templates&gt;</c> 替换整棵子树中的所有 RefTemplate 引用；<br/>
+        /// 2. 然后递归处理每个子元素：若子元素有自己的模板，则用子模板处理其子树；
+        ///    若没有，则继续向下递归。</para>
+        /// <para><b>同名冲突：</b>父级模板先处理，子级同名模板不会被引用。
+        /// 因此不同层级不应定义同名模板，应将模板统一定义在最高层级。</para>
         /// <para>引用元素的额外属性（Name 除外）会替换模板中同名的 <c>{AttributeName}</c> 占位符。</para>
         /// <para>自动检测并移除循环引用的模板，避免死循环。</para>
         /// </summary>
@@ -26,32 +32,36 @@ namespace SpaceCG.Extensions
 
             const string Templates = nameof(Templates);
 
-            // 根节点：查找并应用 <RootName.Templates>
+            // 根节点：查找并应用 <ElementName.Templates>
             var templatesElements = element.Elements($"{element.Name}.{Templates}").ToList();
-            if (templatesElements != null && templatesElements.Count > 0)
+            if (templatesElements.Any())
             {
                 templatesElements.Remove();
-                ApplyTemplatesCore(element, templatesElements[0]);
+                ApplyTemplates(element, templatesElements[0]);
             }
 
-            // 递归处理每个子元素
+            // 递归处理每个子元素（每个子元素有自己的作用域）
             foreach (var child in element.Elements())
             {
                 templatesElements = child.Elements($"{child.Name}.{Templates}").ToList();
-                if (templatesElements == null || templatesElements.Count <= 0)
+                if (!templatesElements.Any())
                 {
                     ApplyTemplates(child);
                     continue;
                 }
 
                 templatesElements.Remove();
-                ApplyTemplatesCore(child, templatesElements[0]);
+                ApplyTemplates(child, templatesElements[0]);
             }
         }
         /// <summary>
         /// 在指定元素范围内，用模板定义替换所有 RefTemplate 引用。
+        /// <para>注意：<c>element.Descendants(RefTemplate)</c> 不能固化列表，
+        /// 因为替换过程中会动态修改 XML 树（AddAfterSelf + Remove），必须每次实时查询。</para>
         /// </summary>
-        private static void ApplyTemplatesCore(this XElement element, XElement templatesElement)
+        /// <param name="element">模板生效的元素范围（作用域根节点）。</param>
+        /// <param name="templatesElement">当前作用域的模板定义容器。</param>
+        private static void ApplyTemplates(this XElement element, XElement templatesElement)
         {
             if (element == null || templatesElement == null) return;
 
@@ -59,35 +69,33 @@ namespace SpaceCG.Extensions
             const string Template = nameof(Template);
             const string RefTemplate = nameof(RefTemplate);
 
-            // 检查模板元素是否存在循环引用或无效的模板，如果存在，则删除相关的模板元素
+            // 0.检查模板元素是否存在循环引用或无效的模板，如果存在，则删除相关的模板元素
             templatesElement.RemoveInvalidTemplates();
-
             var templates = templatesElement.Elements(Template);
             if (!templates.Any()) return;
 
-            // 构建模板名 → 模板元素的快速查找字典
-            var templateDict = templates
-                .Where(t => t.Attribute(Name) != null)
-                .ToDictionary(t => t.Attribute(Name).Value, t => t);
+            // 1.构建模板名 → 模板元素的快速查找字典
+            var templateDictionary = templates.Where(t => t.Attribute(Name) != null)
+                                    .ToDictionary(t => t.Attribute(Name).Value, t => t);
+            if (templateDictionary.Count == 0) return;
 
-            if (templateDict.Count == 0) return;
+            // 2.收集所有有效的 RefTemplate 引用（不能固化列表，不能固化列表）
+            var refTemplates = from refTemplate in element.Descendants(RefTemplate)
+                               let refName = refTemplate.Attribute(Name)?.Value
+                               where !string.IsNullOrWhiteSpace(refName)
+                               select refTemplate;
 
-            // 收集所有有效的 RefTemplate 引用（固化列表，避免 LINQ 延迟执行重复查询）
-            var refTemplateList = (from refTemplate in element.Descendants(RefTemplate)
-                                   let refName = refTemplate.Attribute(Name)?.Value
-                                   where !string.IsNullOrWhiteSpace(refName)
-                                   select refTemplate).ToList();
-
-            for (int i = 0; i < refTemplateList.Count; i++)
+            // Analyse And Replace(Apply Templates)
+            for (int i = 0; i < refTemplates.Count(); i++)
             {
-                XElement refTemplate = refTemplateList[i];
-                string refTemplateName = refTemplate.Attribute(Name)?.Value;
+                var refTemplate = refTemplates.ElementAt(i);
+                var refTemplateName = refTemplate.Attribute(Name)?.Value;
 
-                if (!templateDict.TryGetValue(refTemplateName, out var matchedTemplate))
+                if (!templateDictionary.TryGetValue(refTemplateName, out var matchedTemplate))
                     continue;
 
                 // 拷贝模板文本，并用 RefTemplate 的额外属性替换模板中的占位符
-                string templateString = matchedTemplate.ToString();
+                var templateString = matchedTemplate.ToString();
                 foreach (XAttribute attribute in refTemplate.Attributes())
                 {
                     if (attribute.Name != Name)
@@ -193,10 +201,17 @@ namespace SpaceCG.Extensions
         #region 字典占位符替换
         /// <summary>
         /// 递归替换 XML 元素树中所有属性的 <c>{Key}</c> 占位符为字典中对应的值。
-        /// <para>字典定义在 <c>&lt;ElementName.Dictionary&gt;</c> 子元素中，每个 <c>&lt;Item Key="..." Value="..." /&gt;</c> 定义一个键值对。支持全局字典和局部字典（子元素优先）。</para>
+        /// <para><b>处理顺序（深度优先，从上到下）：</b></para>
+        /// <para>
+        /// 1. 根元素先用自己的 <c>&lt;RootName.Dictionary&gt;</c> 替换整棵子树中的所有 {Key} 占位符；<br/>
+        /// 2. 然后递归处理每个子元素：若子元素有自己的字典，则用子字典处理其子树；
+        ///    若没有，则继续向下递归。</para>
+        /// <para><b>同名冲突：</b>父级字典先处理，子级同名 Key 不会被匹配。
+        /// 因此不同层级不应定义同名 Key，应将字典统一定义在最高层级。</para>
+        /// <para>Value 中可引用同字典内的其他 Key（如 <c>{深蓝色}</c>），被引用的 Key 应定义在引用者之前。</para>
         /// </summary>
         /// <param name="element">待处理的 XML 元素树根节点。</param>
-        public static void ApplyDictionaryValues(this XElement element)
+        public static void ApplyDictionary(this XElement element)
         {
             if (element == null || !element.HasElements) return;
 
@@ -207,7 +222,7 @@ namespace SpaceCG.Extensions
             if (dictionaryElements != null && dictionaryElements.Count > 0)
             {
                 dictionaryElements.Remove();
-                ApplyDictionaryValuesCore(element, dictionaryElements[0]);
+                ApplyDictionary(element, dictionaryElements[0]);
             }
 
             // Child Elements
@@ -216,18 +231,18 @@ namespace SpaceCG.Extensions
                 dictionaryElements = child.Elements($"{child.Name}.{Dictionary}").ToList();
                 if (dictionaryElements == null || dictionaryElements.Count <= 0)
                 {
-                    ApplyDictionaryValues(child);
+                    ApplyDictionary(child);
                     continue;
                 }
 
                 dictionaryElements.Remove();
-                ApplyDictionaryValuesCore(child, dictionaryElements[0]);
+                ApplyDictionary(child, dictionaryElements[0]);
             }
         }
         /// <summary>
         /// 用字典内容替换指定元素范围内所有属性中的 {Key} 占位符。
         /// </summary>
-        private static void ApplyDictionaryValuesCore(this XElement element, XElement dictionaryElement)
+        private static void ApplyDictionary(this XElement element, XElement dictionaryElement)
         {
             if (element == null || dictionaryElement == null) return;
 
@@ -353,7 +368,7 @@ namespace SpaceCG.Extensions
 
             XElement config = XElement.Load(configFile);
             config.ApplyTemplates();
-            config.ApplyDictionaryValues();
+            config.ApplyDictionary();
 
             return config;
         }
