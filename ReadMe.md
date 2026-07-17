@@ -1,5 +1,10 @@
 ## SpaceCG 常用的标准代码库
 
+- ### Builder 里面都是构建工程
+- ### SharedProjects 里面都是代码
+
+---
+
 - ### SpaceCG.Standard 
 	- 基于 .Net Standard 2.0 的标准代码库
 	- 基础代码库，包含一些基础的工具类，以及一些基础的数据结构

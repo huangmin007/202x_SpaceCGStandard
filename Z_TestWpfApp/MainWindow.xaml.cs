@@ -146,7 +146,10 @@ namespace Z_TestWpfApp
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
-        {            
+        {
+            var bs = new byte[] { 0x01, 0x02 };
+            byte[] clone = null;// = new byte[bs.Length]; ;
+            bs.CopyTo(clone, 0);
             Trace.TraceInformation("Hello..111.");
 
             var config2 = XElementExtensions.LoadConfig($"Resources/Config.xml");

@@ -16,10 +16,10 @@ namespace SpaceCG.Net
 {
     /// <summary>
     /// 远程过程调用(Remote Procedure Call) 或 反射程序控制(Reflection Program Control) 服务端抽象基类。
-    /// <para>提供 TCP 客户端连接管理、数据行解析（CRLF 分隔数据）、方法反射调用、结果响应等基础能力。</para>
+    /// <para>提供 TCP 客户端连接管理、数据分隔解析（默认以 CRLF 分隔数据）、方法反射调用、结果响应等基础能力。</para>
     /// <para>
     /// <list type="bullet">
-    /// <item>基类使用 CRLF (0x0D 0x0A, \r\n) 分隔符数据行。</item>
+    /// <item>基类默认使用 CRLF (0x0D 0x0A, \r\n) 分隔符数据消息。</item>
     /// <item>子类继承实现 <see cref="DeserializeInvokeMessage"/> 和 <see cref="SerializeResponseMessage"/> 以支持不同的消息协议。</item>
     /// <item>通过 <see cref="ClientInvokeRequest"/> 事件可拦截或取消客户端调用请求的执行。</item>
     /// <item>方法调用通过 <see cref="SynchronizationContext.Send(SendOrPostCallback, object)"/> 封送到构造线程（通常为 UI 线程）执行。</item>
@@ -29,7 +29,7 @@ namespace SpaceCG.Net
     /// </summary>
     public abstract class RpcServerBase : IDisposable
     {
-        /// <summary> 数据行分隔符字节数组，使用 CRLF（0x0D, 0x0A）作为新行标识符。 </summary>
+        /// <summary> 使用 CRLF（0x0D, 0x0A）的消息分隔符。 </summary>
         public static readonly byte[] NewLine = new byte[] { 0x0D, 0x0A };
         /// <summary> 对象名称或方法名称的命名规则正则表达式，允许字母开头后跟字母、数字、下划线。 </summary>
         public static readonly Regex IdentifierPattern = new Regex(@"^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled);
@@ -39,7 +39,7 @@ namespace SpaceCG.Net
         private TcpListener _tcpListener;
         private CancellationTokenSource _cts;
         private SynchronizationContext _syncContext;
-
+        
         #region Public Properties
         /// <summary> 获取服务是否正在运行（监听器已启动且未取消）。 </summary>
         public bool IsRunning => _tcpListener != null && _cts != null && !_cts.IsCancellationRequested;
@@ -53,6 +53,15 @@ namespace SpaceCG.Net
         public int ReceiveBufferSize { get; set; } = 1024 * 64;
         /// <summary> 已注册的可调用方法标识符集合。格式：<c>"Object.Method(SVT,...)"</c>。 </summary>
         public IEnumerable<string> AvailableMethods => RegisteredMethods.Keys;
+        /// <summary>
+        /// 获取或设置消息分隔符字节数组，用于在 TCP 流中标识一条完整消息的边界。如果为空则默认使用 <see cref="NewLine"/>。
+        /// <para>默认值为 CRLF（<c>0x0D, 0x0A</c>），即 <see cref="NewLine"/>。</para>
+        /// <para>可设置为其他自定义分隔符，如：LFLF (<c>0x0A0A</c>)、多个 NULL 字符 (<c>0x0000</c>)、或自定义多字节序列。</para>
+        /// <para>注意：分隔符必须能唯一标识消息边界，避免与消息体内容冲突。修改此值会影响所有新连接的会话，
+        /// 已建立的连接不受影响（每个会话在连接建立时快照当前值）。</para>
+        /// <para>线程安全：读取线程安全，写入操作应在服务启动前完成。</para>
+        /// </summary>
+        public byte[] MessageDelimiter { get; protected set; } = NewLine;
         #endregion
 
         #region events
@@ -132,11 +141,11 @@ namespace SpaceCG.Net
             if (string.IsNullOrWhiteSpace(objectName) || !IdentifierPattern.IsMatch(objectName))
                 throw new ArgumentNullException(nameof(objectName), "对象名称不能为空或命名格式不正确");
 
-            if (objectInstance == null || objectInstance == this)
-                throw new ArgumentNullException(nameof(objectInstance), "对象实例不能为空，也不能注册自身实例");
+            if (objectInstance == null || typeof(RpcServerBase).IsInstanceOfType(objectInstance))
+                throw new ArgumentNullException(nameof(objectInstance), "对象实例不能为空，也不能注册 RpcServerBase 自身或其子类实例");
 
             var objectType = objectInstance.GetType();
-            if (objectType.IsValueType || objectType == typeof(RpcServerBase) /*|| objectType == typeof(RPCClient)*/)
+            if (objectType.IsValueType /*|| objectType == typeof(RPCClient)*/)
                 throw new ArgumentException($"不能注册的对象实例类型 {objectType}");
 
             if (RegisterObjects.ContainsKey(objectName))
@@ -348,7 +357,7 @@ namespace SpaceCG.Net
         }
         /// <summary>
         /// 处理 TCP 客户端连接会话(循环读取数据 -> 处理数据 -> 写入响应数据)。
-        /// <para>使用环形缓冲（Ring Buffer）模式，以 CRLF 分隔数据行，通过 <see cref="DeserializeInvokeMessage"/> 反序列化数据行。</para>
+        /// <para>使用环形缓冲（Ring Buffer）模式，以 <see cref="MessageDelimiter" /> 分隔数据消息，通过 <see cref="DeserializeInvokeMessage"/> 反序列化数据消息。</para>
         /// </summary>
         /// <param name="client">已接受的 TCP 客户端连接。</param>
         /// <param name="cancellationToken">用于取消读取操作的取消令牌。</param>
@@ -362,9 +371,21 @@ namespace SpaceCG.Net
             client.ReceiveBufferSize = this.ReceiveBufferSize;
 
             // 环形缓冲（Ring Buffer）设计
-            // 如果读取的数据全部分析完或刚好分析完一个完整的数据行后，缓冲区后面没有可分析数据时，可以将 offset 指针设置 0
+            // 如果读取的数据全部分析完或刚好分析完一个完整的数据消息后，缓冲区后面没有可分析数据时，可以将 offset 指针设置 0
             var bufferSize = this.ReceiveBufferSize / 2;
-            var clientBuffer = new byte[bufferSize];    
+            var clientBuffer = new byte[bufferSize];
+
+            byte[] delimiter = null;
+            if (MessageDelimiter?.Length > 0)
+            {
+                delimiter = new byte[MessageDelimiter.Length];
+                MessageDelimiter.CopyTo(delimiter, 0);
+            }
+            else
+            {
+                delimiter = new byte[NewLine.Length];
+                NewLine.CopyTo(delimiter, 0);
+            }
 
             var writePosition = 0;      // buffer 中已写入数据的末尾位置（下一次 ReadAsync 的写入起点，写指针）
             var pendingLength = 0;      // buffer 中有效数据的长度 (未分析读取的数据量)
@@ -393,19 +414,19 @@ namespace SpaceCG.Net
                     writePosition += count;
                     pendingLength += count;
 
-                    #region 扫描缓冲区中所有完整的数据行
+                    #region 扫描缓冲区中所有完整的数据字节消息
                     while (readPosition < pendingLength)
                     {
-                        var endIndex = clientBuffer.IndexOf(NewLine, readPosition, pendingLength - readPosition);
+                        var endIndex = clientBuffer.IndexOf(delimiter, readPosition, pendingLength - readPosition);
                         if (endIndex < 0 || endIndex == readPosition) break;
 
-                        // 提取完整的数据行（不含 NewLine 本身）
+                        // 提取完整的数据字节消息（不含 delimiter 分割符本身）
                         var clientMessage = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
 
-                        // 移动读指针，跳过已消费的数据和换行符
-                        readPosition = endIndex + NewLine.Length;
+                        // 移动读指针，跳过已消费的数据和分割符
+                        readPosition = endIndex + delimiter.Length;
 
-                        // 处理客户端的数据行
+                        // 处理客户端的数据消息
                         _ = ProcessClientMessageAsync(client, clientMessage, cancellationToken);
                     }
                     #endregion
@@ -449,7 +470,7 @@ namespace SpaceCG.Net
                     // 缓冲区已经满了，清空防止死锁
                     if (writePosition == bufferSize)
                     {
-                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满，且没有完整的数据行，清空缓冲区 {pendingLength} bytes");
+                        Trace.TraceWarning($"客户端 {clientEndPoint} 缓冲区已满，且没有完整的数据消息，清空缓冲区 {pendingLength} bytes");
                         writePosition = 0;
                         pendingLength = 0;
                         readPosition = 0;
@@ -477,10 +498,10 @@ namespace SpaceCG.Net
         }
 
         /// <summary>
-        /// 处理客户端的数据行（反序列化 -> 事件拦截 -> 方法调用分发）。
+        /// 处理客户端的数据消息（反序列化 -> 事件拦截 -> 方法调用分发）。
         /// </summary>
         /// <param name="client">发送数据的 TCP 客户端连接。</param>
-        /// <param name="clientMessage">一个完整的数据行（不含尾部 CRLF）。</param>
+        /// <param name="clientMessage">一条完整的数据消息。</param>
         /// <param name="cancellationToken">用于取消操作的令牌。</param>
         /// <returns>一个表示异步操作的任务。</returns>
         protected async Task ProcessClientMessageAsync(TcpClient client, ArraySegment<byte> clientMessage, CancellationToken cancellationToken)
@@ -492,7 +513,7 @@ namespace SpaceCG.Net
 
             try
             {
-                // 反序列化客户端的数据行
+                // 反序列化客户端的数据消息
                 invokeMessage = DeserializeInvokeMessage(clientMessage, clientEndPoint);
             }
             catch (Exception ex)
@@ -761,10 +782,10 @@ namespace SpaceCG.Net
 
         #region 子类重写抽象方法 DeserializeInvokeMessage & SerializeResponseMessage
         /// <summary>
-        /// 解析客户端发送的完整数据行（以 CRLF 作为结束符的一数据行数据）。
+        /// 解析客户端发送的一条完整数据消息（以 <see cref="MessageDelimiter"/> 数据分割的消息）。
         /// <para>子类继承重写该方法，实现不同协议的数据解析逻辑。</para>
         /// </summary>
-        /// <param name="requestMessage">客户端的请求消息，数据行字节数据（不含尾部的 CRLF）。</param>
+        /// <param name="requestMessage">客户端的请求消息，数据消息字节数据（不含尾部的 <see cref="MessageDelimiter"/>）。</param>
         /// <param name="clientEndPoint">发送数据的客户端远程端点地址。</param>
         /// <returns>解析成功返回一条 <see cref="InvokeMessage"/> 待服务端调用的消息；可过滤、修改、或解析失败则返回空。</returns>
         protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> requestMessage, IPEndPoint clientEndPoint);

@@ -12,11 +12,14 @@ namespace SpaceCG.Net
 {
     /// <summary>
     /// 基于 XML 消息协议的 RPC 服务端实现（XML-RPC v2.0）。
-    /// <para>每行（以 CRLF 为行边界）一条 XML 消息。请求和响应均使用 XElement 解析 / StringBuilder 拼接 XML。</para>
+    /// <para>默认以 CRLF 作为字节数据分割。请求和响应均使用 XElement 解析 / StringBuilder 拼接 XML。</para>
     /// <para>用法示例：<code>new RpcServer4X(port).Start()</code></para>
     /// </summary>
     public sealed class RpcServer4X : RpcServerBase
-    {        
+    {
+        /// <summary> 使用 "/>"（0x2F, 0x3E）的消息分隔符。 </summary>
+        public static readonly byte[] XMLEndMarker = new byte[] { 0x2F, 0x3E };
+
         /// <summary> XML 元素属性正则表达式。 </summary>
         private static readonly Regex AttributeRegex = new Regex(@"(\w+)\s*=\s*""((?:[^""\\]|\\.)*)""", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 

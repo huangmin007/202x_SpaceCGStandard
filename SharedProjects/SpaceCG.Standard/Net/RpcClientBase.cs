@@ -11,37 +11,11 @@ using SpaceCG.Extensions;
 namespace SpaceCG.Net
 {
     /// <summary>
-    /// <see cref="TcpClient"/> 扩展方法。
-    /// <para>提供非阻塞的连接状态检查，用于读写循环中的快速健康探测。</para>
-    /// </summary>
-    public static class TcpClientExtensions
-    {
-        /// <summary>
-        /// 检查 <see cref="TcpClient"/> 是否处于已连接状态。
-        /// </summary>
-        /// <param name="tcpClient">要检查的 TCP 客户端。</param>
-        /// <returns>如果连接正常返回 <c>true</c>；如果已断开或客户端为 <c>null</c> 则返回 <c>false</c>。</returns>
-        public static bool IsConnected(this TcpClient tcpClient)
-        {
-            if (tcpClient == null || tcpClient.Client == null) return false;
-
-            try
-            {
-                return !(tcpClient.Client.Poll(0, SelectMode.SelectRead) && tcpClient.Client.Available == 0) && tcpClient.Client.Connected;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-    }
-
-    /// <summary>
     /// RPC 客户端抽象基类，与服务端 <see cref="RpcServerBase"/> 镜像对称设计。
-    /// <para>提供 TCP 连接管理、环形缓冲 CRLF 数据行拆分、请求/响应 Id 匹配、超时管理、自动重连等基础能力。</para>
+    /// <para>提供 TCP 连接管理、环形缓冲使用 <see cref="MessageDelimiter"/> 拆分数据字节、请求/响应 Id 匹配、超时管理、自动重连等基础能力。</para>
     /// <para>
     /// <list type="bullet">
-    ///     <item>基类以 CRLF (0x0D 0x0A) 为数据行分割标识，每行一条消息。</item>
+    ///     <item>基类默认以 CRLF (0x0D 0x0A) 为分割字节数据，每次拆分作为一个数据消息。</item>
     ///     <item>子类继承实现 <see cref="SerializeInvokeMessage"/> 和 <see cref="DeserializeResponseMessage"/> 以支持不同的消息协议。</item>
     ///     <item><see cref="InvokeActionAsync"/> 发送单向通知不等待响应（ResponseMode=-1，fire-and-forget）。</item>
     ///     <item><see cref="InvokeFuncAsync"/> 发送请求并等待响应（ResponseMode=1，请求-响应模式）。</item>
@@ -52,7 +26,7 @@ namespace SpaceCG.Net
     /// </summary>
     public abstract class RpcClientBase : IDisposable
     {
-        /// <summary> 数据行分隔符字节数组，使用 CRLF（0x0D, 0x0A），与 <see cref="RpcServerBase.NewLine"/> 一致。 </summary>
+        /// <inheritdoc cref="RpcServerBase.NewLine"/> 
         public static readonly byte[] NewLine = RpcServerBase.NewLine;
 
         private readonly object _lock = new object();
@@ -81,15 +55,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 获取客户端是否已连接到服务端。
         /// </summary>
-        public bool Connected
-        {
-            get
-            {
-                var client = _tcpClient;
-                return _cts != null && client != null && client.IsConnected();
-            }
-        }
-
+        public bool IsConnected => _cts != null && _tcpClient != null && _tcpClient.IsConnected();
         /// <summary>
         /// 获取服务端的远程 IP 端点地址。
         /// </summary>
@@ -118,6 +84,15 @@ namespace SpaceCG.Net
         /// <para>设置 &lt;= 0 时立即重连（不等待），非常不建议。</para>
         /// </summary>
         public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(3.0);
+        /// <summary>
+        /// 获取或设置消息分隔符字节数组，用于在 TCP 流中标识一条完整消息的边界。如果为空则默认使用 <see cref="NewLine"/>。
+        /// <para>默认值为 CRLF（<c>0x0D, 0x0A</c>），即 <see cref="NewLine"/>。</para>
+        /// <para>可设置为其他自定义分隔符，如：LFLF (<c>0x0A0A</c>)、多个 NULL 字符 (<c>0x0000</c>)、或自定义多字节序列。</para>
+        /// <para>注意：分隔符必须能唯一标识消息边界，避免与消息体内容冲突。修改此值会影响所有新连接的会话，
+        /// 已建立的连接不受影响（每个会话在连接建立时快照当前值）。</para>
+        /// <para>线程安全：读取线程安全，写入操作应在服务启动前完成。</para>
+        /// </summary>
+        public byte[] MessageDelimiter { get; protected set; } = NewLine;
         #endregion
 
         #region Constructors
@@ -298,7 +273,7 @@ namespace SpaceCG.Net
             }
         }
         /// <summary>
-        /// 处理与服务端的会话：使用环形缓冲（Ring Buffer）模式以 CRLF 拆分数据行，每行一条响应消息。
+        /// 处理与服务端的会话：使用环形缓冲（Ring Buffer）模式以 <see cref="MessageDelimiter"/> 拆分字节数据，每个拆分数据对应一条响应消息。
         /// <para>解析出的响应通过 Id 匹配分派到对应的 <see cref="_pendingCalls"/>，断开时取消所有待响应调用。</para>
         /// </summary>
         /// <param name="tcpClient">已连接的 TCP 客户端。</param>
@@ -312,6 +287,18 @@ namespace SpaceCG.Net
 
             var bufferSize = tcpClient.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];
+
+            byte[] delimiter = null;
+            if (MessageDelimiter?.Length > 0)
+            {
+                delimiter = new byte[MessageDelimiter.Length];
+                MessageDelimiter.CopyTo(delimiter, 0);
+            }
+            else
+            {
+                delimiter = new byte[NewLine.Length];
+                NewLine.CopyTo(delimiter, 0);
+            }
 
             var writePosition = 0;      // 缓冲区写入位置（写指针）
             var pendingLength = 0;      // 缓冲区中未消费数据的长度
@@ -329,17 +316,17 @@ namespace SpaceCG.Net
                     writePosition += count;
                     pendingLength += count;
 
-                    #region 扫描缓冲区中所有完整的数据行
+                    #region 扫描缓冲区中所有完整的数据字节消息
                     while (readPosition < pendingLength)
                     {
-                        var endIndex = clientBuffer.IndexOf(NewLine, readPosition, pendingLength - readPosition);
+                        var endIndex = clientBuffer.IndexOf(delimiter, readPosition, pendingLength - readPosition);
                         if (endIndex < 0 || endIndex == readPosition) break;
 
-                        // 提取完整的数据行（不含 NewLine）
+                        // 提取完整的数据字节消息（不含 delimiter）
                         var messageBytes = new ArraySegment<byte>(clientBuffer, readPosition, endIndex - readPosition);
-                        readPosition = endIndex + NewLine.Length;
+                        readPosition = endIndex + delimiter.Length;
 
-                        // 解析响应消息并分派（一行一条响应）
+                        // 解析响应消息并分派
                         ResponseMessage response = null;
                         try
                         {
@@ -495,7 +482,7 @@ namespace SpaceCG.Net
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(RpcClientBase));
-            if (!Connected)
+            if (!IsConnected)
                 throw new InvalidOperationException("Client not connected");
             if (data == null || data.Length == 0)
                 throw new ArgumentNullException(nameof(data));
@@ -539,7 +526,7 @@ namespace SpaceCG.Net
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(RpcClientBase));
 
-            if (!Connected)
+            if (!IsConnected)
             {
                 Trace.TraceWarning($"没有连接到服务端 {RemoteEndPoint}，无法发送消息");
                 return false;
@@ -593,7 +580,7 @@ namespace SpaceCG.Net
 
             var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, Interlocked.Increment(ref _messageId), 1);
 
-            if (!Connected)
+            if (!IsConnected)
                 return ResponseMessage.Create(invokeMessage, -100, "Client not connected");
 
             byte[] messageBytes = null;
@@ -626,7 +613,7 @@ namespace SpaceCG.Net
             try
             {                
                 // 序列化后再检查连接状态
-                if (!Connected)
+                if (!IsConnected)
                 {
                     if (_pendingCalls.TryRemove(invokeMessage.Id, out var removed))
                     {
@@ -658,14 +645,14 @@ namespace SpaceCG.Net
         /// <para>子类实现不同协议格式（XML / JSON 等），与 <see cref="RpcServerBase.SerializeResponseMessage"/> 镜像对称。</para>
         /// </summary>
         /// <param name="requestMessage">待序列化的调用消息。</param>
-        /// <returns>可直接写入 NetworkStream 的字节数组（应以 CRLF 结尾以标识行结束）。</returns>
+        /// <returns>可直接写入 NetworkStream 的字节数组（应以 <see cref="MessageDelimiter"/> 结尾以标识符结束）。</returns>
         protected abstract byte[] SerializeInvokeMessage(InvokeMessage requestMessage);
 
         /// <summary>
-        /// 将接收到的数据行解析为一条响应消息。
-        /// <para>一条数据行对应一条响应，子类实现不同协议的响应解析。</para>
+        /// 将接收到的字节数据解析为一条响应消息。
+        /// <para>一条数据消息对应一条响应消息，子类实现不同协议的响应解析。</para>
         /// </summary>
-        /// <param name="responseMessage">一个完整的数据行字节数据（不含尾部 CRLF）。</param>
+        /// <param name="responseMessage">一个完整的数据字节消息（不含尾部 <see cref="MessageDelimiter"/>）。</param>
         /// <returns>解析出的响应消息；无法解析则返回 <c>null</c>。</returns>
         protected abstract ResponseMessage DeserializeResponseMessage(ArraySegment<byte> responseMessage);
         #endregion
