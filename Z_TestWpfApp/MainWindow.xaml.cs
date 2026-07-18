@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO.Ports;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -63,7 +64,9 @@ namespace Z_TestWpfApp
             base.OnKeyDown(e);
             Trace.TraceInformation($"Key: {e.Key}");
 
-            switch(e.Key)
+            stopwatch.Restart();
+            long ms = 0;
+            switch (e.Key)
             {
                 case Key.D1:
                     await rpcClient.InvokeActionAsync("Demo", "test", new object[] {1,2 });
@@ -95,15 +98,33 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D:
-                    test();
+                    //test(0);
+                    break;
+
+                case Key.A:
+                    var result0 = InstanceExtensions.TryInvokeMethod(this, "test", new object[] { 100 }, out var returnValue);
+                    ms = stopwatch.ElapsedTicks;
+                    Trace.WriteLine($"Result:{result0},ReturnValue:{returnValue}  use:{ms}");
+                    break;
+                case Key.Z:
+                    var result1 = InstanceExtensions.TryInvokeMethod(this, "SetWindowState", "0", out var returnValue1);
+                    ms = stopwatch.ElapsedTicks;
+                    Trace.WriteLine($"Result:{result1},ReturnValue:{returnValue1}  use:{ms}");
+                    break;
+                case Key.X:
+                    var result2 = InstanceExtensions.TryInvokeMethod(this, "SetWindowState", "0,1", out var returnValue2);
+                    ms = stopwatch.ElapsedTicks;
+
+                    Trace.WriteLine($"Result:{result2},ReturnValue:{returnValue2}  use:{ms}");
                     break;
             }
         }
 
         Stopwatch stopwatch = new Stopwatch();
 
-        private void test()
-        {            
+        public void test(int a)
+        {
+            Trace.WriteLine($">>>>>>teset....{a}");
             var s0 = "0x01,True,32,False";
             var s1 = "0x01,3,[True,True,False]";
             var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
@@ -146,10 +167,6 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            var ss0 = "System.Windows.Media.Color";
-            var type = Type.GetType(ss0, false);
-
-
             var config2 = XElementExtensions.LoadConfig($"Resources/Config.xml");
             Trace.WriteLine($"config...{config2}");
 
@@ -280,12 +297,12 @@ namespace Z_TestWpfApp
     {
         public static void SetWindowState(this Window window, WindowState state)
         {
-
+            Trace.WriteLine($"SetWindowState(this Window window, WindowState state)");
         }
 
-        public static void SetWindowState(this MainWindow window, string state)
+        public static void SetWindowState(this MainWindow window, string state, int a)
         {
-
+            Trace.WriteLine($"SetWindowState(this MainWindow window, WindowState state, int a)");
         }
     }
 }

@@ -1,4 +1,7 @@
 ﻿using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using SpaceCG.Extensions;
 
 namespace SpaceCG.Generic
@@ -29,33 +32,58 @@ namespace SpaceCG.Generic
 
     /// <summary>
     /// 数据协议解析器抽象基类。采用生产者-消费者模式：
-    /// <para>外部通过 <see cref="Write(byte[], int, int)"/> 写入原始字节数据（生产者），
-    /// 内部通过 <see cref="Parse"/> 匹配完整数据包并通过 <see cref="PacketReceived"/> 事件抛出（消费者）。</para>
+    /// <para>外部通过 <see cref="Write(byte[], int, int)"/> 或 <see cref="ReadFromAsync"/> 
+    /// 写入原始字节数据（生产者），内部通过 <see cref="Parse"/> 匹配完整数据包并通过 
+    /// <see cref="PacketReceived"/> 事件抛出（消费者）。</para>
     /// <para>内部使用线性缓冲区（Linear Buffer）模式管理字节数据：
     /// 以 <c>byte[]</c> + 读写双指针（<c>_readPosition</c>、<c>_writePosition</c>）实现零拷贝数据视图，
     /// 当尾部可用空间不足时触发紧凑（Compact）将未消费数据移到缓冲区头部。</para>
     /// <para>当缓冲区累积超过容量限制且无完整数据包时，将清空全部数据以防止内存无限增长。</para>
     /// <para>子类需实现 <see cref="Parse"/> 返回匹配到的数据包视图（<see cref="ArraySegment{T}"/>），
     /// 返回 <c>default</c> 表示未找到完整包。</para>
-    /// <para>线程安全：此类不保证线程安全，多线程并发访问需要外部同步。</para>
+    /// <para>线程安全：线程安全。所有写入和解析操作通过内部信号量（<see cref="SemaphoreSlim"/>）序列化。
+    /// ⚠ <b>注意</b>：<see cref="PacketReceived"/> 事件在锁内触发，事件回调中<b>绝对不可</b>再次调用本类的 
+    /// <see cref="Write"/>、<see cref="ReadFromAsync"/>、<see cref="Clear"/> 或 <see cref="ClearAsync"/> 方法，
+    /// 否则会因 <see cref="SemaphoreSlim"/> 不支持重入而导致死锁。</para>
     /// </summary>
-    public abstract class ProtocolParser
+    public abstract class ProtocolParser : IDisposable
     {
         private readonly byte[] _buffer;
         private readonly int _bufferSize;
         private readonly int _compactThreshold;
 
+        /// <summary>读写信号量，序列化所有对缓冲区的访问操作。</summary>
+        private readonly SemaphoreSlim _syncSemaphore = new SemaphoreSlim(1, 1);
+
+        /// <summary>标记对象是否已被释放。</summary>
+        private bool _disposed;
         /// <summary>读指针：指向缓冲区中待解析数据的起始位置。</summary>
         private int _readPosition;
         /// <summary>写指针：指向缓冲区中下一个可写入数据的位置。</summary>
         private int _writePosition;
-        /// <summary>获取缓冲区中当前待解析的字节数。</summary>
-        public int Available => _writePosition - _readPosition;
-        
+        /// <summary>
+        /// 获取缓冲区中当前待解析的字节数。
+        /// <para>尝试非阻塞获取锁以读取精确值；若锁被占用则返回近似值（非线程安全读取），
+        /// 避免阻塞调用线程。</para>
+        /// </summary>
+        public int Available
+        {
+            get
+            {
+                if (_disposed) throw new ObjectDisposedException(nameof(ProtocolParser));
+                // 非阻塞尝试获取锁，避免线程池饥饿
+                if (_syncSemaphore.Wait(0))
+                {
+                    try { return _writePosition - _readPosition; }
+                    finally { _syncSemaphore.Release(); }
+                }
+                return Math.Max(0, _writePosition - _readPosition);
+            }
+        }        
         /// <summary>获取当前读指针位置。</summary>
-        internal int ReadPosition => _readPosition;
+        public int ReadPosition => _readPosition;
         /// <summary>获取当前写指针位置。</summary>
-        internal int WritePosition => _writePosition;
+        public int WritePosition => _writePosition;
         /// <summary>获取内部缓冲区数组引用（供子类在事件回调中访问）。</summary>
         internal byte[] InternalBuffer => _buffer;
 
@@ -102,13 +130,93 @@ namespace SpaceCG.Generic
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="offset"/> 或 <paramref name="count"/> 超出数组范围时抛出。</exception>
         public int Write(byte[] data, int offset, int count)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(ProtocolParser));
             if (data == null || data.Length == 0 || count == 0) return 0;
             if (offset < 0 || offset > data.Length)
                 throw new ArgumentOutOfRangeException(nameof(offset));
             if (count < 0 || offset + count > data.Length)
                 throw new ArgumentOutOfRangeException(nameof(count));
 
-            #region 写入前整理缓冲区
+            _syncSemaphore.Wait();
+
+            try
+            {
+                CompactBufferBeforeWrite();
+
+                // 按缓冲区尾部剩余空间写入，能写多少就写多少
+                var bytesToWrite = Math.Min(count, _bufferSize - _writePosition);
+
+                Buffer.BlockCopy(data, offset, _buffer, _writePosition, bytesToWrite);
+                _writePosition += bytesToWrite;
+
+                // 先尝试解析已有数据，释放空间
+                ParseBufferInternal();
+
+                return bytesToWrite;
+            }
+            finally
+            {
+                _syncSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// 从流中异步循环读取数据到缓冲区并解析，直到流读完或被取消。
+        /// <para>每次读取后立即尝试解析，解析出的数据包通过 <see cref="PacketReceived"/> 事件抛出。</para>
+        /// </summary>
+        /// <param name="stream">要读取的输入流，必须支持读取（<see cref="Stream.CanRead"/> 为 <c>true</c>）。</param>
+        /// <param name="cancellationToken">用于取消读取操作的令牌。</param>
+        /// <exception cref="ArgumentNullException"><paramref name="stream"/> 为 null 时抛出。</exception>
+        /// <exception cref="ArgumentException"><paramref name="stream"/> 不支持读取时抛出。</exception>
+        /// <exception cref="OperationCanceledException">操作被取消或信号量等待被中断时抛出。</exception>
+        public async Task ReadFromAsync(Stream stream, CancellationToken cancellationToken = default)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(ProtocolParser));
+            if (stream == null)
+                throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanRead)
+                throw new ArgumentException("流不支持读取操作。", nameof(stream));
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                // 获取锁，在锁内整理缓冲区和读取数据
+                await _syncSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+                try
+                {
+                    CompactBufferBeforeWrite();
+
+                    int bytesRead = await stream.ReadAsync(_buffer, _writePosition, _bufferSize - _writePosition, cancellationToken).ConfigureAwait(false);
+                    if (bytesRead == 0) break; // 流已读完
+
+                    _writePosition += bytesRead;
+
+                    // 尝试解析已有数据
+                    ParseBufferInternal();
+                }
+                finally
+                {
+                    _syncSemaphore.Release();
+                }
+            }
+
+            await _syncSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                ParseBufferInternal();
+            }
+            finally
+            {
+                _syncSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// 写入前整理缓冲区：归零空缓冲区、紧凑碎片数据、清空满载缓冲区。
+        /// <para>调用方必须已持有 <see cref="_syncSemaphore"/>。</para>
+        /// </summary>
+        private void CompactBufferBeforeWrite()
+        {
             // 0. 数据正好分析完 → 所有指针归零
             if (_readPosition > _compactThreshold && _readPosition == _writePosition)
             {
@@ -125,6 +233,7 @@ namespace SpaceCG.Generic
                 _readPosition = 0;
                 _writePosition = pendingLength;
             }
+
             // 2. 防御性处理：如果缓冲区依然满了（说明单条消息超大或恶意攻击），清空以防死锁
             if (_writePosition == _bufferSize)
             {
@@ -134,28 +243,13 @@ namespace SpaceCG.Generic
                 _readPosition = 0;
                 _writePosition = 0;
             }
-            #endregion
-
-            // 按缓冲区尾部剩余空间写入，能写多少就写多少
-            var bytesToWrite = Math.Min(count, _bufferSize - _writePosition);
-
-            Buffer.BlockCopy(data, offset, _buffer, _writePosition, bytesToWrite);
-            _writePosition += bytesToWrite;
-
-            // 先尝试解析已有数据，释放空间
-            ParseBufferInternal();
-
-            return bytesToWrite;
         }
 
         /// <summary>
         /// 内部解析循环：反复调用子类的 <see cref="Parse"/> 查找完整数据包，
         /// 找到后通过 <see cref="PacketReceived"/> 事件抛出零拷贝视图，并推进读指针。
-        /// <para>解析循环在以下情况退出：无更多待解析数据、子类返回 <c>default</c>（未匹配到完整包）。</para>
-        /// <para>读指针推进规则：从 <paramref name="pendingView"/> 头部推进到子类返回视图的末尾，
-        /// 即 <c>_readPosition = packet.Offset + packet.Count</c>。
-        /// 若子类返回的视图不包含 <paramref name="pendingView"/> 头部的垃圾数据，
-        /// 这些垃圾数据将在读指针推进时被自动跳过。</para>
+        /// <para>调用方必须已持有 <see cref="_syncSemaphore"/>。</para>
+        /// <para>解析循环退出条件：无更多待解析数据、子类返回 <c>default</c>。</para>
         /// </summary>
         private void ParseBufferInternal()
         {
@@ -164,13 +258,21 @@ namespace SpaceCG.Generic
                 var pendingView = new ArraySegment<byte>(_buffer, _readPosition, _writePosition - _readPosition);
 
                 var packet = Parse(pendingView);
-                if (packet == null || packet.Count == 0) break;
+                if (packet.Count == 0) break;
 
                 // 推进读指针到数据包末尾（消费含包前垃圾在内的所有数据）
                 _readPosition = packet.Offset + packet.Count;
 
-                // 触发事件，消费者可在回调中使用 Packet 零拷贝视图
-                PacketReceived?.Invoke(this, new PacketEventArgs(packet));
+                try
+                {
+                    // 触发事件，消费者可在回调中使用 Packet 零拷贝视图
+                    PacketReceived?.Invoke(this, new PacketEventArgs(packet));
+                }
+                catch (Exception ex)
+                {
+                    // 记录异常但继续解析循环，防止单个错误回调阻塞后续数据包
+                    Trace.TraceError($"PacketReceived 事件回调抛出异常: {ex.Message}");
+                }
             }
         }
 
@@ -179,25 +281,89 @@ namespace SpaceCG.Generic
         /// <para>返回的 <see cref="ArraySegment{T}"/> 直接引用内部缓冲区内存（零拷贝），
         /// 基类将其作为 <see cref="PacketEventArgs"/> 通过 <see cref="PacketReceived"/> 事件抛出。</para>
         /// <para>基类会根据返回视图的 <see cref="ArraySegment{T}.Offset"/> 和 <see cref="ArraySegment{T}.Count"/>
-        /// 自动推进读指针，消费从 <paramref name="pendingView"/> 头部到数据包末尾的所有字节。</para>
-        /// <para><paramref name="pendingView"/> 是内部缓冲区的连续零拷贝视图，仅在本方法调用期间有效，不应长期持有。</para>
+        /// 自动推进读指针，消费从 <paramref name="pendingView"/> 头部到数据包末尾的所有字节。
+        /// 若子类返回的视图不包含头部垃圾数据，这些垃圾数据在读指针推进时被自动跳过。</para>
+        /// <para>此方法在 <see cref="_syncSemaphore"/> 锁内调用，子类实现应保持轻量，
+        /// 避免执行耗时操作阻塞其他写入请求。</para>
         /// </summary>
-        /// <param name="pendingView">待解析数据的连续只读视图。</param>
+        /// <param name="pendingView">待解析数据的连续零拷贝视图，仅在本方法调用期间有效。</param>
         /// <returns>
         /// 匹配到的完整数据包视图（零拷贝，引用内部缓冲区）；
-        /// 返回 <c>default</c>（<see cref="ArraySegment{T}.Count"/> 为 0）表示未找到完整数据包，需要等待更多数据写入。
+        /// 返回 <c>default</c>（<see cref="ArraySegment{T}.Count"/> 为 0）表示未找到完整数据包，需要等待更多数据。
         /// </returns>
         protected abstract ArraySegment<byte> Parse(ArraySegment<byte> pendingView);
-
 
         /// <summary>
         /// 清空缓冲区中的所有数据，读写指针归零，恢复初始状态。
         /// <para>注意：清空后缓冲区中未解析的数据将丢失。</para>
+        /// <para>⚠️ <b>警告</b>：此方法为同步阻塞调用。<b>绝对不可</b>在 <see cref="PacketReceived"/> 事件回调中调用此方法，
+        /// 否则会导致当前线程死锁（因当前线程已持有内部信号量且 SemaphoreSlim 不支持重入）。</para>
         /// </summary>
         public void Clear()
         {
-            _readPosition = 0;
-            _writePosition = 0;
+            if (_disposed) throw new ObjectDisposedException(nameof(ProtocolParser));
+
+            _syncSemaphore.Wait();
+            try
+            {
+                _readPosition = 0;
+                _writePosition = 0;
+            }
+            finally
+            {
+                _syncSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// 异步清空缓冲区中的所有数据，读写指针归零，恢复初始状态。
+        /// <para>注意：清空后缓冲区中未解析的数据将丢失。</para>
+        /// <para>⚠ <b>警告</b>：<b>绝对不可</b>在 <see cref="PacketReceived"/> 事件回调中调用此方法，
+        /// 否则会导致当前线程死锁（因当前线程已持有内部信号量且 SemaphoreSlim 不支持重入）。</para>
+        /// </summary>
+        /// <param name="cancellationToken">用于取消操作的令牌。</param>
+        public async Task ClearAsync(CancellationToken cancellationToken = default)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(ProtocolParser));
+            await _syncSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                _readPosition = 0;
+                _writePosition = 0;
+            }
+            finally
+            {
+                _syncSemaphore.Release();
+            }
+        }
+
+        /// <summary>
+        /// 释放由 <see cref="ProtocolParser"/> 占用的非托管资源，并可选择释放托管资源。
+        /// </summary>
+        /// <param name="disposing">如果为 true，则释放托管资源和非托管资源；如果为 false，则仅释放非托管资源。</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    // 防御性编程：清空事件订阅，防止因外部未取消订阅导致的内存泄漏
+                    PacketReceived = null;
+                    // 释放托管资源
+                    _syncSemaphore?.Dispose();                    
+                }
+
+                _disposed = true;
+            }
+        }
+
+        /// <summary>
+        /// 执行与释放或重置非托管资源关联的应用程序定义的任务。
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this); // 告诉 GC 不需要再调用终结器（如果有的话）
         }
     }
 

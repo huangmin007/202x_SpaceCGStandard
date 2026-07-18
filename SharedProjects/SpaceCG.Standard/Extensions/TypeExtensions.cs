@@ -46,7 +46,7 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <param name="paramType">参数类型，来自 <see cref="ParameterInfo.ParameterType"/>。</param>
         /// <returns>类型签名字符串。</returns>
-        internal static string GetTypeSignature(Type paramType)
+        private static string GetTypeSignature(Type paramType)
         {
             if (paramType == null) return "";
             if (paramType.IsValueType || paramType == typeof(string)) return "SVT";
@@ -74,7 +74,7 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <param name="paramValue">参数值，来自 <see cref="StringExtensions.ParseParameters"/> 的输出。</param>
         /// <returns>值签名字符串。</returns>
-        internal static string GetValueSignature(object paramValue)
+        private static string GetValueSignature(object paramValue)
         {
             if (paramValue == null) return "";
             var valueType = paramValue.GetType();

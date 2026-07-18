@@ -205,22 +205,25 @@ namespace SpaceCG.Net
                 }
                 catch (Exception ex)
                 {
-                    Trace.TraceWarning($"{assembly.FullName} GetExprotedTypes Exception: {ex.Message}");
+                    Trace.TraceWarning($"程序集 [{assembly.FullName}] 获取导出类型失败: {ex.Message}");
                     continue;
                 }
 
                 foreach (var type in exportedTypes)
                 {
-                    if (!type.IsSealed || type.IsGenericType || type.IsNested || !type.IsAbstract) continue;
+                    // 跳过非静态类、泛型类、嵌套类
+                    if (!type.IsAbstract || !type.IsSealed || type.IsGenericType || type.IsNested) continue;
                     foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly))
                     {
                         if (!method.IsDefined(extensionType, false)) continue;
 
                         var parameters = method.GetParameters();
                         if (parameters == null || parameters.Length == 0) continue;
+                        if (parameters.Any(p => p.ParameterType.IsByRef)) continue;  // ref out 参数不支持
 
-                        // 类型相同，或是父级类
-                        if (parameters[0].ParameterType == instanceType || instanceType.IsSubclassOf(parameters[0].ParameterType))
+                        // 类型相同，或是父级类，或接口类型
+                        // 使用 IsAssignableFrom 支持基类和接口类型的扩展方法
+                        if (parameters[0].ParameterType.IsAssignableFrom(instanceType))
                         {
                             var paramsSign = parameters.Skip(1).GetParameterSignature();
                             var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
@@ -466,6 +469,7 @@ namespace SpaceCG.Net
             }
             finally
             {
+                clientBuffer = null;
                 ClientWriteSemaphores.TryRemove(client, out var _);
                 Trace.TraceInformation($"客户端 {clientEndPoint} 已断开连接");
 
@@ -800,4 +804,5 @@ namespace SpaceCG.Net
 
         
     }
+
 }

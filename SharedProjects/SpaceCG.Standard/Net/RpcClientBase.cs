@@ -365,6 +365,7 @@ namespace SpaceCG.Net
             }
             finally
             {
+                clientBuffer = null;
                 // 将所有待响应的 PendingCall 以连接断开错误完成
                 CancelAllPendingCalls(-102, "Connection closed");
                 // 断开后的处理

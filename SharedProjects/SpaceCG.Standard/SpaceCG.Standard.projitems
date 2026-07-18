@@ -11,7 +11,9 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\ArrayExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\FileExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\InstanceExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\MathExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\PathExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\StringExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\TcpClientExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\TypeExtensions.cs" />
