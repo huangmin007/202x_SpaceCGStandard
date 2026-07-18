@@ -277,8 +277,8 @@ namespace SpaceCG.Net
         /// <para>解析出的响应通过 Id 匹配分派到对应的 <see cref="_pendingCalls"/>，断开时取消所有待响应调用。</para>
         /// </summary>
         /// <param name="tcpClient">已连接的 TCP 客户端。</param>
-        /// <param name="cancelToken">用于取消读取操作的令牌。</param>
-        private async Task HandleServerSessionAsync(TcpClient tcpClient, CancellationToken cancelToken)
+        /// <param name="cancellationToken">用于取消读取操作的令牌。</param>
+        private async Task HandleServerSessionAsync(TcpClient tcpClient, CancellationToken cancellationToken)
         {
             if (tcpClient == null) return;
 
@@ -287,36 +287,29 @@ namespace SpaceCG.Net
 
             var bufferSize = tcpClient.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];
+            var compactThreshold = bufferSize / 8;  // 紧凑阈值
 
-            byte[] delimiter = null;
-            if (Delimiters?.Length > 0)
-            {
-                delimiter = new byte[Delimiters.Length];
-                Delimiters.CopyTo(delimiter, 0);
-            }
-            else
-            {
-                delimiter = new byte[NewLine.Length];
-                NewLine.CopyTo(delimiter, 0);
-            }
+            var delimTemp = Delimiters?.Length > 0 ? Delimiters : NewLine;
+            var delimLength = delimTemp.Length;
+            var delimClone = new byte[delimLength];
+            delimTemp.CopyTo(delimClone, 0);
 
             var readPosition = 0;       // 数据分析的起始位置 (读指针)
             var writePosition = 0;      // 写入数据的末尾位置（下一次 ReadAsync 的写入起点，写指针）
-            var minBufferSize = bufferSize / 8;
 
             try
             {
-                while (!cancelToken.IsCancellationRequested && tcpClient.IsConnected())
+                while (!cancellationToken.IsCancellationRequested && tcpClient.IsConnected())
                 {
                     #region 整理缓冲区
                     // 0. 数据正好分析完 → 所有指针归零
-                    if (readPosition == writePosition)
+                    if (readPosition > compactThreshold && readPosition == writePosition)
                     {
                         readPosition = 0;
                         writePosition = 0;
                     }
-                    // 1. 整理缓冲区：如果尾部剩余空间不足，且前方有已消费的空间，则向前移动有效数据
-                    else if (readPosition > 0 && writePosition > readPosition && (bufferSize - writePosition < minBufferSize))
+                    // 1. 如果尾部剩余空间不足，且前方有已消费的空间，则向前移动有效数据
+                    else if (readPosition > 0 && bufferSize - writePosition < compactThreshold)
                     {
                         var pendingLength = writePosition - readPosition;
                         Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, pendingLength);
@@ -337,27 +330,27 @@ namespace SpaceCG.Net
                     }
                     #endregion
 
-                    var count = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancelToken).ConfigureAwait(false);
-                    if (count == 0) break;
+                    var readLength = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancellationToken).ConfigureAwait(false);
+                    if (readLength == 0) break;
 
-                    writePosition += count;
-                    //Trace.WriteLine($"RPC 客户端收到来自 {RemoteEndPoint} 的数据 {count} bytes");
+                    writePosition += readLength;
+                    //Trace.WriteLine($"RPC 客户端收到来自 {RemoteEndPoint} 的数据 {readLength} bytes");
 
                     #region 扫描缓冲区中所有完整的数据字节消息
                     while (readPosition < writePosition)
                     {
-                        var delimiterPosition = clientBuffer.IndexOf(delimiter, readPosition, writePosition - readPosition);
-                        if (delimiterPosition < 0) break;
+                        var delimPosition = clientBuffer.IndexOf(delimClone, readPosition, writePosition - readPosition);
+                        if (delimPosition < 0) break;
 
                         // 提取完整的数据字节消息（含 delimiter 分割符本身）
-                        var messageLength = delimiterPosition - readPosition + delimiter.Length;
+                        var messageLength = delimPosition + delimLength - readPosition ;
                         var responseMessage = new ArraySegment<byte>(clientBuffer, readPosition, messageLength);
 
                         // 移动读指针，跳过已消费的数据和分割符
-                        readPosition = delimiterPosition + delimiter.Length;
+                        readPosition = delimPosition + delimLength;
 
                         // 处理服务端响应的字节数据
-                        _ = ProcessServerMessageAsync(clientEndPoint, responseMessage, cancelToken);
+                        ProcessServerMessage(clientEndPoint, responseMessage);
                     }
                     #endregion
                 }
@@ -379,15 +372,21 @@ namespace SpaceCG.Net
             }
         }
         /// <summary>
-        /// 处理服务端响应的字节数据
+        /// 处理服务端响应的一条完整字节数据消息：反序列化 → Id 匹配 → 唤醒等待方。
+        /// <para>执行流程：</para>
+        /// <para>1. 调用子类实现的 <see cref="DeserializeResponseMessage"/> 将字节数据解析为 <see cref="ResponseMessage"/> 对象。</para>
+        /// <para>2. 根据 <see cref="ResponseMessage.Id"/> 在 <see cref="_pendingCalls"/> 字典中查找匹配的待响应调用。</para>
+        /// <para>3. 找到匹配项后通过 <see cref="PendingCall.SetResult"/> 唤醒等待该响应的异步调用方；未匹配则记录警告日志。</para>
+        /// <para>异常处理：反序列化异常在内部捕获并记录警告日志，不会向外抛出。</para>
+        /// <para>注意：本方法为同步操作，在 <see cref="HandleServerSessionAsync"/> 的数据读取循环中直接调用。
+        /// 若子类实现的 <see cref="DeserializeResponseMessage"/> 耗时较长，可能阻塞后续网络数据的接收，
+        /// 此时应考虑将本方法改为异步并通过 <see cref="Task.Run(System.Action)"/> 卸载到线程池执行。</para>
         /// </summary>
-        /// <param name="clientEndPoint"></param>
-        /// <param name="responseMessage"></param>
-        /// <param name="cancellationToken"></param>
-        /// <returns></returns>
-        private async Task ProcessServerMessageAsync(IPEndPoint clientEndPoint, ArraySegment<byte> responseMessage, CancellationToken cancellationToken)
+        /// <param name="clientEndPoint">客户端本地端点地址，用于日志记录。</param>
+        /// <param name="responseMessage">一条完整的响应字节数据消息（已包含尾部 <see cref="Delimiters"/> 分隔符）。</param>
+        private void ProcessServerMessage(IPEndPoint clientEndPoint, ArraySegment<byte> responseMessage)
         {
-            // 解析响应消息并分派
+            // 反序列化：调用子类协议实现将字节数据解析为响应消息对象
             ResponseMessage response = null;
             try
             {
@@ -399,20 +398,17 @@ namespace SpaceCG.Net
                 return;
             }
 
-            // 将接收到的响应消息分派到对应的 PendingCall
-            if (response != null && response.Id > 0)
-            {
-                if (_pendingCalls.TryRemove(response.Id, out var pending))
-                {
-                    pending.SetResult(response);
-                }
-                else
-                {
-                    Trace.TraceWarning($"RPC 客户端 {clientEndPoint} 收到未匹配的响应消息 Id:{response.Id}");
-                }
-            }
+            if (response == null || response.Id < 0) return;
 
-            await Task.Yield();
+            // 将接收到的响应消息分派到对应的 PendingCall
+            if (_pendingCalls.TryRemove(response.Id, out var pending))
+            {
+                pending.SetResult(response);
+            }
+            else
+            {
+                Trace.TraceWarning($"RPC 客户端 {clientEndPoint} 收到未匹配的响应消息 Id:{response.Id}");
+            }
         }
 
         /// <summary>

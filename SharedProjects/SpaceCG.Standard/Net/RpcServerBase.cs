@@ -375,22 +375,15 @@ namespace SpaceCG.Net
             // 如果读取的数据全部分析完或刚好分析完一个完整的数据消息后，缓冲区后面没有可分析数据时，可以将 offset 指针设置 0
             var bufferSize = this.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];
+            var compactThreshold = bufferSize / 8;  // 紧凑阈值
 
-            byte[] delimiter = null;
-            if (Delimiters?.Length > 0)
-            {
-                delimiter = new byte[Delimiters.Length];
-                Delimiters.CopyTo(delimiter, 0);
-            }
-            else
-            {
-                delimiter = new byte[NewLine.Length];
-                NewLine.CopyTo(delimiter, 0);
-            }
+            var delimTemp = Delimiters?.Length > 0 ? Delimiters : NewLine;
+            var delimLength = delimTemp.Length;
+            var delimClone = new byte[delimLength];
+            delimTemp.CopyTo(delimClone, 0);
 
             var readPosition = 0;       // 数据分析的起始位置 (读指针)
             var writePosition = 0;      // 写入数据的末尾位置（下一次 ReadAsync 的写入起点，写指针）
-            var minBufferSize = bufferSize / 8;
 
             // 客户端写入消息同步锁，保证消息的完整性
             var clientSemaphore = new SemaphoreSlim(1, 1);
@@ -410,13 +403,13 @@ namespace SpaceCG.Net
                 {
                     #region 整理缓冲区
                     // 0. 数据正好分析完 → 所有指针归零
-                    if (readPosition == writePosition)
+                    if (readPosition > compactThreshold && readPosition == writePosition)
                     {
                         readPosition = 0;
                         writePosition = 0;
                     }
-                    // 1. 整理缓冲区：如果尾部剩余空间不足，且前方有已消费的空间，则向前移动有效数据
-                    else if (readPosition > 0 && writePosition > readPosition && (bufferSize - writePosition < minBufferSize))
+                    // 1. 如果尾部剩余空间不足，且前方有已消费的空间，则向前移动有效数据
+                    else if (readPosition > 0 && bufferSize - writePosition <= compactThreshold)
                     {
                         var pendingLength = writePosition - readPosition;
                         Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, pendingLength);
@@ -438,24 +431,24 @@ namespace SpaceCG.Net
                     #endregion
 
                     // 读取数据
-                    var count = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancellationToken);
-                    if (count == 0) break;  // 客户端已断开了连接
+                    var readLength = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancellationToken);
+                    if (readLength == 0) break;  // 客户端已断开了连接
                     
-                    writePosition += count;
-                    //System.Diagnostics.Debug.WriteLine($"接收客户端 {clientEndPoint} 的数据 {count} bytes ");
+                    writePosition += readLength;
+                    //System.Diagnostics.Debug.WriteLine($"接收客户端 {clientEndPoint} 的数据 {readLength} bytes ");
 
                     #region 扫描缓冲区中所有完整的数据字节消息
                     while (readPosition < writePosition)
                     {
-                        var delimiterPosition = clientBuffer.IndexOf(delimiter, readPosition, writePosition - readPosition);
-                        if (delimiterPosition < 0) break;
+                        var delimPosition = clientBuffer.IndexOf(delimClone, readPosition, writePosition - readPosition);
+                        if (delimPosition < 0) break;
 
                         // 提取完整的数据字节消息（含 delimiter 分割符本身）
-                        var messageLength = delimiterPosition - readPosition + delimiter.Length;
+                        var messageLength = delimPosition + delimLength - readPosition;
                         var requestMessage = new ArraySegment<byte>(clientBuffer, readPosition, messageLength);
 
                         // 移动读指针，跳过已消费的数据和分割符
-                        readPosition = delimiterPosition + delimiter.Length;
+                        readPosition = delimPosition + delimLength;
 
                         // 处理客户端请求的字节数据
                         _ = ProcessClientMessageAsync(client, requestMessage, cancellationToken);
@@ -511,7 +504,7 @@ namespace SpaceCG.Net
             if (invokeMessage == null)
             {
                 // 这里不能响应客户端，因为不确定客户端的要求是否需要响应 ？？？？
-                Trace.TraceWarning($"反序列化客户端 {clientEndPoint} 消息为空");
+                // Trace.TraceWarning($"反序列化客户端 {clientEndPoint} 消息为空");
                 return;
             }
 
