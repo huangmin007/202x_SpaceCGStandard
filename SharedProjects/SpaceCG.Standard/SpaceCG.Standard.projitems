@@ -11,8 +11,10 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\ArrayExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\FileExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\HttpClientExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\InstanceExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\MathExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\NetworkExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\PathExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\StringExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\TcpClientExtensions.cs" />
@@ -24,12 +26,15 @@
     <Compile Include="$(MSBuildThisFileDirectory)Generic\LoggerTraceListener.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Generic\ObjectPool.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Generic\ProtocolParser.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\Http\HttpServerBase.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\Http\HttpWebServer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcClient4X.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcClientBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcMessages.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcServer4X.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\RpcServerBase.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Net\TcpClientEx.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Net\WebSockets\WebSocketAPI.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Trace.cs" />
   </ItemGroup>
   <ItemGroup>

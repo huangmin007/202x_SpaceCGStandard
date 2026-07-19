@@ -167,6 +167,10 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            var ips = GetLocalIPAddresses().ToArray();
+
+            var ips2 = NetworkExtensions.GetLocalIPv4Addresses().ToArray();
+
             var config2 = XElementExtensions.LoadConfig($"Resources/Config.xml");
             Trace.WriteLine($"config...{config2}");
 
@@ -290,6 +294,20 @@ namespace Z_TestWpfApp
             byte[] array = new byte[colors.Count];
             Trace.WriteLine($"IEnumerable<IEnumerable<IEnumerable<Color>>> colors, IEnumerable<int> widths");
             return 16;
+        }
+
+        /// <summary>
+        /// 获取本机的 IPv4 地址
+        /// </summary>
+        /// <returns></returns>
+        public static IEnumerable<IPAddress> GetLocalIPAddresses()
+        {
+            IPHostEntry host = Dns.GetHostEntry(Dns.GetHostName());
+            IEnumerable<IPAddress> ips = from ipAddress in host.AddressList
+                                         where ipAddress.AddressFamily == AddressFamily.InterNetwork
+                                         select ipAddress;
+
+            return ips;
         }
     }
 

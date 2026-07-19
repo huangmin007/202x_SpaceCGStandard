@@ -205,7 +205,7 @@ namespace SpaceCG.Net
                 }
                 catch (Exception ex)
                 {
-                    Trace.TraceWarning($"程序集 [{assembly.FullName}] 获取导出类型失败: {ex.Message}");
+                    Trace.TraceWarning($"程序集 [{assembly.FullName}] 获取导出类型失败：({ex.GetType().Name}){ex.Message}");
                     continue;
                 }
 
@@ -404,7 +404,7 @@ namespace SpaceCG.Net
                 var clientStream = client.GetStream();
                 while (!cancellationToken.IsCancellationRequested && client.IsConnected())
                 {
-                    #region 整理缓冲区
+                    #region 整理缓冲区的空间
                     // 0. 数据正好分析完 → 所有指针归零
                     if (readPosition > compactThreshold && readPosition == writePosition)
                     {
@@ -433,12 +433,12 @@ namespace SpaceCG.Net
                     }
                     #endregion
 
-                    // 读取数据
+                    #region 从网络流中读取数据到缓冲区
                     var readLength = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancellationToken);
-                    if (readLength == 0) break;  // 客户端已断开了连接
-                    
+                    if (readLength == 0) break;  // 客户端已断开了连接                    
                     writePosition += readLength;
-                    //System.Diagnostics.Debug.WriteLine($"接收客户端 {clientEndPoint} 的数据 {readLength} bytes ");
+                    //Trace.WriteLine($"接收客户端 {clientEndPoint} 的数据 {readLength} bytes ");
+                    #endregion
 
                     #region 扫描缓冲区中所有完整的数据字节消息
                     while (readPosition < writePosition)

@@ -51,6 +51,7 @@ namespace SpaceCG.Net
         /// </summary>
         private readonly ConcurrentDictionary<int, PendingCall> _pendingCalls = new ConcurrentDictionary<int, PendingCall>();
 
+
         #region Public Properties
         /// <summary>
         /// 获取客户端是否已连接到服务端。
@@ -95,6 +96,7 @@ namespace SpaceCG.Net
         public byte[] Delimiters { get; protected set; } = NewLine;
         #endregion
 
+
         #region Constructors
         /// <summary>
         /// 使用指定的 IP 地址和端口号初始化 <see cref="RpcClientBase"/> 类的新实例。
@@ -117,6 +119,7 @@ namespace SpaceCG.Net
         /// <inheritdoc cref="RpcClientBase(IPAddress, int)"/>
         public RpcClientBase(string address, int port) : this(IPAddress.Parse(address), port) { }
         #endregion
+
 
         #region Connect / Close
         /// <summary>
@@ -203,6 +206,7 @@ namespace SpaceCG.Net
             }
         }
         #endregion
+
 
         #region ConnectWithRetryAsync & HandleServerSessionAsync
         /// <summary>
@@ -301,7 +305,7 @@ namespace SpaceCG.Net
             {
                 while (!cancellationToken.IsCancellationRequested && tcpClient.IsConnected())
                 {
-                    #region 整理缓冲区
+                    #region 整理缓冲区的空间
                     // 0. 数据正好分析完 → 所有指针归零
                     if (readPosition > compactThreshold && readPosition == writePosition)
                     {
@@ -330,11 +334,12 @@ namespace SpaceCG.Net
                     }
                     #endregion
 
+                    #region 从网络流中读取数据到缓冲区
                     var readLength = await clientStream.ReadAsync(clientBuffer, writePosition, bufferSize - writePosition, cancellationToken).ConfigureAwait(false);
                     if (readLength == 0) break;
-
                     writePosition += readLength;
-                    //Trace.WriteLine($"RPC 客户端收到来自 {RemoteEndPoint} 的数据 {readLength} bytes");
+                    //Trace.WriteLine($"RPC 客户端 {clientEndPoint} 收到来自 {RemoteEndPoint} 的数据 {readLength} bytes");
+                    #endregion
 
                     #region 扫描缓冲区中所有完整的数据字节消息
                     while (readPosition < writePosition)
