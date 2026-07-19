@@ -44,7 +44,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 发送信号量，序列化并发写入，避免多个 WriteAsync 调用在底层 Socket 上交错字节。
         /// </summary>
-        private readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _writeSemaphore = new SemaphoreSlim(1, 1);
         /// <summary>
         /// 待响应的调用字典。
         /// <para>key: 消息 Id, value: 待处理调用信息（TaskCompletionSource）。</para>
@@ -495,7 +495,7 @@ namespace SpaceCG.Net
 
             try
             {
-                await _sendSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await _writeSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 var clientStream = _tcpClient.GetStream();
                 await clientStream.WriteAsync(data, offset, length, cancellationToken).ConfigureAwait(false);
@@ -510,7 +510,7 @@ namespace SpaceCG.Net
             }
             finally
             {
-                _sendSemaphore.Release();
+                _writeSemaphore.Release();
             }
         }
         /// <inheritdoc cref="WriteAsync(byte[], int, int, CancellationToken)"/>
@@ -676,7 +676,7 @@ namespace SpaceCG.Net
 
             Close();
 
-            try { _sendSemaphore?.Dispose(); }
+            try { _writeSemaphore?.Dispose(); }
             catch (Exception) { }
         }
         #endregion

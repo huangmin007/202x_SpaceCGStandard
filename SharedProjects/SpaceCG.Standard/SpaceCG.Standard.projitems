@@ -38,6 +38,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Trace.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)Extensions\README.md" />
     <None Include="$(MSBuildThisFileDirectory)Extensions\XElementConfigExample.xml" />
     <None Include="$(MSBuildThisFileDirectory)Generic\README.md" />
     <None Include="$(MSBuildThisFileDirectory)Net\README.md" />

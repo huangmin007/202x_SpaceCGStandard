@@ -26,7 +26,7 @@ namespace SpaceCG.Net
     /// </remarks>
     public class HttpWebServer : HttpServerBase
     {
-        private DirectoryInfo _rootDirectory;
+        private DirectoryInfo _rootDirectory = new DirectoryInfo(Environment.CurrentDirectory);
 
         /// <summary>
         /// 获取或设置文件服务的根目录
@@ -70,7 +70,6 @@ namespace SpaceCG.Net
         /// </remarks>
         public HttpWebServer()
         {
-            RootDirectory = new DirectoryInfo(Environment.CurrentDirectory);
         }
 
         /// <summary>
@@ -186,6 +185,7 @@ namespace SpaceCG.Net
             response.StatusCode = (int)HttpStatusCode.OK;
             response.ContentType = GetMimeType(filePath);
             response.ContentLength64 = fileLength;
+            response.ContentEncoding = Encoding.UTF8;
 
             // 使用 FileShare.Read 允许多个客户端同时读取同一个文件
             using (var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true))

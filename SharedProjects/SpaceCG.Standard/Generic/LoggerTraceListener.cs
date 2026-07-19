@@ -227,8 +227,7 @@ namespace SpaceCG.Generic
             _cancelTokenSource = new CancellationTokenSource();
             _isConsoleProgram = string.IsNullOrWhiteSpace(_fileName) && Environment.UserInteractive;
 
-            _writerTask = Task.Factory.StartNew(() => WriteMessageQueue(_cancelTokenSource.Token).GetAwaiter().GetResult(), 
-                _cancelTokenSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            _writerTask = Task.Run(async () => await WriteMessageQueue(_cancelTokenSource.Token), _cancelTokenSource.Token);
 
             try
             {
@@ -753,7 +752,7 @@ namespace SpaceCG.Generic
                 // 等待消费线程完成（带超时，防止 I/O 阻塞导致死锁）
                 if (_writerTask != null)
                 {
-                    _writerTask.Wait(TimeSpan.FromSeconds(3.0));
+                    _writerTask.Wait(300);
                 }
             }
             finally

@@ -62,9 +62,8 @@ namespace SpaceCG.Generic
         /// <summary>写指针：指向缓冲区中下一个可写入数据的位置。</summary>
         private int _writePosition;
         /// <summary>
-        /// 获取缓冲区中当前待解析的字节数。
-        /// <para>尝试非阻塞获取锁以读取精确值；若锁被占用则返回近似值（非线程安全读取），
-        /// 避免阻塞调用线程。</para>
+        /// 获取缓冲区中当前待解析的字节数。当锁被占用时返回近似值，仅用于监控/日志，不可用于精确控制逻辑。
+        /// <para>尝试非阻塞获取锁以读取精确值；若锁被占用则返回近似值（非线程安全读取），避免阻塞调用线程。</para>
         /// </summary>
         public int Available
         {

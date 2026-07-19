@@ -257,7 +257,6 @@ namespace SpaceCG.Net
 
             if (IsRunning) return;
 
-            _cts = new CancellationTokenSource();
             _tcpListener = new TcpListener(LocalEndPoint);
 
             try
@@ -272,6 +271,7 @@ namespace SpaceCG.Net
                 return;
             }
 
+            _cts = new CancellationTokenSource();
             _acceptConnectTask = AcceptClientConnectAsync(_cts.Token);
         }
         /// <summary>
@@ -296,7 +296,7 @@ namespace SpaceCG.Net
 
             try
             {
-                _acceptConnectTask?.Wait(100);
+                _acceptConnectTask?.Wait(500);
                 _acceptConnectTask?.Dispose();
             }
             catch (Exception) { }
@@ -412,7 +412,7 @@ namespace SpaceCG.Net
                         writePosition = 0;
                     }
                     // 1. 如果尾部剩余空间不足，且前方有已消费的空间，则向前移动有效数据
-                    else if (readPosition > 0 && bufferSize - writePosition <= compactThreshold)
+                    else if (readPosition > 0 && bufferSize - writePosition < compactThreshold)
                     {
                         var pendingLength = writePosition - readPosition;
                         Buffer.BlockCopy(clientBuffer, readPosition, clientBuffer, 0, pendingLength);
@@ -598,10 +598,11 @@ namespace SpaceCG.Net
                 }
                 #endregion
 
-                #region 执行方法调用（SyncContext.Send 模式）
+                #region 执行方法调用（SyncContext.Send 模式） 
                 object invokeResult = null;
                 Exception invokeException = null;
 
+                // 考虑使用 _syncContext.Post 替代 Send ？？或将方法调用改为 TaskCompletionSource 模式以支持异步等待？？
                 _syncContext.Send(_ =>
                 {
                     try
