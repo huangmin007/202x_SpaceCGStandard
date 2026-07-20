@@ -391,6 +391,7 @@ namespace SpaceCG.Extensions
 
                     var methodParameters = method.GetParameters();
                     if (methodParameters.Length != parameters.Length) continue;
+                    if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;   // ref out 参数不支持
 
                     var tempSignature = methodParameters.GetParameterSignature();
                     var tempMethodKey = $"{instanceType.FullName}.{methodName}({tempSignature})";
@@ -430,7 +431,7 @@ namespace SpaceCG.Extensions
                             var methodParameters = method.GetParameters();
                             if (methodParameters == null || methodParameters.Length == 0) continue;
                             if (methodParameters.Length - 1 != parameters.Length) continue;
-                            if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;  // ref out 参数不支持
+                            if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;
 
                             // 使用 IsAssignableFrom 支持基类和接口类型的扩展方法
                             if (methodParameters[0].ParameterType.IsAssignableFrom(instanceType))
@@ -483,6 +484,94 @@ namespace SpaceCG.Extensions
             return TryInvokeMethod(instance, methodName, parameters.ParseParameters(), out returnResult);
         }
 
+        #endregion
+
+        #region Invoke Static Method
+        /// <summary>
+        /// 尝试通过类型名称和方法名称动态查找并调用静态方法。
+        /// </summary>
+        /// <param name="typeFullName">包含静态方法的类型全名（含命名空间），如 <c>"System.Math"</c>。</param>
+        /// <param name="methodName">要调用的静态方法名称，不可为 <c>null</c> 或空白。</param>
+        /// <param name="parameters">传递给方法的参数数组，可为 <c>null</c> 表示无参数调用。</param>
+        /// <param name="returnResult">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。
+        /// <para>注意：若目标方法是异步方法（返回 <see cref="Task"/> 或 <see cref="Task{TResult}"/>），
+        /// <paramref name="returnResult"/> 将包含未完成的 <see cref="Task"/> 对象。
+        /// 调用方应使用 <see cref="GetReturnValue(object)"/> 异步提取实际结果。</para>
+        /// </param>
+        /// <returns>如果成功找到方法并执行，则为 <c>true</c>；否则为 <c>false</c>。</returns>
+        /// <exception cref="Exception">此方法不抛出异常，所有错误通过返回 <c>false</c> 和日志记录处理。</exception>
+        /// <remarks>
+        /// <para>查找范围：仅 <c>public static</c> 方法，排除扩展方法（带有 <see cref="ExtensionAttribute"/> 的方法）。</para>
+        /// <para>参数匹配：通过 <see cref="TypeExtensions.GetParameterSignature"/> 基于参数类型生成方法签名进行匹配。
+        /// 不支持 <c>ref</c> / <c>out</c> 参数。</para>
+        /// <para>方法元数据通过 <see cref="MethodInfoCache"/> 缓存，缓存键格式为 <c>"static:TypeFullName.MethodName(SVT,...)"</c>，
+        /// 相同签名的方法仅反射查找一次。</para>
+        /// <para>线程安全：通过 <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd"/> 保证缓存的线程安全性。</para>
+        /// </remarks>
+        public static bool TryInvokeMethod(string typeFullName, string methodName, object[] parameters, out object returnResult)
+        {
+            returnResult = null;
+            if (string.IsNullOrWhiteSpace(typeFullName) || string.IsNullOrWhiteSpace(methodName)) return false;
+
+            var type = TypeExtensions.GetType(typeFullName);
+            if (type == null)
+            {
+                Trace.TraceWarning($"未找到类型 ({typeFullName})");
+                return false;
+            }
+
+            var paramLength = parameters?.Length ?? 0;
+            var paramSignature = parameters.GetParameterSignature();
+            var staticMethodKey = $"[Static]{typeFullName}.{methodName}({paramSignature})";
+
+            var methodInfo = MethodInfoCache.GetOrAdd(staticMethodKey, _ =>
+            {
+                foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public))
+                {
+                    if (method.Name != methodName) continue;
+                    if (method.IsDefined(typeof(ExtensionAttribute), false)) continue;  // 扩展方法
+
+                    var methodParameters = method.GetParameters();
+                    if (methodParameters.Length != paramLength) continue;
+                    if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;
+
+                    var tempSignature = methodParameters.GetParameterSignature();
+                    var tempMethodKey = $"[Static]{typeFullName}.{method.Name}({tempSignature})";
+                    
+                    if (tempMethodKey != staticMethodKey) continue;
+
+                    return method;
+                }
+                return null;
+            });
+
+            if (methodInfo == null)
+            {
+                Trace.TraceWarning($"未找到静态方法：{staticMethodKey}");
+                return false;
+            }
+
+            if (!TypeExtensions.TryConvertParameters(parameters, methodInfo, out var convertedParameters))
+            {
+                Trace.TraceWarning($"静态方法 ({typeFullName}.{methodInfo.Name}) 参数类型转换不匹配");
+                return false;
+            }
+
+            try
+            {
+                returnResult = methodInfo.Invoke(null, convertedParameters);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"调用静态方法 ({methodInfo.DeclaringType?.FullName}.{methodInfo.Name}) 时发生异常：({ex.GetType().Name}) {ex.Message}");
+            }
+
+            return false;
+        }
+        #endregion
+
+        #region Get Return Value
         /// <summary>
         /// 从方法反射调用结果中提取实际返回值。
         /// <para>如果 <paramref name="returnResult"/> 是 <see cref="Task"/> 或 <see cref="Task{TResult}"/>，
@@ -545,10 +634,7 @@ namespace SpaceCG.Extensions
             var rawResult = await GetReturnValue(returnResult).ConfigureAwait(false);
             return rawResult is T typedResult ? typedResult : default;
         }
-        
         #endregion
-
-
     }
 
 }

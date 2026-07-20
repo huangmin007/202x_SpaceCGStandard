@@ -141,11 +141,12 @@ namespace Z_TestWpfApp
         public void test(int a)
         {
             Trace.WriteLine($">>>>>>teset....{a}");
-            var s0 = "0x01,True,32,False";
+            var s00 = "0x01,True,32,False";
+            var s0 = ",,,";
             var s1 = "0x01,3,[True,True,False]";
             var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
             var s3 = "[[#FFDDDDDD,#00DDDDDD]],[15],1.5,-1";
-            var s4 = "[[#FFFFFF00,#FF00FF00],[#FFFFFF00,]]";
+            var s4 = "[[[#FFFFFF00,#FF00FF00],[#FFFFFF00,]]]";
             var s5 = "[#FFFFFF00,#FF00FF00]";
 
 
@@ -183,6 +184,7 @@ namespace Z_TestWpfApp
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            test(0);
             var ips = GetLocalIPAddresses().ToArray();
 
             var ips2 = NetworkExtensions.GetLocalIPv4Addresses().ToArray();

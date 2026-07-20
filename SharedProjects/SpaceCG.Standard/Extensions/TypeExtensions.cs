@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -91,10 +92,27 @@ namespace SpaceCG.Extensions
                 if (firstElement == null) return "[REF]";
 
                 var elementType = firstElement.GetType();
-                if (valueType.IsValueType || elementType == typeof(string)) return "[SVT]";
+                if (elementType.IsValueType || elementType == typeof(string)) return "[SVT]";
                 if (elementType.IsArray) return $"[{GetValueSignature(firstElement)}]";
 
                 return $"[REF]";
+            }
+            if (valueType.IsGenericType)
+            {
+                var genericArgs = valueType.GetGenericArguments();
+                if (genericArgs.Length != 1) return $"[<REF...>]";
+
+                var genericTypeDef = valueType.GetGenericTypeDefinition();
+                if (genericTypeDef == typeof(IEnumerable<>) && valueType is IEnumerable enumerable)
+                {
+                    var firstElement = enumerable.GetEnumerator()?.Current;
+                    return $"[{GetValueSignature(firstElement)}]";
+                }
+                else if(genericTypeDef == typeof(IList<>) && valueType is IList list)
+                {
+                    var firstElement = list.GetEnumerator()?.Current;
+                    return $"[{GetValueSignature(firstElement)}]";
+                }
             }
 
             return "REF";

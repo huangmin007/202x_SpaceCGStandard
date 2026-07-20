@@ -145,7 +145,6 @@ namespace SpaceCG.Extensions
 
             return value;
         }
-#endif
         #endregion
 
 

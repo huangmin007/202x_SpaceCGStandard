@@ -170,13 +170,15 @@ namespace SpaceCG.Net
             var instanceType = objectInstance.GetType();
             var extensionType = typeof(ExtensionAttribute);
 
-            // 缓存实例的公共方法
+            #region 缓存实例的公共方法
             foreach (var method in instanceType.GetMethods())
             {
                 if (!method.IsPublic) continue;
                 if (method.IsSpecialName) continue;
 
                 var parameters = method.GetParameters();
+                if (parameters.Any(p => p.ParameterType.IsByRef)) continue;
+
                 var paramsSign = parameters.GetParameterSignature();
 
                 if (paramsSign.Contains("REF")) continue;
@@ -192,8 +194,9 @@ namespace SpaceCG.Net
                 //Debug.WriteLine($"{objectMethodKeyClone}");
                 RegisteredMethods.TryAdd(objectMethodKeyClone, method);
             }
+            #endregion
             //Debug.WriteLine("------------------------------ Extension ");
-            // 缓存实例的公共扩展方法  
+            #region 缓存实例的公共扩展方法
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 if (assembly.GlobalAssemblyCache) continue;
@@ -241,6 +244,7 @@ namespace SpaceCG.Net
                     }
                 }
             }
+            #endregion
         }
         #endregion
 

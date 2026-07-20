@@ -184,7 +184,7 @@ namespace SpaceCG.Extensions
         /// 输出结构：
         /// 顶层始终返回 <c>object[]</c>；
         /// 被 <c>[...]</c> 包裹且内部全为字符串的嵌套返回 <c>string[]</c>；
-        /// 被 <c>[...]</c> 包裹且内部含更深层嵌套的返回 <c>object[]</c>；
+        /// 被 <c>[...]</c> 包裹且内部含更深层嵌套的返回 <c>string[]</c>；
         /// 叶子始终为 <c>string</c>。
         /// </para>
         /// <code>示例：
@@ -192,12 +192,12 @@ namespace SpaceCG.Extensions
         /// "0x01,3,[True,True,False]"                  → ["0x01","3", string[3]{"True","True","False"}]
         /// "'hello,world',0x01,[True,False]"            → ["hello,world","0x01", string[2]{"True","False"}]
         /// "['aaa,bb','ni,hao'],15"                     → [ string[2]{"aaa,bb","ni,hao"} ,"15"]
-        /// "[[1,2],[3,4]]"                              → [ object[2]{string[2]{"1","2"}, string[2]{"3","4"}} ]
+        /// "[[1,2],[3,4]]"                              → [ string[2]{string[2]{"1","2"}, string[2]{"3","4"}} ]
         /// ",,"                                         → ["", "", ""]
         /// </code>
         /// </summary>
         /// <param name="parameters">待解析的参数文本，逗号分隔的 token 序列。空或空白返回空数组。</param>
-        /// <returns>解析后的 object[] 树。被 <c>[...]</c> 嵌套的全字符串子数组为 <c>string[]</c>，含更深层嵌套的为 <c>object[]</c>。</returns>
+        /// <returns>解析后的 object[] 树。被 <c>[...]</c> 嵌套的全字符串子数组为 <c>string[]</c>，含更深层嵌套的为 <c>string[]</c>。</returns>
         /// <remarks>
         /// <para><b>性能特征</b>：单次扫描 O(n)，零反射、零 Regex、零 Split、零 StringBuilder，无中间临时分配。适用于 200fps+ 高频调用。</para>
         /// <para>仅支持 <c>[ ]</c> 方括号嵌套和 <c>'...'</c> 单引号，不支持 <c>()</c> / <c>{}</c> / 双引号 / 转义。</para>
@@ -250,7 +250,7 @@ namespace SpaceCG.Extensions
                 return Array.Empty<string>();
 
             var list = new List<object>(8);
-            bool allStrings = true;
+            //bool allStrings = true;
 
             while (position < length)
             {
@@ -262,7 +262,7 @@ namespace SpaceCG.Extensions
                     position++;
                     list.Add(ParseList(text, ref position, length, ']'));
                     if (position < length && text[position] == ']') position++;
-                    allStrings = false;
+                    //allStrings = false;
                 }
                 else if (text[position] == ',')
                 {
@@ -284,6 +284,7 @@ namespace SpaceCG.Extensions
             if (count == 0)
                 return Array.Empty<string>();
 
+#if false
             if (allStrings)
             {
                 var result = new string[count];
@@ -293,6 +294,9 @@ namespace SpaceCG.Extensions
             }
 
             return list.ToArray();
+#else
+            return CreateTypedArray(list);
+#endif
         }
         /// <summary>
         /// 解析叶子字符串：'...' 或普通 token。
@@ -335,7 +339,81 @@ namespace SpaceCG.Extensions
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsWhiteSpaceFast(char c) => c == ' ' || c == '\r' || c == '\n' || c == '\t';
-        #endregion
+        /// <summary>
+        /// 将 <see cref="List{Object}"/> 转换为强类型数组。
+        /// <para>根据第一个元素的类型推断整个数组的类型：</para>
+        /// <list type="bullet">
+        /// <item><c>string</c> → <c>string[]</c></item>
+        /// <item><c>string[]</c> → <c>string[][]</c></item>
+        /// <item><c>string[][]</c> → <c>string[][][]</c></item>
+        /// <item><c>string[][][]</c> → <c>string[][][][]</c></item>
+        /// <item>其他 → <c>Array.CreateInstance(elementType, count)</c>（通用路径）</item>
+        /// </list>
+        /// </summary>
+        /// <param name="list">元素列表，调用方保证所有元素类型一致（第一个元素类型代表全部）。</param>
+        /// <returns>强类型数组。</returns>
+        /// <remarks>
+        /// <para>前 4 层嵌套使用硬编码的特化路径，避免 <see cref="Array.CreateInstance(Type, int)"/> 和
+        /// <see cref="Array.SetValue(object, int)"/> 的装箱与反射开销。</para>
+        /// <para>超过 4 层嵌套时回退到通用反射路径，支持任意深度。</para>
+        /// </remarks>
+        private static Array CreateTypedArray(List<object> list)
+        {
+            if (list.Count == 0)
+                return Array.Empty<string>();
+
+            // string[]
+            if (list[0] is string)
+            {
+                string[] result = new string[list.Count];
+
+                for (int i = 0; i < list.Count; i++)
+                    result[i] = (string)list[i];
+
+                return result;
+            }
+
+            // string[][]
+            if (list[0] is string[])
+            {
+                string[][] result = new string[list.Count][];
+
+                for (int i = 0; i < list.Count; i++)
+                    result[i] = (string[])list[i];
+
+                return result;
+            }
+
+            // string[][][]
+            if (list[0] is string[][])
+            {
+                string[][][] result = new string[list.Count][][];
+
+                for (int i = 0; i < list.Count; i++)
+                    result[i] = (string[][])list[i];
+
+                return result;
+            }
+
+            // string[][][][]
+            if (list[0] is string[][][])
+            {
+                string[][][][] result = new string[list.Count][][][];
+                for (int i = 0; i < list.Count; i++)
+                    result[i] = (string[][][])list[i];
+
+                return result;
+            }
+
+            Type elementType = list[0].GetType();
+            Array resultArray = Array.CreateInstance(elementType, list.Count);
+            for (int i = 0; i < list.Count; i++)
+            {
+                resultArray.SetValue(list[i], i);
+            }
+            return resultArray;
+        }
+#endregion
 
 
         #region TryConvertTo 将字符串转换为指定值类型
@@ -587,6 +665,7 @@ namespace SpaceCG.Extensions
         #endregion
 
 
+        #region Serialize Value & Enumerable
         /// <summary>
         /// 将对象序列化为字符串表示形式，是 <see cref="ParseParameters"/> 的反向操作（强类型值→可传输文本）。
         /// <para>转换规则：</para>
@@ -607,7 +686,7 @@ namespace SpaceCG.Extensions
             if (value == null) return "null";
             if (value is string stringValue)
             {
-                if (stringValue.StartsWith("'") && stringValue.EndsWith("'"))
+                if (stringValue.Length >= 2 && stringValue.StartsWith("'") && stringValue.EndsWith("'"))
                     return stringValue.Substring(1, stringValue.Length - 2);
 
                 if (stringValue.IndexOf(',') != -1) return $"\'{stringValue}\'";
@@ -676,5 +755,8 @@ namespace SpaceCG.Extensions
             builder.Append(']');
             return builder.ToString();
         }
+        #endregion
+
+
     }
 }
