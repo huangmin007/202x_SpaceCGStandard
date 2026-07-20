@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace SpaceCG.Extensions
@@ -322,14 +323,14 @@ namespace SpaceCG.Extensions
         /// <param name="instance">目标实例对象。<b>不可为 null</b>。</param>
         /// <param name="methodInfo">要调用的方法元数据。必须是 实例方法 或 实例扩展方法，不可为 <c>null</c>。</param>
         /// <param name="parameters">传递给方法的业务参数数组（不包含扩展方法的 this 参数）。</param>
-        /// <param name="returnValue">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
+        /// <param name="returnResult">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
         /// <returns>如果成功执行方法，则为 <c>true</c>；否则为 <c>false</c>。</returns>
         /// <remarks>
         /// <b>严格约束</b>：此方法不能调用纯静态方法。若 <paramref name="methodInfo"/> 为纯静态方法，将直接返回 <c>false</c>。
         /// </remarks>
-        public static bool TryInvokeMethod(object instance, MethodInfo methodInfo, object[] parameters, out object returnValue)
+        public static bool TryInvokeMethod(object instance, MethodInfo methodInfo, object[] parameters, out object returnResult)
         {
-            returnValue = null;
+            returnResult = null;
             if (instance == null || methodInfo == null) return false;
 
             var isExtensionMethod = methodInfo.IsDefined(typeof(ExtensionAttribute), false);
@@ -349,7 +350,7 @@ namespace SpaceCG.Extensions
 
             try
             {
-                returnValue = methodInfo.Invoke(instance, convertedParameters);
+                returnResult = methodInfo.Invoke(instance, convertedParameters);
                 return true;
             }
             catch (Exception ex)
@@ -365,11 +366,11 @@ namespace SpaceCG.Extensions
         /// <param name="instance">目标实例对象。<b>不可为 null</b>。</param>
         /// <param name="methodName">要调用的方法的名称。必须是 实例方法 或 实例扩展方法 的名称，不可为 <c>null</c>。</param>
         /// <param name="parameters">传递给方法的业务参数数组（不包含扩展方法的 this 参数）。</param>
-        /// <param name="returnValue">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
+        /// <param name="returnResult">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
         /// <returns>如果成功执行方法，则为 <c>true</c>；否则为 <c>false</c>。</returns>
-        public static bool TryInvokeMethod(object instance, string methodName, object[] parameters, out object returnValue)
+        public static bool TryInvokeMethod(object instance, string methodName, object[] parameters, out object returnResult)
         {
-            returnValue = null;
+            returnResult = null;
             if (instance == null || string.IsNullOrWhiteSpace(methodName)) return false;
 
             var instanceType = instance.GetType();
@@ -450,7 +451,7 @@ namespace SpaceCG.Extensions
                 return false;
             }
 
-            return TryInvokeMethod(instance, methodInfo, parameters, out returnValue);
+            return TryInvokeMethod(instance, methodInfo, parameters, out returnResult);
         }
         /// <summary>
         /// 尝试通过方法名和字符串形式的参数，动态查找并调用 <b>实例方法</b> 或 <b>实例扩展方法</b>。
@@ -465,15 +466,79 @@ namespace SpaceCG.Extensions
         /// <item>示例："1.6,True,#FFFF0000"、"[1,2,3],[4,5,6],2.5,True"、"[[1,2,3],[4,5,6]]]......" </item>
         /// </list>
         /// </param>
-        /// <param name="returnValue">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
+        /// <param name="returnResult">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
         /// <returns>如果成功执行方法，则为 <c>true</c>；否则为 <c>false</c>。</returns>
-        public static bool TryInvokeMethod(object instance, string methodName, string parameters, out object returnValue)
+        public static bool TryInvokeMethod(object instance, string methodName, string parameters, out object returnResult)
         {
-            returnValue = null;
+            returnResult = null;
             if (instance == null || string.IsNullOrWhiteSpace(methodName)) return false;
 
-            return TryInvokeMethod(instance, methodName, parameters.ParseParameters(), out returnValue);
+            return TryInvokeMethod(instance, methodName, parameters.ParseParameters(), out returnResult);
         }
+
+        /// <summary>
+        /// 从方法反射调用结果中提取实际返回值。
+        /// <para>如果 <paramref name="returnResult"/> 是 <see cref="Task"/> 或 <see cref="Task{TResult}"/>，
+        /// 则异步等待任务完成并提取最终结果；否则直接返回原值。</para>
+        /// </summary>
+        /// <param name="returnResult">反射调用 <see cref="MethodBase.Invoke(object, object[])"/> 的原始返回值。</param>
+        /// <returns>
+        /// <list type="bullet">
+        /// <item><c>null</c>：<paramref name="returnResult"/> 为 <c>null</c>、或为已完成的 <see cref="Task"/>（无返回值）。</item>
+        /// <item><c>T</c>：<paramref name="returnResult"/> 为已完成的 <see cref="Task{TResult}"/>，提取 <c>TResult</c> 作为返回值。</item>
+        /// <item>原始对象：<paramref name="returnResult"/> 为非 Task 类型，直接返回原值。</item>
+        /// </list>
+        /// </returns>
+        /// <exception cref="Exception">等待 <see cref="Task"/> 或 <see cref="Task{TResult}"/> 时，若任务内部抛出异常，将重新抛出。</exception>
+        /// <remarks>
+        /// <para>此方法通常用于 <see cref="TryInvokeMethod(object, MethodInfo, object[], out object)"/> 调用后，
+        /// 处理异步方法（返回 <see cref="Task"/> 或 <see cref="Task{TResult}"/>）的返回值提取。</para>
+        /// <para>注意：对于非泛型 <see cref="Task"/>（即 <c>async Task</c> 无返回值方法），await 完成后返回 <c>null</c>。</para>
+        /// </remarks>
+        public static async Task<object> GetReturnValue(object returnResult)
+        {
+            if (returnResult == null) return null;
+
+            // 非 Task 类型 → 直接返回原始结果
+            if (!(returnResult is Task task)) return returnResult;
+
+            try
+            {
+                await task.ConfigureAwait(false);
+                var returnType = returnResult.GetType();
+                if (returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
+                {
+                    var resultProperty = returnType.GetProperty("Result");
+                    return resultProperty?.GetValue(returnResult);
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError(ex.ToString());
+            }
+
+            return null;
+        }
+        /// <summary>
+        /// 从方法反射调用结果中提取指定类型的返回值。
+        /// <para>功能与 <see cref="GetReturnValue(object)"/> 相同，并尝试将结果转换为 <typeparamref name="T"/> 类型。</para>
+        /// </summary>
+        /// <typeparam name="T">期望的返回值类型。</typeparam>
+        /// <param name="returnResult">反射调用 <see cref="MethodBase.Invoke(object, object[])"/> 的原始返回值。</param>
+        /// <returns>
+        /// 如果提取成功且类型兼容，返回转换后的 <typeparamref name="T"/> 值；
+        /// 如果 <paramref name="returnResult"/> 为 <c>null</c>、任务无返回值、或类型不兼容，则返回 <c>default(T)</c>。
+        /// </returns>
+        /// <remarks>
+        /// <para>注意：对于值类型 <typeparamref name="T"/>，<c>default(T)</c> 可能是有效的业务值（如 0、false）。
+        /// 调用方若需区分"无返回值"与"返回了默认值"，应使用 <see cref="GetReturnValue(object)"/> 先获取 <c>object</c> 结果再自行判断。</para>
+        /// </remarks>
+        public static async Task<T> GetReturnValue<T>(object returnResult)
+        {
+            var rawResult = await GetReturnValue(returnResult).ConfigureAwait(false);
+            return rawResult is T typedResult ? typedResult : default;
+        }
+        
         #endregion
 
 

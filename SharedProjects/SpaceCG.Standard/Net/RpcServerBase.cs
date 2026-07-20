@@ -600,64 +600,33 @@ namespace SpaceCG.Net
                 }
                 #endregion
 
-                #region 执行方法调用（SyncContext.Post + Send 模式） 
+                #region 执行方法调用（SyncContext.Post 模式） 
                 object invokeResult = null;
                 Exception invokeException = null;
-
                 var returnType = methodInfo.ReturnType;
-                var isReturnTask = typeof(Task).IsAssignableFrom(returnType);
-                var isReturnTaskOfT = returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>);
 
-                if (isReturnTask)
+                _syncContext.Send(_ =>
                 {
-                    var tcs = new TaskCompletionSource<(object result, Exception exception)>();
-                    _syncContext.Post(async _ =>
+                    try
                     {
-                        try
-                        {
-                            var rawResult = methodInfo.Invoke(objectInstance, convertedParameters);
-                            if (rawResult is Task taskResult)
-                            {
-                                await taskResult.ConfigureAwait(true);  // 回到原始 SyncContext                                
-                                if (isReturnTaskOfT)                    // 检查 Task<T> 的 Result 属性
-                                {                                    
-                                    var resultProperty = returnType.GetProperty("Result");      // Task<T> → 提取 .Result
-                                    var actualResult = resultProperty?.GetValue(taskResult);
-                                    tcs.TrySetResult((actualResult, null));
-                                }
-                                else
-                                {                                    
-                                    tcs.TrySetResult((null, null));  // 纯 Task（无返回值）
-                                }
-                            }
-                            else
-                            {
-                                tcs.TrySetResult((rawResult, null));
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            tcs.TrySetResult((null, ex));
-                        }
-                    }, null);
+                        invokeResult = methodInfo.Invoke(objectInstance, convertedParameters);
+                    }
+                    catch (Exception ex)
+                    {
+                        invokeException = ex;
+                    }
+                }, null);
 
-                    var (result, exception) = await tcs.Task.ConfigureAwait(false);
-                    invokeResult = result;
-                    invokeException = exception;
-                }
-                else
+                if (invokeResult is Task task && returnType.IsGenericType)
                 {
-                    _syncContext.Send(_ =>
+                    await task.ConfigureAwait(false);
+                    if (returnType.GetGenericTypeDefinition() == typeof(Task<>))
                     {
-                        try
-                        {
-                            invokeResult = methodInfo.Invoke(objectInstance, convertedParameters);
-                        }
-                        catch (Exception ex)
-                        {
-                            invokeException = ex;
-                        }
-                    }, null);
+                        var resultProperty = returnType.GetProperty("Result");
+
+                        returnType = returnType.GetGenericArguments()[0];
+                        invokeResult = resultProperty?.GetValue(invokeResult);
+                    }
                 }
 
                 // 处理结果如果发生异常，则响应异常信息
@@ -673,16 +642,11 @@ namespace SpaceCG.Net
                 // 成功响应
                 if (invokeMessage.ResponseMode >= 0)
                 {
-                    if (isReturnTask && isReturnTaskOfT)
-                    {
-                        returnType = returnType.GetGenericArguments()[0]; // Task<T> → T
-                    }
-
                     var hasReturnValue = returnType != typeof(void) && returnType != typeof(Task);
                     var responseMessage = ResponseMessage.Create(invokeMessage, hasReturnValue ? 1 : 0, "Success", hasReturnValue ? returnType : null, hasReturnValue ? invokeResult : null);
                     await WriteResponseMessageAsync(invokeMessage, responseMessage, cancellationToken).ConfigureAwait(false);
                 }
-#endregion
+                #endregion
             }
             catch (Exception ex)
             {

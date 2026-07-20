@@ -102,9 +102,25 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.A:
-                    var result0 = InstanceExtensions.TryInvokeMethod(this, "Test", new object[] { "Hello,world" }, out var returnValue);
+                    var result0 = InstanceExtensions.TryInvokeMethod(this, "Test", new object[] { "Hello,world" }, out var returnResult);
                     ms = stopwatch.ElapsedTicks;
-                    Trace.WriteLine($"Result:{result0},ReturnValue:{returnValue}  use:{ms}");
+                    Trace.WriteLine($"Result:{result0},ReturnValue:{returnResult}  use:{ms},,,,{returnResult.GetType() == typeof(Task)}");
+
+                    var value = await InstanceExtensions.GetReturnValue(returnResult);
+                    if (returnResult is Task task)
+                    {
+                        var returnType = returnResult.GetType();
+                        var isReturnTaskOfT = returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>);
+
+                        await task.ConfigureAwait(false);
+                        if (isReturnTaskOfT)
+                        {
+                            var resultProperty = returnType.GetProperty("Result");
+                            var rv = resultProperty?.GetValue(returnResult);
+                            Trace.WriteLine($">>>>{rv}");
+                        }
+                    }
+
                     break;
                 case Key.Z:
                     var result1 = InstanceExtensions.TryInvokeMethod(this, "SetWindowState", "0", out var returnValue1);
@@ -165,7 +181,7 @@ namespace Z_TestWpfApp
             Trace.TraceInformation($"test");
         }
 
-        private void Window_Loaded(object sender, RoutedEventArgs e)
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             var ips = GetLocalIPAddresses().ToArray();
 
@@ -194,6 +210,7 @@ namespace Z_TestWpfApp
             var a7 = "'hello world, \"test\" hell.'";
             Trace.WriteLine($">>{StringExtensions.SerializeValue(a7)}<<");
 
+            await Test("aaa");
 #if false
             var type = this.GetType();
             foreach(var method in type.GetMethods())
@@ -234,7 +251,7 @@ namespace Z_TestWpfApp
 
         public bool Echo2(string msg)
         {
-            Trace.WriteLine($"ECHO2::{msg}");
+            Trace.WriteLine($"ECHO2::{msg},,,{TextBox_0.Text}");
             return true;
         }
 

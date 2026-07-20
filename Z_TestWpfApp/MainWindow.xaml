@@ -9,5 +9,7 @@
     <Grid>
 
         <Rectangle Name="Rectangle_0" Fill="Blue" Margin="100" />
+
+        <TextBox Text="Hello...." Name="TextBox_0" Width="100" Height="60" />
     </Grid>
 </Window>

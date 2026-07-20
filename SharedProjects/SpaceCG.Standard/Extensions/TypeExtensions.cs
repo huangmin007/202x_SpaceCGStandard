@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace SpaceCG.Extensions
 {
@@ -206,7 +207,7 @@ namespace SpaceCG.Extensions
         {
             convertedParameter = null;
             if (targetType == null) return false;
-            if (value == null || targetType == typeof(void)) return false;
+            if (value == null || targetType == typeof(void) || targetType == typeof(Task)) return false;
 
             Type valueType = value.GetType();
             // 类型兼容检查（含接口实现关系）
