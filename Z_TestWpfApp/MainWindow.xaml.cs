@@ -73,7 +73,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D2:
-                    var result = await rpcClient.InvokeFuncAsync("Demo", "SetColor2", new object[] { "#FF00FF00" });
+                    var result = await rpcClient.InvokeFuncAsync("Demo", "Test", new object[] { "Hello,world" });
                     Trace.TraceInformation($"Response::{result}");
                     Trace.TraceInformation($"ReturnType::{result.ReturnType}");
                     Trace.TraceInformation($"ReturnValue::{result.ReturnValue}");
@@ -102,7 +102,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.A:
-                    var result0 = InstanceExtensions.TryInvokeMethod(this, "Test2", new object[] { "Hello,world" }, out var returnValue);
+                    var result0 = InstanceExtensions.TryInvokeMethod(this, "Test", new object[] { "Hello,world" }, out var returnValue);
                     ms = stopwatch.ElapsedTicks;
                     Trace.WriteLine($"Result:{result0},ReturnValue:{returnValue}  use:{ms}");
                     break;
@@ -179,7 +179,7 @@ namespace Z_TestWpfApp
             SecurityElement.Escape("");
 
             rpcClient = new RpcClient4X("127.0.0.1", 2000);
-            rpcClient.ResponseTimeout = TimeSpan.FromSeconds(100);
+            rpcClient.ResponseTimeout = TimeSpan.FromSeconds(2000);
             rpcClient.Connect();
 
             const string Dictionary = nameof(Dictionary);
@@ -245,7 +245,7 @@ namespace Z_TestWpfApp
 
             Trace.WriteLine($"MSG:::{msg} ....");
 
-            return "OK~";
+            return $"OK~{msg}";
         }
         public async Task Test2(string msg)
         {

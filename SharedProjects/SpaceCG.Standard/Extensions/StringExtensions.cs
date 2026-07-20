@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace SpaceCG.Extensions
 {
@@ -607,8 +608,11 @@ namespace SpaceCG.Extensions
             if (value == null) return "null";
             if (value is string stringValue)
             {
-                // 已知限制：含逗号的字符串未启用单引号保护，序列化后无法被 ParseParameters 正确还原
-                //if (stringValue.IndexOf(',') != -1)  return $"\'{stringValue}\'";
+                if (stringValue.StartsWith("'") && stringValue.EndsWith("'"))
+                    return stringValue.Substring(1, stringValue.Length - 2);
+
+                if (stringValue.IndexOf(',') != -1) return $"\'{stringValue}\'";
+
                 return stringValue;
             }
 

@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Security;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using SpaceCG;
 using SpaceCG.Extensions;
@@ -84,12 +85,9 @@ namespace SpaceCG.Net
             try
             {
                 XElement element = XElement.Parse(content);
-                Trace.WriteLine(element.ToString());
-
                 if (element.Name != nameof(ResponseMessage)) return null;
 
                 var objectMethod = element.Attribute(nameof(ResponseMessage.ObjectMethod))?.Value;
-
                 if (string.IsNullOrWhiteSpace(objectMethod)) return null;
                 if (!int.TryParse(element.Attribute(nameof(ResponseMessage.Code))?.Value, out var code)) return null;
 
@@ -106,12 +104,21 @@ namespace SpaceCG.Net
                     try
                     {
                         returnType = TypeExtensions.GetType(element.Attribute(nameof(ResponseMessage.ReturnType))?.Value);
-                        var returnValueContent = element.Attribute(nameof(ResponseMessage.ReturnValue))?.Value;
+                        var returnContent = element.Attribute(nameof(ResponseMessage.ReturnValue))?.Value;
 
-                        if (returnType != null && !string.IsNullOrWhiteSpace(returnValueContent))
+                        if (returnType != null && !string.IsNullOrWhiteSpace(returnContent))
                         {
-                            var parameters = returnValueContent.ParseParameters();
-                            if (parameters?.Length == 1) TypeExtensions.TryConvertParameter(parameters[0], returnType, out returnValue);
+                            if (returnType == typeof(string))
+                            {
+                                var hashSingleQuote = returnContent.StartsWith("'") && returnContent.EndsWith("'");
+                                returnValue = hashSingleQuote ? returnContent.Substring(1, returnContent.Length - 2) : returnContent;
+                                //returnValue = Regex.Unescape(returnValueContent);
+                            }
+                            else
+                            {
+                                var parameters = returnContent.ParseParameters();
+                                if (parameters?.Length == 1) TypeExtensions.TryConvertParameter(parameters[0], returnType, out returnValue);
+                            }                               
                         }
                     }
                     catch (Exception ex)
