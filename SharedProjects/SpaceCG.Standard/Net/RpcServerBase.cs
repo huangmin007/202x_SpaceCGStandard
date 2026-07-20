@@ -378,7 +378,7 @@ namespace SpaceCG.Net
             // 如果读取的数据全部分析完或刚好分析完一个完整的数据消息后，缓冲区后面没有可分析数据时，可以将 offset 指针设置 0
             var bufferSize = this.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];
-            var compactThreshold = bufferSize / 8;  // 紧凑阈值
+            var compactThreshold = bufferSize / 4;  // 紧凑阈值
 
             var delimTemp = Delimiters?.Length > 0 ? Delimiters : NewLine;
             var delimLength = delimTemp.Length;
@@ -486,7 +486,7 @@ namespace SpaceCG.Net
         /// <param name="requestMessage">一条完整的字节数据消息。</param>
         /// <param name="cancellationToken">用于取消操作的令牌。</param>
         /// <returns>一个表示异步操作的任务。</returns>
-        protected async Task ProcessClientMessageAsync(TcpClient client, ArraySegment<byte> requestMessage, CancellationToken cancellationToken)
+        private async Task ProcessClientMessageAsync(TcpClient client, ArraySegment<byte> requestMessage, CancellationToken cancellationToken)
         {
             if (client == null || requestMessage == null || requestMessage.Count == 0) return;
             
@@ -500,15 +500,17 @@ namespace SpaceCG.Net
             }
             catch (Exception ex)
             {
-                // 这里不能响应客户端，因为不确定客户端的要求是否需要响应 ？？？？
-                Trace.TraceWarning($"反序列化客户端 {clientEndPoint} 消息异常：({ex.GetType().Name}) {ex.Message}");
+                // 消息反序列化异常，直接关闭客户端连接。
+                Trace.TraceWarning($"客户端 {clientEndPoint} 反序列化消息异常：({ex.GetType().Name}) {ex.Message}");
+
+                try { client?.Close(); }
+                catch (Exception) { }
                 return;
             }
 
             if (invokeMessage == null)
             {
-                // 这里不能响应客户端，因为不确定客户端的要求是否需要响应 ？？？？
-                // Trace.TraceWarning($"反序列化客户端 {clientEndPoint} 消息为空");
+                // Trace.TraceWarning($"客户端 {clientEndPoint} 反序列化消息为空，可能收到的是空数据。");
                 return;
             }
 
@@ -538,7 +540,7 @@ namespace SpaceCG.Net
         /// <param name="invokeMessage">客户端调用请求消息。</param>
         /// <param name="cancellationToken">用于取消操作的令牌。</param>
         /// <returns>一个表示异步操作的任务。</returns>
-        protected async Task ProcessInvokeMessageAsync(InvokeMessage invokeMessage, CancellationToken cancellationToken)
+        private async Task ProcessInvokeMessageAsync(InvokeMessage invokeMessage, CancellationToken cancellationToken)
         {
             if (invokeMessage == null) return;
             await ProcessInvokeSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -602,18 +604,64 @@ namespace SpaceCG.Net
                 object invokeResult = null;
                 Exception invokeException = null;
 
-                // 考虑使用 _syncContext.Post 替代 Send ？？或将方法调用改为 TaskCompletionSource 模式以支持异步等待？？
-                _syncContext.Send(_ =>
+                var returnType = methodInfo.ReturnType;
+                var isReturnTaskType = typeof(Task).IsAssignableFrom(returnType);
+                var isReturnGenericType = returnType.IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>);
+
+                if (isReturnTaskType)
                 {
-                    try
+                    var tcs = new TaskCompletionSource<(object result, Exception exception)>();
+                    _syncContext.Post(async _ =>
                     {
-                        invokeResult = methodInfo.Invoke(objectInstance, convertedParameters);
-                    }
-                    catch (Exception ex)
+                        try
+                        {
+                            var rawResult = methodInfo.Invoke(objectInstance, convertedParameters);
+                            if (rawResult is Task taskResult)
+                            {
+                                await taskResult.ConfigureAwait(true); // 回到原始 SyncContext
+
+                                // 检查 Task<T> 的 Result 属性
+                                if (isReturnGenericType)
+                                {
+                                    // Task<T> → 提取 .Result
+                                    var resultProperty = returnType.GetProperty("Result");
+                                    var actualResult = resultProperty?.GetValue(taskResult);
+                                    tcs.TrySetResult((actualResult, null));
+                                }
+                                else
+                                {                                    
+                                    tcs.TrySetResult((null, null));  // 纯 Task（无返回值）
+                                }
+                            }
+                            else
+                            {
+                                tcs.TrySetResult((rawResult, null));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            tcs.TrySetResult((null, ex));
+                        }
+                    }, null);
+
+                    var (result, exception) = await tcs.Task.ConfigureAwait(false);
+                    invokeResult = result;
+                    invokeException = exception;
+                }
+                else
+                {
+                    _syncContext.Send(_ =>
                     {
-                        invokeException = ex;
-                    }
-                }, null);
+                        try
+                        {
+                            invokeResult = methodInfo.Invoke(objectInstance, convertedParameters);
+                        }
+                        catch (Exception ex)
+                        {
+                            invokeException = ex;
+                        }
+                    }, null);
+                }
 
                 // 处理结果如果发生异常，则响应异常信息
                 if (invokeException != null)
@@ -628,10 +676,22 @@ namespace SpaceCG.Net
                 // 成功响应
                 if (invokeMessage.ResponseMode >= 0)
                 {
-                    var responseMessage = ResponseMessage.Create(invokeMessage, methodInfo.ReturnType == typeof(void) ? 0 : 1, "Success", methodInfo.ReturnType, invokeResult);
+                    Type actualReturnType;
+                    if (isReturnTaskType && isReturnGenericType)
+                    {
+                        actualReturnType = returnType.GetGenericArguments()[0]; // Task<T> → T
+                    }
+                    else
+                    {
+                        actualReturnType = returnType;
+                    }
+
+                    var hasReturnValue = actualReturnType != typeof(void) && actualReturnType != typeof(Task);
+                    var responseMessage = ResponseMessage.Create(invokeMessage, hasReturnValue ? 1 : 0, "Success", hasReturnValue ? actualReturnType : null, hasReturnValue ? invokeResult : null);
+                    //var responseMessage = ResponseMessage.Create(invokeMessage, methodInfo.ReturnType == typeof(void) ? 0 : 1, "Success", methodInfo.ReturnType, invokeResult);
                     await WriteResponseMessageAsync(invokeMessage, responseMessage, cancellationToken).ConfigureAwait(false);
                 }
-                #endregion
+#endregion
             }
             catch (Exception ex)
             {
@@ -654,7 +714,7 @@ namespace SpaceCG.Net
         /// <param name="responseMessage">待发送的响应消息对象。</param>
         /// <param name="cancellationToken">用于取消写入操作的令牌。</param>
         /// <returns>一个表示异步写入操作的任务。</returns>
-        protected async Task WriteResponseMessageAsync(TcpClient client, ResponseMessage responseMessage, CancellationToken cancellationToken)
+        private async Task WriteResponseMessageAsync(TcpClient client, ResponseMessage responseMessage, CancellationToken cancellationToken)
         {
             if (client == null || responseMessage == null) return;
             if (!client.Connected) return;
@@ -711,7 +771,7 @@ namespace SpaceCG.Net
         /// <param name="responseMessage">待发送的响应消息对象。</param>
         /// <param name="cancellationToken">用于取消写入操作的令牌。</param>
         /// <returns>一个表示异步写入操作的任务。</returns>
-        protected async Task WriteResponseMessageAsync(InvokeMessage invokeMessage, ResponseMessage responseMessage, CancellationToken cancellationToken)
+        private async Task WriteResponseMessageAsync(InvokeMessage invokeMessage, ResponseMessage responseMessage, CancellationToken cancellationToken)
         {
             if (invokeMessage == null || responseMessage == null) return;
 
@@ -761,7 +821,7 @@ namespace SpaceCG.Net
                 Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 未找到写入消息信号量。");
             }
         }
-        #endregion
+#endregion
 
         #region 子类重写抽象方法 DeserializeInvokeMessage & SerializeResponseMessage
         /// <summary>
@@ -770,7 +830,7 @@ namespace SpaceCG.Net
         /// </summary>
         /// <param name="requestMessage">客户端的请求消息，字节数据消息（结尾以 <see cref="Delimiters"/> 标识符结束）。</param>
         /// <param name="clientEndPoint">发送数据的客户端远程端点地址。</param>
-        /// <returns>解析成功返回一条 <see cref="InvokeMessage"/> 待服务端调用的消息；可过滤、修改、或解析失败则返回空。</returns>
+        /// <returns>解析成功返回一条 <see cref="InvokeMessage"/> 待服务端调用的消息；可过滤、修改、或解析失败返回空消息；如果抛出异常，则会关闭客户连接。</returns>
         protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> requestMessage, IPEndPoint clientEndPoint);
         /// <summary>
         /// 将执行调用后的响应信息，序列化为响应字节数组（结尾应以 <see cref="Delimiters"/> 标识符结束），用于发送回客户端。

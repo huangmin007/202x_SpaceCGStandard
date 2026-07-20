@@ -48,57 +48,35 @@ namespace SpaceCG.Net
         {
             if (requestMessage == null || requestMessage.Count == 0) return null;
 
-            var content = string.Empty;
-            try
+            var messageContent = Encoding.UTF8.GetString(requestMessage.Array, requestMessage.Offset, requestMessage.Count);
+            if (string.IsNullOrWhiteSpace(messageContent)) return null;
+
+            // 解析 XML
+            var messageElement = XElement.Parse(messageContent);
+            if (messageElement.Name != nameof(InvokeMessage))
             {
-                content = Encoding.UTF8.GetString(requestMessage.Array, requestMessage.Offset, requestMessage.Count);
-                //Debug.WriteLine($"客户端 {remoteEndPoint} Message:'{message}',,,{requestMessage.Offset}, {requestMessage.Count}");
-            }
-            catch (Exception ex)
-            {
-                Trace.TraceWarning($"客户端 {clientEndPoint} 请求消息解码为字符串时异常：({ex.GetType().Name}){ex.Message}");
-                return null;
+                throw new FormatException("Invalid XML-RPC message format.");
             }
 
-            if (string.IsNullOrWhiteSpace(content)) return null;
-
-            InvokeMessage invokeMessage = null;
-            try
+            var objectName = messageElement.Attribute(nameof(InvokeMessage.ObjectName))?.Value;
+            var methodName = messageElement.Attribute(nameof(InvokeMessage.MethodName))?.Value;
+            if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName) ||
+                string.IsNullOrWhiteSpace(methodName) || !RpcServerBase.IdentifierPattern.IsMatch(methodName))
             {
-#if true
-                var element = XElement.Parse(content);
-                if (element.Name != nameof(InvokeMessage)) return null;
-
-                var objectName = element.Attribute(nameof(InvokeMessage.ObjectName))?.Value;
-                var methodName = element.Attribute(nameof(InvokeMessage.MethodName))?.Value;
-                if (string.IsNullOrWhiteSpace(objectName) || !RpcServerBase.IdentifierPattern.IsMatch(objectName) ||
-                    string.IsNullOrWhiteSpace(methodName) || !RpcServerBase.IdentifierPattern.IsMatch(methodName)) return null;
-
-                int id = int.TryParse(element.Attribute(nameof(InvokeMessage.Id))?.Value, out var _id) ? _id : -1;
-                int responseMode = int.TryParse(element.Attribute(nameof(InvokeMessage.ResponseMode))?.Value, out var _responseMode) ? _responseMode : 0;
-
-                invokeMessage = InvokeMessage.Create(objectName, methodName, element.Attribute(nameof(InvokeMessage.Parameters))?.Value, id, responseMode);
-
-                // 解析 Description
-                invokeMessage.Description = element.Attribute(nameof(InvokeMessage.Description))?.Value;
-                // 解析 Version
-                if (Version.TryParse(element.Attribute(nameof(InvokeMessage.Version))?.Value, out var version)) invokeMessage.Version = version;                
-                // 解析 Timestamp
-                if (DateTimeOffset.TryParse(element.Attribute(nameof(InvokeMessage.Timestamp))?.Value, out var timestamp)) invokeMessage.Timestamp = timestamp;
-#else
-                invokeMessage = XAttributeParse(content);
-                if (invokeMessage == null)
-                {
-                    Trace.TraceWarning($"客户端 {clientEndPoint} XML 元素属性('{content}')解析失败");
-                    return null;
-                }
-#endif
+                throw new FormatException("Invalid XML-RPC message format."); ;
             }
-            catch (Exception ex)
-            {
-                Trace.TraceWarning($"客户端 {clientEndPoint} 请求消息反序列化时异常：({ex.GetType().Name}){ex.Message}");
-            }
-            
+
+            int id = int.TryParse(messageElement.Attribute(nameof(InvokeMessage.Id))?.Value, out var _id) ? _id : -1;
+            int mode = int.TryParse(messageElement.Attribute(nameof(InvokeMessage.ResponseMode))?.Value, out var _responseMode) ? _responseMode : 0;
+
+            InvokeMessage invokeMessage = InvokeMessage.Create(objectName, methodName, messageElement.Attribute(nameof(InvokeMessage.Parameters))?.Value, id, mode);
+            // 解析 Description
+            invokeMessage.Description = messageElement.Attribute(nameof(InvokeMessage.Description))?.Value;
+            // 解析 Version
+            if (Version.TryParse(messageElement.Attribute(nameof(InvokeMessage.Version))?.Value, out var version)) invokeMessage.Version = version;
+            // 解析 Timestamp
+            if (DateTimeOffset.TryParse(messageElement.Attribute(nameof(InvokeMessage.Timestamp))?.Value, out var timestamp)) invokeMessage.Timestamp = timestamp;
+
             return invokeMessage;
         }
 
@@ -120,12 +98,15 @@ namespace SpaceCG.Net
                 }
 
                 message.Add(new XAttribute(nameof(ResponseMessage.Code), responseMessage.Code));
-                message.Add(new XAttribute(nameof(ResponseMessage.ObjectMethod), responseMessage.ObjectMethod));
+                if (!string.IsNullOrWhiteSpace(responseMessage.ObjectMethod))
+                {
+                    message.Add(new XAttribute(nameof(ResponseMessage.ObjectMethod), responseMessage.ObjectMethod));
+                }
 
                 if (responseMessage.ReturnType != null && responseMessage.ReturnType != typeof(void))
                 {
                     message.Add(new XAttribute(nameof(ResponseMessage.ReturnType), responseMessage.ReturnType));
-                    message.Add(new XAttribute(nameof(ResponseMessage.ReturnValue), StringExtensions.ConvertToString(responseMessage.ReturnValue)));
+                    message.Add(new XAttribute(nameof(ResponseMessage.ReturnValue), StringExtensions.SerializeValue(responseMessage.ReturnValue)));
                 }
 
                 if (!string.IsNullOrWhiteSpace(responseMessage.Description))
@@ -147,8 +128,11 @@ namespace SpaceCG.Net
                 }
 
                 builder.Append($"{nameof(ResponseMessage.Code)}=\"{responseMessage.Code}\" ");
-                builder.Append($"{nameof(ResponseMessage.ObjectMethod)}=\"{responseMessage.ObjectMethod}\" ");
-
+                if (!string.IsNullOrWhiteSpace(responseMessage.ObjectMethod))
+                {
+                    builder.Append($"{nameof(ResponseMessage.ObjectMethod)}=\"{responseMessage.ObjectMethod}\" ");
+                }
+                
                 if (responseMessage.ReturnType != null && responseMessage.ReturnType != typeof(void))
                 {
                     builder.Append($"{nameof(ResponseMessage.ReturnType)}=\"{SecurityElement.Escape(responseMessage.ReturnType.ToString())}\" ");

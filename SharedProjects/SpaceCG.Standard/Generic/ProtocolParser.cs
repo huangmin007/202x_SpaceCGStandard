@@ -111,7 +111,7 @@ namespace SpaceCG.Generic
                 throw new ArgumentException("缓冲区大小必须大于 0。", nameof(bufferSize));
 
             _bufferSize = bufferSize;
-            _compactThreshold = bufferSize / 8;
+            _compactThreshold = bufferSize / 4;
 
             _buffer = new byte[bufferSize];
         }

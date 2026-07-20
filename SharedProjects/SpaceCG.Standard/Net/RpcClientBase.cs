@@ -291,7 +291,7 @@ namespace SpaceCG.Net
 
             var bufferSize = tcpClient.ReceiveBufferSize / 2;
             var clientBuffer = new byte[bufferSize];
-            var compactThreshold = bufferSize / 8;  // 紧凑阈值
+            var compactThreshold = bufferSize / 4;  // 紧凑阈值
 
             var delimTemp = Delimiters?.Length > 0 ? Delimiters : NewLine;
             var delimLength = delimTemp.Length;
@@ -355,7 +355,7 @@ namespace SpaceCG.Net
                         readPosition = delimPosition + delimLength;
 
                         // 处理服务端响应的字节数据
-                        ProcessServerMessage(clientEndPoint, responseMessage);
+                        ProcessServerMessage(responseMessage, clientEndPoint);
                     }
                     #endregion
                 }
@@ -388,9 +388,9 @@ namespace SpaceCG.Net
         /// 若子类实现的 <see cref="DeserializeResponseMessage"/> 耗时较长，可能阻塞后续网络数据的接收，
         /// 此时应考虑将本方法改为异步并通过 <see cref="Task.Run(System.Action)"/> 卸载到线程池执行。</para>
         /// </summary>
-        /// <param name="clientEndPoint">客户端本地端点地址，用于日志记录。</param>
         /// <param name="responseMessage">一条完整的响应字节数据消息（已包含尾部 <see cref="Delimiters"/> 分隔符）。</param>
-        private void ProcessServerMessage(IPEndPoint clientEndPoint, ArraySegment<byte> responseMessage)
+        /// <param name="clientEndPoint">客户端本地端点地址，用于日志记录。</param>
+        private void ProcessServerMessage(ArraySegment<byte> responseMessage, IPEndPoint clientEndPoint)
         {
             // 反序列化：调用子类协议实现将字节数据解析为响应消息对象
             ResponseMessage response = null;

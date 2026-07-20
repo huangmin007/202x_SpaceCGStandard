@@ -85,7 +85,7 @@ RPC 服务端抽象基类，核心组件。
 ### 处理流水线
 
 ```
-行层（环形缓冲 + Delimiters 分隔，一行一条消息）
+字节数据（环形缓冲 + Delimiters 数据分隔）
   → 消息层（子类 DeserializeInvokeMessage 协议解析）
   → 调度层（并发信号量 ProcessInvokeSemaphore + 事件拦截 ClientInvokeRequest）
   → 执行层（SynchronizationContext.Send 封送到构造线程反射调用）
@@ -116,7 +116,7 @@ public abstract class RpcServerBase : IDisposable
     public void Stop();
     public void RegisterObject(string objectName, object objectInstance);
 
-    // 子类实现（协议层，一行一条消息）
+    // 子类实现（协议层，消息反序列化）
     protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> dataLine, IPEndPoint remoteEndPoint);
     protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint remoteEndPoint);
 
@@ -142,7 +142,7 @@ var server = new RpcServer4X("192.168.1.100", 8080);
 
 ### 设计要点
 
-- **环形缓冲区**：每客户端独立 32KB 环形缓冲（`ReceiveBufferSize / 2`），紧凑阈值 `bufferSize / 8`
+- **环形缓冲区**：每客户端独立 32KB 环形缓冲（`ReceiveBufferSize / 2`），紧凑阈值 `bufferSize / 4`
 - **并发控制**：`ProcessInvokeSemaphore` 初始许可 8、最大 64，防止 `SynchronizationContext.Send` 阻塞导致线程池膨胀
 - **写入序列化**：每客户端独立 `SemaphoreSlim(1,1)`，防止并发响应字节交错
 - **方法缓存**：`RegisterObject` 时预缓存所有公共实例方法 + 扩展方法到 `RegisteredMethods`
@@ -219,7 +219,7 @@ public abstract class RpcClientBase : IDisposable
 | **超时处理** | `Task.WhenAny` 竞速模式，超时后从字典移除并返回 Code=-97 |
 | **自动重连** | `ConnectWithRetryAsync` 循环，意外断开后按 `ReconnectDelay` 间隔重连 |
 | **手动关闭** | `_isManualClosed = true`，手动 `Close()` 后不重连 |
-| **环形缓冲** | 每会话 32KB 环形缓冲 + 紧凑阈值 `bufferSize / 8`，与 `RpcServerBase` 镜像 |
+| **环形缓冲** | 每会话 32KB 环形缓冲 + 紧凑阈值 `bufferSize / 4`，与 `RpcServerBase` 镜像 |
 
 ### 客户端本地错误码
 

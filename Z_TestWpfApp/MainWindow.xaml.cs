@@ -102,7 +102,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.A:
-                    var result0 = InstanceExtensions.TryInvokeMethod(this, "test", new object[] { 100 }, out var returnValue);
+                    var result0 = InstanceExtensions.TryInvokeMethod(this, "Test2", new object[] { "Hello,world" }, out var returnValue);
                     ms = stopwatch.ElapsedTicks;
                     Trace.WriteLine($"Result:{result0},ReturnValue:{returnValue}  use:{ms}");
                     break;
@@ -238,7 +238,24 @@ namespace Z_TestWpfApp
             return true;
         }
 
-        public IEnumerable<IEnumerable<int>> SetColor0(Color color)
+        public async Task<string> Test(string msg)
+        {
+            Trace.WriteLine($"MSG:::{msg}");
+            await Task.Delay(1000).ConfigureAwait(false);
+
+            Trace.WriteLine($"MSG:::{msg} ....");
+
+            return "OK~";
+        }
+        public async Task Test2(string msg)
+        {
+            Trace.WriteLine($"MSG:::{msg}");
+            Trace.WriteLine($"MSG:::{msg} ....");
+            await Task.Delay(10);
+            //return $"OK~{msg}";
+        }
+
+        public IEnumerable<IEnumerable<int>> SetColor(Color color)
         {
             Rectangle_0.Fill = new SolidColorBrush(color);
 
