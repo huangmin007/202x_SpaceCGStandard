@@ -2,8 +2,8 @@
 using System.Linq;
 using System.Collections.Generic;
 using System;
-using System.Security;
 using System.IO;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {

@@ -3,7 +3,9 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using SpaceCG.Extensions;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Net
 {
@@ -239,7 +241,7 @@ namespace SpaceCG.Net
         /// <para>条件：<see cref="Code"/> == 1 且 <see cref="ReturnType"/> 不为 <c>null</c> 且不为 <c>typeof(void)</c>。</para>
         /// <para>注意：不检查 <see cref="ReturnValue"/> 是否为 <c>null</c>——方法返回 null 仍视为有返回值（如返回类型为 string? 且值为 null）。</para>
         /// </summary>
-        public bool HasReturnValue => Code == 1 && ReturnType != null && ReturnType != typeof(void);
+        public bool HasReturnValue => Code == 1 && ReturnType != null && ReturnType != typeof(void) && ReturnType != typeof(Task);
 
         /// <summary>
         /// 将 <see cref="ReturnValue"/> 转换为指定的强类型。

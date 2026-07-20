@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Diagnostics;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Generic
 {
@@ -465,7 +466,7 @@ namespace SpaceCG.Generic
                 if (!string.IsNullOrWhiteSpace(moduleFileName))
                 {
                     var info = new FileInfo(moduleFileName);
-                    var versionInfo = FileVersionInfo.GetVersionInfo(moduleFileName);
+                    var versionInfo = System.Diagnostics.FileVersionInfo.GetVersionInfo(moduleFileName);
                     _writer.Write(versionInfo.ToString());
 
                     if (!string.IsNullOrWhiteSpace(info.Extension))

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
 
-namespace SpaceCG
+namespace SpaceCG.Diagnostics
 {
     /// <summary>
     /// 跨平台日志跟踪类，提供与 <see cref="System.Diagnostics.Trace"/> 兼容的静态日志方法。

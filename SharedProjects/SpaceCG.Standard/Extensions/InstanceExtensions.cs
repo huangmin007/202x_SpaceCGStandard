@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {
@@ -182,7 +183,7 @@ namespace SpaceCG.Extensions
         {
             if (instance == null) throw new ArgumentNullException(nameof(instance));
             if (attributes == null) throw new ArgumentNullException(nameof(attributes));
-            
+
             if (attributes.Count == 0) return;
             foreach (KeyValuePair<string, object> kv in attributes)
             {
@@ -360,6 +361,9 @@ namespace SpaceCG.Extensions
 
             return false;
         }
+        /// <inheritdoc cref="TryInvokeMethod(object, MethodInfo, object[], out object)"/> 
+        public static bool TryInvokeMethod(object instance, MethodInfo methodInfo, out object returnResult) => TryInvokeMethod(instance, methodInfo, null, out returnResult);
+
         /// <summary>
         /// 尝试通过方法名和对象参数数组，动态查找并调用 <b>实例方法</b> 或 <b>实例扩展方法</b>。
         /// </summary>
@@ -453,6 +457,9 @@ namespace SpaceCG.Extensions
 
             return TryInvokeMethod(instance, methodInfo, parameters, out returnResult);
         }
+        /// <inheritdoc cref="TryInvokeMethod(object, string, object[], out object)"/> 
+        public static bool TryInvokeMethod(object instance, string methodName, out object returnResult) => TryInvokeMethod(instance, methodName, Array.Empty<object>(), out returnResult);
+
         /// <summary>
         /// 尝试通过方法名和字符串形式的参数，动态查找并调用 <b>实例方法</b> 或 <b>实例扩展方法</b>。
         /// </summary>

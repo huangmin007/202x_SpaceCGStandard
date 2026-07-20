@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {

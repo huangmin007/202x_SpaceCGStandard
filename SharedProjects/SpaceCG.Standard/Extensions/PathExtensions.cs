@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {

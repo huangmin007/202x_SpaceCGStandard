@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {

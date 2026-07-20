@@ -2,10 +2,9 @@
 using System.Linq;
 using System.Security;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using SpaceCG;
 using SpaceCG.Extensions;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Net
 {

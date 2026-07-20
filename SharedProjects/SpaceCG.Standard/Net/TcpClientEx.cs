@@ -3,8 +3,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using SpaceCG;
 using SpaceCG.Extensions;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Net
 {

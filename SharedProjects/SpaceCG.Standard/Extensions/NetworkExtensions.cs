@@ -3,6 +3,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Collections.Generic;
 using System.Linq;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {

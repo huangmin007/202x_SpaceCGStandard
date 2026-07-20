@@ -10,8 +10,8 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using SpaceCG;
 using SpaceCG.Extensions;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Net
 {
@@ -159,7 +159,7 @@ namespace SpaceCG.Net
         }
         /// <summary>
         /// 缓存注册对象实例的公共方法和公共扩展方法。
-        /// <para>扫描注册对象类型的所有公共实例方法（排除 virtual/special-name 方法、含 ref 参数的方法），
+        /// <para>扫描注册对象类型的所有公共实例方法（排除 special-name 方法、含 ref 参数的方法），
         /// 以及当前 AppDomain 中所有程序集的公共扩展方法，生成方法签名缓存键存入 <see cref="RegisteredMethods"/>。</para>
         /// <para>注意：扩展方法扫描涉及 AppDomain 全局反射，时间复杂度较高。</para>
         /// </summary>
@@ -174,7 +174,7 @@ namespace SpaceCG.Net
             foreach (var method in instanceType.GetMethods())
             {
                 if (!method.IsPublic) continue;
-                if (method.IsVirtual || method.IsSpecialName) continue;
+                if (method.IsSpecialName) continue;
 
                 var parameters = method.GetParameters();
                 var paramsSign = parameters.GetParameterSignature();
@@ -216,7 +216,7 @@ namespace SpaceCG.Net
                     foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly))
                     {
                         if (!method.IsDefined(extensionType, false)) continue;
-
+                        
                         var parameters = method.GetParameters();
                         if (parameters == null || parameters.Length == 0) continue;
                         if (parameters.Any(p => p.ParameterType.IsByRef)) continue;  // ref out 参数不支持

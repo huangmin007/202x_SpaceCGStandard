@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Generic
 {
