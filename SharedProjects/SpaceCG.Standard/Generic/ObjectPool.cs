@@ -29,6 +29,7 @@ namespace SpaceCG.Generic
 
         /// <summary>  当前池中对象数（近似值，用于容量控制）。  </summary>
         private int _count = 0;
+
         /// <summary>内部对象队列。</summary>
         protected readonly ConcurrentQueue<T> _pool = new ConcurrentQueue<T>();
 

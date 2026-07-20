@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Trace = SpaceCG.Diagnostics.Trace;
 
@@ -20,7 +18,7 @@ namespace SpaceCG.Generic
         /// <exception cref="ArgumentNullException">bytes 为 null。</exception>
         /// <exception cref="ArgumentOutOfRangeException">offset 或 length 越界。</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ValidateCheck(IReadOnlyList<byte> bytes, int offset, int length)
+        internal static void ValidateCheck(IReadOnlyList<byte> bytes, int offset, int length)
         {
             if (bytes == null)
                 throw new ArgumentNullException(nameof(bytes));

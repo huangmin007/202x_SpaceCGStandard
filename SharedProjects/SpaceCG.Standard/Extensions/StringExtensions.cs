@@ -40,12 +40,11 @@ namespace SpaceCG.Extensions
             if (value.IndexOf('&') < 0) return value;
 
             // &amp; 必须最先替换，否则 &lt; &gt; 等中的 & 被替换后会产生错误的二次匹配
-            return value
-                .Replace("&amp;", "&")
-                .Replace("&lt;", "<")
-                .Replace("&gt;", ">")
-                .Replace("&quot;", "\"")
-                .Replace("&apos;", "'");
+            return value.Replace("&amp;", "&")
+                        .Replace("&lt;", "<")
+                        .Replace("&gt;", ">")
+                        .Replace("&quot;", "\"")
+                        .Replace("&apos;", "'");
         }
 
         /// <summary>

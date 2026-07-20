@@ -7,7 +7,7 @@ using Trace = SpaceCG.Diagnostics.Trace;
 namespace SpaceCG.Extensions
 {
     /// <summary>
-    /// 扩展方法
+    /// Array Extensions
     /// </summary>
     public static partial class ArrayExtensions
     {

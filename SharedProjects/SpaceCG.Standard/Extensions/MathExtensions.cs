@@ -36,29 +36,6 @@ namespace SpaceCG.Extensions
 
 
         #region Clamp
-#if NET5_0_OR_GREATER
-        /// <summary>
-        /// 将值限制在 [min, max] 闭区间内（通用泛型版本，需 .NET 5+）。
-        /// <para>若 <paramref name="value"/> 小于 <paramref name="min"/>，返回 <paramref name="min"/>；
-        /// 若大于 <paramref name="max"/>，返回 <paramref name="max"/>；否则返回原值。</para>
-        /// </summary>
-        /// <typeparam name="T">实现 <see cref="INumber{T}"/> 的数值类型</typeparam>
-        /// <param name="value">待限制的值</param>
-        /// <param name="min">区间下界</param>
-        /// <param name="max">区间上界（必须 &gt;= <paramref name="min"/>）</param>
-        /// <returns>限制在 [min, max] 内的值</returns>
-        /// <exception cref="ArgumentException"><paramref name="min"/> &gt; <paramref name="max"/></exception>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static T Clamp<T>(T value, T min, T max) where T : INumber<T>
-        {
-            if (min > max) throw new ArgumentException($"最小值 {min} 应该小于等于最大值 {max}");
-
-            if (value < min) return min;
-            if (value > max) return max;
-
-            return value;
-        }
-#else
         /// <summary>
         /// 将值限制在 [min, max] 闭区间内。
         /// <para>若 <paramref name="value"/> 小于 <paramref name="min"/>，返回 <paramref name="min"/>；

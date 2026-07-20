@@ -352,7 +352,7 @@ namespace SpaceCG.Extensions
 
         /// <summary>
         /// 加载 XML 配置文件并自动执行模板替换和字典占位符替换。
-        /// <para>等效于 <c>XElement.Load(path) + ApplyTemplates() + ApplyDictionaryValues()</c>。</para>
+        /// <para>等效于 <c>XElement.Load(path) + ApplyTemplates() + ApplyDictionary()</c>。</para>
         /// </summary>
         /// <param name="configFile">XML 配置文件路径。</param>
         /// <returns>预处理后的 XML 元素树。</returns>

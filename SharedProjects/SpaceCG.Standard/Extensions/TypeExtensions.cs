@@ -12,7 +12,7 @@ namespace SpaceCG.Extensions
 {
     /// <summary>
     /// 类型反射与参数转换扩展方法。
-    /// <para>提供类型签名生成、接口检测、以及 <see cref="StringExtensions.ParseParameters"/> 强类型方法参数的完整转换流水线。</para>
+    /// <para>提供类型签名生成、接口检测、以及 <see cref="StringExtensions.ParseParameters"/> 强类型方法参数的完整转换。</para>
     /// </summary>
     public static partial class TypeExtensions
     {

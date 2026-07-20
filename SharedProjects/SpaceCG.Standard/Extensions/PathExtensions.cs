@@ -9,7 +9,6 @@ namespace SpaceCG.Extensions
     /// 提供 <see cref="Path"/> 的扩展方法。
     /// <para>旨在为 .NET Framework 4.8 及早期版本提供现代 .NET 中 <see cref="System.IO.Path"/> 缺失的等效功能。</para>
     /// </summary>
-    /// <remarks>本类的所有方法均为无状态纯函数，线程安全。</remarks>
     public static partial class PathExtensions
     {
         /// <summary>

@@ -12,7 +12,7 @@ using Trace = SpaceCG.Diagnostics.Trace;
 namespace SpaceCG.Net
 {
     /// <summary>
-    /// 基于 <see cref="HttpServerBase"/> 的静态文件 HTTP Web 服务，用于从本地目录提供静态资源
+    /// 基于 <see cref="HttpServerBase"/> 实现简单的静态文件 HTTP Web 服务，用于从本地目录提供静态资源
     /// </summary>
     /// <remarks>
     /// <para><b>线程安全：</b>本类<b>线程不安全</b>——<see cref="HttpServerBase.Start"/> /

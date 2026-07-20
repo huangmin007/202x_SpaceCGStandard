@@ -8,7 +8,7 @@ using Trace = SpaceCG.Diagnostics.Trace;
 namespace SpaceCG.Extensions
 {
     /// <summary>
-    /// 网络相关扩展方法
+    /// Network Extensions
     /// </summary>
     public static partial class NetworkExtensions
     {

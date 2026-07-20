@@ -22,6 +22,7 @@ namespace SpaceCG.Net
         private HttpListener _listener;
         private CancellationTokenSource _cts;
 
+#if false
         /// <summary>
         /// 获取底层的 <see cref="HttpListener"/> 实例
         /// </summary>
@@ -35,6 +36,7 @@ namespace SpaceCG.Net
             get => _listener;
             private set => _listener = value;
         }
+#endif
 
         /// <summary>
         /// 获取当前服务监听的本机端口号

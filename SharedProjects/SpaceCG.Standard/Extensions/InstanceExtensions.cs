@@ -524,7 +524,7 @@ namespace SpaceCG.Extensions
                 Trace.TraceError(ex.ToString());
             }
 
-            return null;
+            return returnResult;
         }
         /// <summary>
         /// 从方法反射调用结果中提取指定类型的返回值。

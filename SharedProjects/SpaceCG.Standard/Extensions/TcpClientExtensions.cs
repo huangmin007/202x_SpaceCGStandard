@@ -24,7 +24,7 @@ namespace SpaceCG.Extensions
             {
                 return !(tcpClient.Client.Poll(0, SelectMode.SelectRead) && tcpClient.Client.Available == 0) && tcpClient.Client.Connected;
             }
-            catch
+            catch (Exception)
             {
                 return false;
             }

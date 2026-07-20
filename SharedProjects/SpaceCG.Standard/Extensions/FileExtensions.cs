@@ -82,7 +82,6 @@ namespace SpaceCG.Extensions
 
             if (files.Length == 0) return;
 
-            // 将 DateTime.Today.AddDays(-days) 提到循环外计算，避免 LINQ where 中每个文件重复计算
             var threshold = DateTime.Today.AddDays(-days);
 
             foreach (var file in files)

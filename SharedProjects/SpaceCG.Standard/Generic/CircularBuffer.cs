@@ -223,9 +223,9 @@ namespace SpaceCG.Generic
         public void Clear()
         {
             // 清空操作只需重置所有指针和大小
-            _start = 0;
             _end = 0;
             _size = 0;
+            _start = 0;
             Array.Clear(_buffer, 0, _buffer.Length);
         }
 
