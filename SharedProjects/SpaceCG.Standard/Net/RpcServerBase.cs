@@ -179,7 +179,7 @@ namespace SpaceCG.Net
                 var parameters = method.GetParameters();
                 if (parameters.Any(p => p.ParameterType.IsByRef)) continue;
 
-                var paramsSign = parameters.Select(p => p.GetType()).GetSignature();
+                var paramsSign = parameters.Select(p => p.ParameterType).GetSignature();
 
                 if (paramsSign.Contains("REF")) continue;
                 var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
@@ -568,10 +568,9 @@ namespace SpaceCG.Net
                 #endregion
 
                 #region 跟据输入的参数签名查找方法
-                var paramsSign = "";
-                var paramsLength = invokeMessage.Parameters?.Length ?? 0;
-                if (paramsLength > 0) paramsSign = invokeMessage.Parameters.Select(p => p.GetType()).GetSignature();
-                var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsSign})";
+                var paramLength = invokeMessage.Parameters?.Length ?? 0;
+                var paramSignature = invokeMessage.Parameters?.Select(p => p.GetType()).GetSignature();
+                var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramSignature})";
                 //Debug.WriteLine($"methodCacheKey:{methodCacheKey}");
 
                 if (!RegisteredMethods.TryGetValue(methodCacheKey, out var methodInfo))
@@ -590,7 +589,7 @@ namespace SpaceCG.Net
                 object[] convertedParameters = new object[methodParameters.Length];
                 if (isExtensionMethod) convertedParameters[0] = objectInstance;
 
-                for (int i = 0; i < paramsLength; i++)
+                for (int i = 0; i < paramLength; i++)
                 {
                     var destinationType = methodParameters[i + offset].ParameterType;
                     if (!TypeExtensions.TryConvertParameter(invokeMessage.Parameters[i], destinationType, out object convertValue))
