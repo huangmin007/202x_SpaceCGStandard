@@ -366,9 +366,9 @@ using SpaceCG.Extensions;
 "[[1,2],[3,4]]".ParseParameters();
 // → [object[2]{string[2]{"1","2"}, string[2]{"3","4"}}]
 
-// 连续逗号（空 token）
+// 连续逗号（空 token 跳过）
 ",,".ParseParameters();
-// → ["", "", ""]
+// → []
 ```
 
 **性能**：单次扫描 O(n)，零反射、零 Regex、零 Split、零 StringBuilder，适用于 200fps+ 高频调用。

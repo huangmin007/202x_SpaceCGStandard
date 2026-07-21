@@ -127,6 +127,13 @@ namespace SpaceCG.Extensions
             if (parameters == null) return string.Empty;
             return string.Join(",", parameters.Select(p => GetTypeSignature(p.ParameterType)));
         }
+
+        public static string GetParameterSignature(this IEnumerable<Type> parameters)
+        {
+            if (parameters == null) return string.Empty;
+            return string.Join(",", parameters.Select(p => GetTypeSignature(p)));
+        }
+
         /// <summary>
         /// 获取传入参数值的签名列表，用于与 <see cref="GetParameterSignature(IEnumerable{ParameterInfo})"/> 比对以匹配方法重载。
         /// </summary>

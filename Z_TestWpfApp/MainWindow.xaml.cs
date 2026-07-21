@@ -141,9 +141,8 @@ namespace Z_TestWpfApp
         public void test(int a)
         {
             Trace.WriteLine($">>>>>>teset....{a}");
-            var s00 = "0x01,True,32,False";
             var s0 = ",,,";
-            var s1 = "0x01,3,[True,True,False]";
+            var s1 = "0x01,3,[True,True,False],'hello world, hi say:\"hello I\'m world\"'";
             var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
             var s3 = "[[#FFDDDDDD,#00DDDDDD]],[15],1.5,-1";
             var s4 = "[[[#FFFFFF00,#FF00FF00],[#FFFFFF00,]]]";

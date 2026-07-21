@@ -171,35 +171,37 @@ namespace SpaceCG.Extensions
 
         #region 自定义文本参数解析
         /// <summary>
-        /// 将逗号分隔的参数文本解析为强类型嵌套数组树。
+        /// 将逗号分隔的参数文本解析为强类型嵌套数组结构。
         /// <para>适用场景：配置文件参数解析、RPC 调试参数输入、命令行参数列表等高频调用路径。</para>
         /// <para>解析规则：</para>
         /// <list type="bullet">
-        /// <item><b>逗号分隔</b>：顶层按逗号分割为多个元素。连续逗号之间的空 token 输出为空字符串 <c>""</c>，例如 <c>",,"</c> → <c>["", "", ""]</c>。空白行返回空数组。</item>
-        /// <item><b>单引号保护</b>：单引号 <c>'...'</c> 包裹的文本视为一个整体，其内部的逗号和方括号被忽略，输出时自动剥离外层引号。不处理转义。</item>
+        /// <item><b>逗号分隔</b>：顶层按逗号分割为多个元素。连续逗号之间的空 token 自动跳过，不添加到输出中，例如 <c>",,"</c> → <c>[]</c>。</item>
+        /// <item><b>单引号保护</b>：单引号 <c>'...'</c> 包裹的文本视为一个整体，其内部的逗号和方括号被忽略，输出时自动剥离外层引号。</item>
         /// <item><b>方括号嵌套</b>：<c>[ ... ]</c> 包裹的文本视为子数组，递归解析内部内容。</item>
-        /// <item><b>叶子节点</b>：非引号且非方括号的 token 经首尾去空白后作为 <c>string</c> 输出，后续由 <see cref="TryConvertTo(string, Type, out object)"/> 进行类型转换。</item>
+        /// <item><b>叶子节点</b>：非引号且非方括号的 token 作为 <c>string</c> 输出，后续由 <see cref="TryConvertTo(string, Type, out object)"/> 进行类型转换。</item>
         /// </list>
         /// <para>
         /// 输出结构：
         /// 顶层始终返回 <c>object[]</c>；
-        /// 被 <c>[...]</c> 包裹且内部全为字符串的嵌套返回 <c>string[]</c>；
-        /// 被 <c>[...]</c> 包裹且内部含更深层嵌套的返回 <c>string[]</c>；
-        /// 叶子始终为 <c>string</c>。
+        /// 被 <c>[...]</c> 包裹且内部全为字符串的嵌套返回 <c>string[]</c>，或 <c>string</c>；
+        /// 被 <c>[...]</c> 包裹且内部含更深层嵌套的返回 <c>string[]</c>，叶子始终为 <c>string</c>;
+        /// 集合内部的元素必须是同一种类型string[]或string[][]…或string，且基础元素都是字符串。。
         /// </para>
         /// <code>示例：
-        /// "0x01,True,32,False"                        → ["0x01","True","32","False"]
-        /// "0x01,3,[True,True,False]"                  → ["0x01","3", string[3]{"True","True","False"}]
-        /// "'hello,world',0x01,[True,False]"            → ["hello,world","0x01", string[2]{"True","False"}]
-        /// "['aaa,bb','ni,hao'],15"                     → [ string[2]{"aaa,bb","ni,hao"} ,"15"]
-        /// "[[1,2],[3,4]]"                              → [ string[2]{string[2]{"1","2"}, string[2]{"3","4"}} ]
-        /// ",,"                                         → ["", "", ""]
+        /// "0x01,True,32,False"                        → object[]{"0x01","True","32","False"}
+        /// "0x01,3.5,[True,True,False]"                → object[]{"0x01","3.5", string[3]{"True","True","False"}}
+        /// "'hello,world',0x01,[True,False]"           → object[]{"hello,world","0x01", string[2]{"True","False"}}
+        /// "['aaa,bb','ni,hao'],15"                    → object[]{ string[2]{"aaa,bb","ni,hao"} ,"15"}
+        /// "[[1,2],[3,4],[5,]]"                        → object[]{ string[3]{string[2]{"1","2"}, string[2]{"3","4"}, string[1]{"5"}} }
+        /// "1,2,3,'hello world, I\'m say:\"hello,world\"'"  → object[]{"1","2","3","hello world, I'm say:\"hello,world\""}
+        /// ",,"                                        → object[]{}
         /// </code>
         /// </summary>
         /// <param name="parameters">待解析的参数文本，逗号分隔的 token 序列。空或空白返回空数组。</param>
         /// <returns>解析后的 object[] 树。被 <c>[...]</c> 嵌套的全字符串子数组为 <c>string[]</c>，含更深层嵌套的为 <c>string[]</c>。</returns>
         /// <remarks>
-        /// <para><b>性能特征</b>：单次扫描 O(n)，零反射、零 Regex、零 Split、零 StringBuilder，无中间临时分配。适用于 200fps+ 高频调用。</para>
+        /// <para>不符合预期的字符、格式、异常信息及时抛出</para>
+        /// <para><b>性能特征</b>：单次扫描 O(n)，零反射、零 Regex、零 Split/Substring、零 StringBuilder，不要new一些耗性能的对象，禁止动态大内存的对象分配。适用于 200fps+ 高频调用。</para>
         /// <para>仅支持 <c>[ ]</c> 方括号嵌套和 <c>'...'</c> 单引号，不支持 <c>()</c> / <c>{}</c> / 双引号 / 转义。</para>
         /// </remarks>
         /// <seealso cref="TryConvertTo(string, Type, out object)"/>
@@ -207,8 +209,8 @@ namespace SpaceCG.Extensions
         public static object[] ParseParameters(this string parameters)
         {
             if (string.IsNullOrWhiteSpace(parameters))
-                return Array.Empty<string>();
-
+                return Array.Empty<object>();
+            
             int position = 0;
             int length = parameters.Length;
             var list = new List<object>(8);
@@ -226,8 +228,7 @@ namespace SpaceCG.Extensions
                 }
                 else if (parameters[position] == ',')
                 {                    
-                    position++; // 连续逗号：当前 token 为空字符串
-                    list.Add(string.Empty);
+                    position++;
                 }
                 else
                 {
@@ -266,8 +267,7 @@ namespace SpaceCG.Extensions
                 }
                 else if (text[position] == ',')
                 {
-                    position++; // 连续逗号：当前 token 为空字符串
-                    list.Add(string.Empty);
+                    position++;
                 }
                 else
                 {
