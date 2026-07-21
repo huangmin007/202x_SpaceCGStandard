@@ -115,8 +115,10 @@ namespace SpaceCG.Net
                             }
                             else
                             {
-                                var parameters = returnContent.ParseParameters();
-                                if (parameters?.Length == 1) TypeExtensions.TryConvertParameter(parameters[0], returnType, out returnValue);
+                                if (returnContent.TryParseParameters(out var parameters) && parameters?.Length == 1)
+                                {
+                                    TypeExtensions.TryConvertParameter(parameters[0], returnType, out returnValue);
+                                }
                             }                               
                         }
                     }

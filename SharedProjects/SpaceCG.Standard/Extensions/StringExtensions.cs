@@ -180,78 +180,89 @@ namespace SpaceCG.Extensions
         /// <item><b>方括号嵌套</b>：<c>[ ... ]</c> 包裹的文本视为子数组，递归解析内部内容。</item>
         /// <item><b>叶子节点</b>：非引号且非方括号的 token 作为 <c>string</c> 输出，后续由 <see cref="TryConvertTo(string, Type, out object)"/> 进行类型转换。</item>
         /// </list>
-        /// <para>
-        /// 输出结构：
-        /// 顶层始终返回 <c>object[]</c>；
-        /// 被 <c>[...]</c> 包裹且内部全为字符串的嵌套返回 <c>string[]</c>，或 <c>string</c>；
-        /// 被 <c>[...]</c> 包裹且内部含更深层嵌套的返回 <c>string[]</c>，叶子始终为 <c>string</c>;
-        /// 集合内部的元素必须是同一种类型string[]或string[][]…或string，且基础元素都是字符串。。
-        /// </para>
         /// <code>示例：
         /// "0x01,True,32,False"                        → object[]{"0x01","True","32","False"}
         /// "0x01,3.5,[True,True,False]"                → object[]{"0x01","3.5", string[3]{"True","True","False"}}
         /// "'hello,world',0x01,[True,False]"           → object[]{"hello,world","0x01", string[2]{"True","False"}}
         /// "['aaa,bb','ni,hao'],15"                    → object[]{ string[2]{"aaa,bb","ni,hao"} ,"15"}
         /// "[[1,2],[3,4],[5,]]"                        → object[]{ string[3]{string[2]{"1","2"}, string[2]{"3","4"}, string[1]{"5"}} }
-        /// "1,2,3,'hello world, I\'m say:\"hello,world\"'"  → object[]{"1","2","3","hello world, I'm say:\"hello,world\""}
+        /// @"1,2,3,'hello world, hi say:""hello I\'m world""'"  → object[]{"1","2","3","hello world, I'm say:\"hello,world\""}
         /// ",,"                                        → object[]{}
         /// </code>
         /// </summary>
-        /// <param name="parameters">待解析的参数文本，逗号分隔的 token 序列。空或空白返回空数组。</param>
-        /// <returns>解析后的 object[] 树。被 <c>[...]</c> 嵌套的全字符串子数组为 <c>string[]</c>，含更深层嵌套的为 <c>string[]</c>。</returns>
+        /// <param name="paramText">待解析的参数文本，逗号分隔的 token 序列。</param>
+        /// <param name="paramArray"></param>
+        /// <returns>解析后顶层始终返回 object[] 树。被 <c>[...]</c> 包裹的数组节点根据嵌套深度返回 <c>string[]</c>、<c>string[][]</c>、<c>string[][][]</c> 等强类型数组，叶子节点始终返回 string。</returns>
         /// <remarks>
-        /// <para>不符合预期的字符、格式、异常信息及时抛出</para>
-        /// <para><b>性能特征</b>：单次扫描 O(n)，零反射、零 Regex、零 Split/Substring、零 StringBuilder，不要new一些耗性能的对象，禁止动态大内存的对象分配。适用于 200fps+ 高频调用。</para>
-        /// <para>仅支持 <c>[ ]</c> 方括号嵌套和 <c>'...'</c> 单引号，不支持 <c>()</c> / <c>{}</c> / 双引号 / 转义。</para>
+        /// <para>不符合预期的字符、格式、异常信息及时抛出 <see cref="FormatException"/></para>
+        /// <para><b>性能特征</b>：单次扫描 O(n)，不使用 Regex、Split、StringBuilder，不要new一些耗性能的对象，禁止动态大内存的对象分配。适用于 200fps+ 高频调用。</para>
+        /// <para>支持 <c>[ ]</c> 方括号嵌套和 <c>'...'</c> 单引号，及常转义符号，暂时不支持 <c>()</c> / <c>{}</c>。</para>
         /// </remarks>
         /// <seealso cref="TryConvertTo(string, Type, out object)"/>
         /// <seealso cref="SerializeValue"/>
-        public static object[] ParseParameters(this string parameters)
+        public static bool TryParseParameters(this string paramText, out object[] paramArray)
         {
-            if (string.IsNullOrWhiteSpace(parameters))
-                return Array.Empty<object>();
-            
-            int position = 0;
-            int length = parameters.Length;
-            var list = new List<object>(8);
+            paramArray = null;
+            if (string.IsNullOrWhiteSpace(paramText)) return true;
 
-            while (position < length)
+            try
             {
-                SkipWhiteSpace(parameters, ref position, length);
-                if (position >= length) break;
+                var position = 0;
+                var length = paramText.Length;
+                var items = new List<object>(8);
 
-                if (parameters[position] == '[')
+                while (position < length)
                 {
-                    position++;
-                    list.Add(ParseList(parameters, ref position, length, ']'));
-                    if (position < length && parameters[position] == ']') position++;
-                }
-                else if (parameters[position] == ',')
-                {                    
-                    position++;
-                }
-                else
-                {
-                    list.Add(ParseLeafString(parameters, ref position, length));
+                    SkipWhiteSpace(paramText, ref position, length);
+                    if (position >= length) break;
+
+                    if (paramText[position] == '[')
+                    {
+                        position++;
+                        items.Add(ParseList(paramText, ref position, length, ']'));
+                        if (position < length && paramText[position] == ']') position++;
+                    }
+                    else if (paramText[position] == ',')
+                    {
+                        position++; // 连续逗号：跳过
+                    }
+                    else
+                    {
+                        items.Add(ParseLeafString(paramText, ref position, length));
+                    }
+
+                    SkipWhiteSpace(paramText, ref position, length);
+                    if (position < length)
+                    {
+                        if (paramText[position] == ',')
+                        {
+                            position++;
+                        }
+                        else
+                        {
+                            // 顶层不允许出现未闭合的 ] 或其他非法字符
+                            throw new FormatException($"非法字符 '{paramText[position]}'，期望 ',' 或字符串结束");
+                        }
+                    }
                 }
 
-                SkipWhiteSpace(parameters, ref position, length);
-                if (position >= length) break;
-                if (parameters[position] == ',') position++;
+                paramArray = items.ToArray();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning($"文本参数 '{paramText}' 解析失败：{ex.Message}");
             }
 
-            return list.ToArray();
-        }
-        /// <summary>
-        /// 解析括号内部的逗号分隔列表。全 string → 返回 string[]；含嵌套 → 返回 object[]。
-        /// </summary>
+            return false;
+        }        
+        /// <summary> 解析括号内部的逗号分隔列表。 </summary>
         private static Array ParseList(string text, ref int position, int length, char stopChar)
         {
             if (position >= length || text[position] == stopChar)
                 return Array.Empty<string>();
 
-            var list = new List<object>(8);
-            //bool allStrings = true;
+            var items = new List<object>(8);
 
             while (position < length)
             {
@@ -261,109 +272,174 @@ namespace SpaceCG.Extensions
                 if (text[position] == '[')
                 {
                     position++;
-                    list.Add(ParseList(text, ref position, length, ']'));
+                    items.Add(ParseList(text, ref position, length, ']'));
                     if (position < length && text[position] == ']') position++;
-                    //allStrings = false;
                 }
                 else if (text[position] == ',')
                 {
-                    position++;
+                    position++;  // 连续逗号：跳过
                 }
                 else
                 {
-                    list.Add(ParseLeafString(text, ref position, length));
+                    items.Add(ParseLeafString(text, ref position, length));
                 }
 
                 SkipWhiteSpace(text, ref position, length);
-                if (position >= length) break;
-                if (text[position] == stopChar) break;
-                if (text[position] == ',') position++;
+                if (position < length)
+                {
+                    if (text[position] == ',')
+                    {
+                        position++;
+                    }
+                    else if (text[position] == stopChar)
+                    {
+                        break;  // 正常遇到结束符，退出循环
+                    }
+                    else
+                    {
+                        throw new FormatException($"非法字符 '{text[position]}'，期望 ',' 或 '{stopChar}'");
+                    }
+                }
             }
 
-            int count = list.Count;
-            if (count == 0)
-                return Array.Empty<string>();
-
-#if false
-            if (allStrings)
+            if (position >= length ||  text[position] != stopChar)
             {
-                var result = new string[count];
-                for (int i = 0; i < count; i++)
-                    result[i] = (string)list[i];
-                return result;
+                throw new FormatException($"缺少结束符 '{stopChar}'");
             }
 
-            return list.ToArray();
-#else
-            return CreateTypedArray(list);
-#endif
+            return CreateTypedArray(items);
         }
-        /// <summary>
-        /// 解析叶子字符串：'...' 或普通 token。
-        /// </summary>
+        /// <summary> 解析叶子字符串：'...' 或普通 token。 </summary>
         private static string ParseLeafString(string text, ref int position, int length)
         {
             SkipWhiteSpace(text, ref position, length);
             if (position >= length) return string.Empty;
 
-            // 单引号字符串
+            // 1. 单引号字符串 (支持转义)
             if (text[position] == '\'')
             {
-                position++;
+                position++; // 跳过起始引号
                 int start = position;
-                while (position < length && text[position] != '\'') position++;
+                bool hasEscape = false;
+
+                // 第一次扫描：定位结束位置并检查是否存在转义
+                while (position < length)
+                {
+                    if (text[position] == '\\')
+                    {
+                        hasEscape = true;
+
+                        if (position + 1 >= length)
+                            throw new FormatException("非法转义：转义符后缺少字符");
+
+                        position += 2; // 跳过转义符和下一个字符
+                        continue;
+                    }
+                    if (text[position] == '\'')
+                        break;
+                    position++;
+                }
+
+                if (position >= length || text[position] != '\'')
+                    throw new FormatException("未闭合的单引号字符串");
+
                 int end = position;
-                if (position < length) position++;
-                return start >= end ? string.Empty : text.Substring(start, end - start);
+                position++; // 跳过闭合引号
+
+                // 性能分支：无转义时，单次 Substring 即可
+                if (!hasEscape)
+                {
+                    return text.Substring(start, end - start);
+                }
+
+                return DecodeEscape(text, start, end);
             }
 
-            // 普通 token
-            int tStart = position;
+            // 2. 普通 token
+            int tokenStart = position;
             while (position < length)
             {
                 char c = text[position];
+                if (c == '[')
+                    throw new FormatException($"非法字符 '['，数组必须独立使用。位置:{position}");
+                if (c == '\'')
+                    throw new FormatException($"非法字符 ''', 包含特殊字符的字符串请使用单引号包裹。位置:{position}");
                 if (c == ',' || c == ']') break;
+
                 position++;
             }
-            int tEnd = position;
 
-            while (tStart < tEnd && IsWhiteSpaceFast(text[tStart])) tStart++;
-            while (tEnd > tStart && IsWhiteSpaceFast(text[tEnd - 1])) tEnd--;
+            int tokenEnd = position;
 
-            return tStart >= tEnd ? string.Empty : text.Substring(tStart, tEnd - tStart);
+            // 首尾去空白
+            while (tokenStart < tokenEnd && IsWhiteSpaceFast(text[tokenStart])) tokenStart++;
+            while (tokenEnd > tokenStart && IsWhiteSpaceFast(text[tokenEnd - 1])) tokenEnd--;
+
+            return tokenStart >= tokenEnd ? string.Empty : text.Substring(tokenStart, tokenEnd - tokenStart);
+        }
+        /// <summary> 解码转义字符。  </summary>
+        private static string DecodeEscape(string text, int start, int end)
+        {
+            int index = 0;
+            var chars = new char[end - start];
+
+            for (int i = start; i < end; i++)
+            {
+                char c = text[i];
+                if (c == '\\' && i + 1 < end)
+                {
+                    i++;
+                    switch (text[i])
+                    {
+                        case 'n': chars[index++] = '\n'; break;
+                        case 'r': chars[index++] = '\r'; break;
+                        case 't': chars[index++] = '\t'; break;
+                        case 'b': chars[index++] = '\b'; break;
+                        case 'f': chars[index++] = '\f'; break;
+                        case '\'': chars[index++] = '\''; break;
+                        case '"': chars[index++] = '"'; break;
+                        case '\\': chars[index++] = '\\'; break;
+                        default:
+                            chars[index++] = '\\';
+                            chars[index++] = text[i]; 
+                            break;   // 未知转义，保留原字符
+                    }
+                }
+                else
+                {
+                    chars[index++] = c;
+                }
+            }
+
+            return new string(chars, 0, index);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void SkipWhiteSpace(string text, ref int position, int length)
         {
-            while (position < length && IsWhiteSpaceFast(text[position])) position++;
+            while (position < length && IsWhiteSpaceFast(text[position])) position++;            
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsWhiteSpaceFast(char c) => c == ' ' || c == '\r' || c == '\n' || c == '\t';
-        /// <summary>
-        /// 将 <see cref="List{Object}"/> 转换为强类型数组。
-        /// <para>根据第一个元素的类型推断整个数组的类型：</para>
-        /// <list type="bullet">
-        /// <item><c>string</c> → <c>string[]</c></item>
-        /// <item><c>string[]</c> → <c>string[][]</c></item>
-        /// <item><c>string[][]</c> → <c>string[][][]</c></item>
-        /// <item><c>string[][][]</c> → <c>string[][][][]</c></item>
-        /// <item>其他 → <c>Array.CreateInstance(elementType, count)</c>（通用路径）</item>
-        /// </list>
-        /// </summary>
-        /// <param name="list">元素列表，调用方保证所有元素类型一致（第一个元素类型代表全部）。</param>
-        /// <returns>强类型数组。</returns>
-        /// <remarks>
-        /// <para>前 4 层嵌套使用硬编码的特化路径，避免 <see cref="Array.CreateInstance(Type, int)"/> 和
-        /// <see cref="Array.SetValue(object, int)"/> 的装箱与反射开销。</para>
-        /// <para>超过 4 层嵌套时回退到通用反射路径，支持任意深度。</para>
-        /// </remarks>
+        private static bool IsWhiteSpaceFast(char c) => c == ' ' || c == '\r' || c == '\n' || c == '\t';        
+        /// <summary> 将 <see cref="List{Object}"/> 转换为强类型数组。 </summary>
         private static Array CreateTypedArray(List<object> list)
         {
             if (list.Count == 0)
                 return Array.Empty<string>();
 
+            Type elementType = list[0].GetType();
+
+            // 严格校验类型一致性，防止异构数组导致后续转换崩溃
+            for (int i = 1; i < list.Count; i++)
+            {
+                if (list[i].GetType() != elementType)
+                {
+                    throw new FormatException($"嵌套数组内部元素类型必须一致。发现混合类型: {elementType.Name} 与 {list[i].GetType().Name}");
+                }
+            }
+
+            // 特化路径：避免 Array.CreateInstance 和 SetValue 的反射开销
             // string[]
-            if (list[0] is string)
+            if (elementType == typeof(string))
             {
                 string[] result = new string[list.Count];
 
@@ -374,7 +450,7 @@ namespace SpaceCG.Extensions
             }
 
             // string[][]
-            if (list[0] is string[])
+            if (elementType == typeof(string[]))
             {
                 string[][] result = new string[list.Count][];
 
@@ -385,7 +461,7 @@ namespace SpaceCG.Extensions
             }
 
             // string[][][]
-            if (list[0] is string[][])
+            if (elementType == typeof(string[][]))
             {
                 string[][][] result = new string[list.Count][][];
 
@@ -396,7 +472,7 @@ namespace SpaceCG.Extensions
             }
 
             // string[][][][]
-            if (list[0] is string[][][])
+            if (elementType == typeof(string[][][]))
             {
                 string[][][][] result = new string[list.Count][][][];
                 for (int i = 0; i < list.Count; i++)
@@ -405,7 +481,7 @@ namespace SpaceCG.Extensions
                 return result;
             }
 
-            Type elementType = list[0].GetType();
+            // 通用路径：支持任意深度的交错数组（如 string[][][][][] 及以上）
             Array resultArray = Array.CreateInstance(elementType, list.Count);
             for (int i = 0; i < list.Count; i++)
             {
@@ -413,13 +489,12 @@ namespace SpaceCG.Extensions
             }
             return resultArray;
         }
-#endregion
-
+        #endregion
 
         #region TryConvertTo 将字符串转换为指定值类型
         /// <summary>
         /// 将单个字符串标量转换为指定值类型，"string→强类型值" 的标量转换器。
-        /// <para>被 <see cref="TypeExtensions.TryConvertParameter"/> 调用，处理 <see cref="ParseParameters"/> 产出的每个叶子节点字符串。</para>
+        /// <para>被 <see cref="TypeExtensions.TryConvertParameter"/> 调用，处理 <see cref="TryParseParameters"/> 产出的每个叶子节点字符串。</para>
         /// <para>支持的类型：</para>
         /// <list type="bullet">
         /// <item>string  → 直接返回原值。</item>
@@ -431,12 +506,12 @@ namespace SpaceCG.Extensions
         /// </list>
         /// <para>null 或空白字符串始终返回 <c>false</c>（包括目标类型为 string 时）。</para>
         /// </summary>
-        /// <param name="value">待转换的字符串（来自 <see cref="ParseParameters"/> 的叶子节点）。</param>
+        /// <param name="value">待转换的字符串（来自 <see cref="TryParseParameters"/> 的叶子节点）。</param>
         /// <param name="targetType">目标值类型（必须为值类型或 string）。</param>
         /// <param name="targetValue">转换成功时输出强类型值；否则为 <c>null</c>。</param>
         /// <returns>转换成功返回 <c>true</c>；目标类型为引用类型（非 string）或转换失败返回 <c>false</c>。</returns>
         /// <exception cref="ArgumentNullException"><paramref name="targetType"/> 为 <c>null</c> 或 <c>void</c>。</exception>
-        /// <seealso cref="ParseParameters"/>
+        /// <seealso cref="TryParseParameters"/>
         /// <seealso cref="TypeExtensions.TryConvertParameter"/>
         public static bool TryConvertTo(this string value, Type targetType, out object targetValue)
         {
@@ -546,7 +621,7 @@ namespace SpaceCG.Extensions
             #endregion
 
             var valueTrim = value.Trim();
-            var isHexNumber = value.StartsWith("0X", StringComparison.OrdinalIgnoreCase);
+            var isHexNumber = valueTrim.StartsWith("0X", StringComparison.OrdinalIgnoreCase);
             var numberStyles = isHexNumber ? NumberStyles.HexNumber : NumberStyles.Integer;
             if (isHexNumber) valueTrim = valueTrim.Substring(2);
             
@@ -667,7 +742,7 @@ namespace SpaceCG.Extensions
 
         #region Serialize Value & Enumerable
         /// <summary>
-        /// 将对象序列化为字符串表示形式，是 <see cref="ParseParameters"/> 的反向操作（强类型值→可传输文本）。
+        /// 将对象序列化为字符串表示形式，是 <see cref="TryParseParameters"/> 的反向操作（强类型值→可传输文本）。
         /// <para>转换规则：</para>
         /// <list type="bullet">
         /// <item><c>null</c> → 字符串 <c>"null"</c>。</item>
@@ -679,7 +754,7 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <param name="value">要序列化的值。</param>
         /// <returns>字符串表示形式。</returns>
-        /// <seealso cref="ParseParameters"/>
+        /// <seealso cref="TryParseParameters"/>
         /// <seealso cref="TypeExtensions.TryConvertParameter"/>
         public static string SerializeValue(object value)
         {

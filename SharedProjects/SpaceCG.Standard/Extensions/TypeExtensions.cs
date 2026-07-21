@@ -13,7 +13,7 @@ namespace SpaceCG.Extensions
 {
     /// <summary>
     /// 类型反射与参数转换扩展方法。
-    /// <para>提供类型签名生成、接口检测、以及 <see cref="StringExtensions.ParseParameters"/> 强类型方法参数的完整转换。</para>
+    /// <para>提供类型签名生成、接口检测、以及 <see cref="StringExtensions.TryParseParameters"/> 强类型方法参数的完整转换。</para>
     /// </summary>
     public static partial class TypeExtensions
     {
@@ -36,7 +36,7 @@ namespace SpaceCG.Extensions
 
         #region Type & Value Signature
         /// <summary>
-        /// 获取参数类型的自定义签名，用于 RPC 方法重载匹配。
+        /// 获取类型的自定义签名，用于 RPC 方法重载匹配参数类型。
         /// <para>签名规则：</para>
         /// <list type="bullet">
         /// <item><c>"SVT"</c> — 所有值类型（含枚举）以及 <see cref="string"/>。</item>
@@ -47,23 +47,23 @@ namespace SpaceCG.Extensions
         /// <item><c>""</c> — null 类型。</item>
         /// </list>
         /// </summary>
-        /// <param name="paramType">参数类型，来自 <see cref="ParameterInfo.ParameterType"/>。</param>
+        /// <param name="type">参数类型，来自 <see cref="ParameterInfo.ParameterType"/>。</param>
         /// <returns>类型签名字符串。</returns>
-        private static string GetTypeSignature(Type paramType)
+        public static string GetSignature(this Type type)
         {
-            if (paramType == null) return "";
-            if (paramType.IsValueType || paramType == typeof(string)) return "SVT";
+            if (type == null) return "";
+            if (type.IsValueType || type == typeof(string)) return "SVT";
 
-            if (paramType.IsArray) return $"[{GetTypeSignature(paramType.GetElementType())}]";
-            if (paramType.IsGenericType)
+            if (type.IsArray) return $"[{GetSignature(type.GetElementType())}]";
+            if (type.IsGenericType)
             {
-                var genericTypeDef = paramType.GetGenericTypeDefinition();
+                var genericTypeDef = type.GetGenericTypeDefinition();
                 if (genericTypeDef == typeof(IEnumerable<>) ||
                     genericTypeDef == typeof(IList<>) || genericTypeDef == typeof(IReadOnlyList<>) ||
                     genericTypeDef == typeof(ICollection<>) || genericTypeDef == typeof(IReadOnlyCollection<>))
                 {
-                    var genericArgs = paramType.GetGenericArguments();
-                    if (genericArgs.Length == 1) return $"[{GetTypeSignature(genericArgs[0])}]";                    
+                    var genericArgs = type.GetGenericArguments();
+                    if (genericArgs.Length == 1) return $"[{GetSignature(genericArgs[0])}]";                    
                     else return $"[<REF...>]";
                 }
             }
@@ -71,78 +71,15 @@ namespace SpaceCG.Extensions
             return "REF";
         }
         /// <summary>
-        /// 获取参数值的自定义签名，用于与 <see cref="GetTypeSignature(Type)"/> 比对以匹配方法重载。
-        /// <para>签名规则与 <see cref="GetTypeSignature(Type)"/> 一致，但基于运行时值的实际类型。</para>
-        /// <para>数组取首个元素的签名作为元素类型签名；空数组返回 <c>"[]"</c>。</para>
+        /// 获取一组类型的自定义签名列表，用于 RPC 方法重载匹配参数类型。
         /// </summary>
-        /// <param name="paramValue">参数值，来自 <see cref="StringExtensions.ParseParameters"/> 的输出。</param>
-        /// <returns>值签名字符串。</returns>
-        private static string GetValueSignature(object paramValue)
-        {
-            if (paramValue == null) return "";
-            var valueType = paramValue.GetType();
-
-            if (valueType.IsValueType || valueType == typeof(string)) return "SVT";
-            if (valueType.IsArray)
-            {
-                var array = (Array)paramValue;
-                if (array.Length == 0) return "[]";
-
-                var firstElement = array.GetValue(0);
-                if (firstElement == null) return "[REF]";
-
-                var elementType = firstElement.GetType();
-                if (elementType.IsValueType || elementType == typeof(string)) return "[SVT]";
-                if (elementType.IsArray) return $"[{GetValueSignature(firstElement)}]";
-
-                return $"[REF]";
-            }
-            if (valueType.IsGenericType)
-            {
-                var genericArgs = valueType.GetGenericArguments();
-                if (genericArgs.Length != 1) return $"[<REF...>]";
-
-                var genericTypeDef = valueType.GetGenericTypeDefinition();
-                if (genericTypeDef == typeof(IEnumerable<>) && valueType is IEnumerable enumerable)
-                {
-                    var firstElement = enumerable.GetEnumerator()?.Current;
-                    return $"[{GetValueSignature(firstElement)}]";
-                }
-                else if(genericTypeDef == typeof(IList<>) && valueType is IList list)
-                {
-                    var firstElement = list.GetEnumerator()?.Current;
-                    return $"[{GetValueSignature(firstElement)}]";
-                }
-            }
-
-            return "REF";
-        }
-        /// <summary>
-        /// 获取目标方法的参数类型签名列表，用于 RPC 方法重载匹配。
-        /// </summary>
-        /// <param name="parameters">方法的参数信息集合。</param>
+        /// <param name="typeArray">方法的参数类型信息集合。</param>
         /// <returns>逗号分隔的签名列表，如 <c>"SVT,[SVT]"</c>。</returns>
-        public static string GetParameterSignature(this IEnumerable<ParameterInfo> parameters)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string GetSignature(this IEnumerable<Type> typeArray)
         {
-            if (parameters == null) return string.Empty;
-            return string.Join(",", parameters.Select(p => GetTypeSignature(p.ParameterType)));
-        }
-
-        public static string GetParameterSignature(this IEnumerable<Type> parameters)
-        {
-            if (parameters == null) return string.Empty;
-            return string.Join(",", parameters.Select(p => GetTypeSignature(p)));
-        }
-
-        /// <summary>
-        /// 获取传入参数值的签名列表，用于与 <see cref="GetParameterSignature(IEnumerable{ParameterInfo})"/> 比对以匹配方法重载。
-        /// </summary>
-        /// <param name="parameters">传入的参数值集合。</param>
-        /// <returns>逗号分隔的签名列表。</returns>
-        public static string GetParameterSignature(this IEnumerable<object> parameters)
-        {
-            if (parameters == null) return string.Empty;
-            return string.Join(",", parameters.Select(t => GetValueSignature(t)));
+            if (typeArray == null || !typeArray.Any()) return string.Empty;
+            return string.Join(",", typeArray.Select(p => GetSignature(p)));
         }
         #endregion
 
@@ -213,7 +150,7 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 将 <see cref="StringExtensions.ParseParameters"/> 产出的参数值转换为目标方法参数的强类型值，是本转换流水线的核心调度器。
+        /// 将 <see cref="StringExtensions.TryParseParameters"/> 产出的参数值转换为目标方法参数的强类型值，是本转换流水线的核心调度器。
         /// <para>处理三种分支：</para>
         /// <list type="number">
         /// <item><b>类型兼容</b>：值类型与目标类型一致或可赋值 → 直接返回。</item>
@@ -223,7 +160,7 @@ namespace SpaceCG.Extensions
         /// <para>典型调用链：<c>TryConvertTo(element, targetType, out result)</c> → 对叶子 string 调 <c>TryConvertTo</c>，
         /// 对嵌套数组调 <c>TryConvertToArray</c> → 内部再次调 <c>TryConvertTo</c> 处理每个子元素。</para>
         /// </summary>
-        /// <param name="value">待转换的值（顶层来自 <see cref="StringExtensions.ParseParameters"/> 的输出；叶子一定是 <see cref="string"/>、string[]、object[]"/>）。</param>
+        /// <param name="value">待转换的值（顶层来自 <see cref="StringExtensions.TryParseParameters"/> 的输出；叶子一定是 <see cref="string"/>、string[]、object[]"/>）。</param>
         /// <param name="targetType">目标方法参数类型。</param>
         /// <param name="convertedParameter">转换后的强类型值。</param>
         /// <returns>转换成功返回 <c>true</c>；否则返回 <c>false</c>。</returns>
@@ -286,13 +223,13 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 将 <see cref="StringExtensions.ParseParameters"/> 产出的参数值数组按目标方法签名转换为强类型参数数组。
+        /// 将 <see cref="StringExtensions.TryParseParameters"/> 产出的参数值数组按目标方法签名转换为强类型参数数组。
         /// <para>每个输入值通过 <see cref="TryConvertParameter(object, Type, out object)"/> 独立转换，
         /// 任一转换失败即整体返回 <c>false</c>。</para>
         /// <para>自动识别扩展方法：扩展方法的 <c>this</c> 参数不参与转换，以 <c>null</c> 占位
         /// （调用方负责在 <see cref="MethodBase.Invoke(object, object[])"/> 前替换为实例对象）。</para>
         /// </summary>
-        /// <param name="parameters">输入参数值数组（来自 <see cref="StringExtensions.ParseParameters"/>）。</param>
+        /// <param name="parameters">输入参数值数组（来自 <see cref="StringExtensions.TryParseParameters"/>）。</param>
         /// <param name="methodInfo">目标方法信息。</param>
         /// <param name="convertedParameters">
         /// 转换后的强类型参数数组，长度等于方法参数总数（含扩展方法的 this 占位），可直接用于 <c>MethodInfo.Invoke</c>。
@@ -334,13 +271,13 @@ namespace SpaceCG.Extensions
         /// （值类型为 <c>default</c>，引用类型为 <c>null</c>），继续处理后续元素。</para>
         /// </summary>
         /// <param name="valueArray">
-        /// 源数组。来自 <see cref="StringExtensions.ParseParameters"/> 的输出：
+        /// 源数组。来自 <see cref="StringExtensions.TryParseParameters"/> 的输出：
         /// 叶子是 <see cref="string"/>，嵌套子数组为 <c>string[]</c>（全字符串）或 <c>object[]</c>（含更深层嵌套）。
         /// </param>
         /// <param name="elementType">目标数组的元素类型。</param>
         /// <returns>强类型数组（如 <c>int[]</c>、<c>bool[][]</c>）；任一参数为 null 返回 <c>null</c>。</returns>
         /// <seealso cref="TryConvertParameter(object, Type, out object)"/>
-        /// <seealso cref="StringExtensions.ParseParameters"/>
+        /// <seealso cref="StringExtensions.TryParseParameters"/>
         public static Array ConvertToArray(Array valueArray, Type elementType)
         {
             if (valueArray == null || elementType == null) return null;

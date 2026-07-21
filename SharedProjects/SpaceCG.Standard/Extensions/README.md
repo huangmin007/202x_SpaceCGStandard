@@ -337,13 +337,13 @@ string relative = PathExtensions.GetRelativePath(
 | `IsHexString(this string)` | 判断字符串是否仅含十六进制字符且长度为偶数 |
 | `HexCharToNibble(this char)` | 单个十六进制字符 → 4 位整数值 |
 | `ToByteArray(this string)` | 十六进制字符串 → 字节数组 |
-| `ParseParameters(this string)` | **核心解析器**：逗号分隔参数文本 → 嵌套数组树 |
+| `TryParseParameters(this string, out object[])` | **核心解析器**：逗号分隔参数文本 → 嵌套数组树 |
 | `TryConvertTo(this string, Type, out object)` | 字符串 → 强类型值（支持 20+ 种类型） |
 | `TryConvertTo<T>(this string, out T)` | 泛型版本 |
 | `SerializeValue(object)` | 对象 → 字符串（ParseParameters 的反向操作） |
 | `SerializeEnumerable(IEnumerable)` | 集合序列化为 `[elem1,elem2,...]` 格式 |
 
-### ParseParameters 详解
+### TryParseParameters 详解
 
 这是整个 RPC 框架参数解析的核心，支持以下语法：
 
@@ -351,24 +351,19 @@ string relative = PathExtensions.GetRelativePath(
 using SpaceCG.Extensions;
 
 // 简单标量
-"0x01,True,32,False".ParseParameters();
-// → ["0x01", "True", "32", "False"]
+"0x01,True,32,False" → ["0x01", "True", "32", "False"]
 
 // 嵌套数组
-"0x01,3,[True,True,False]".ParseParameters();
-// → ["0x01", "3", string[3]{"True","True","False"}]
+"0x01,3,[True,True,False]" → ["0x01", "3", string[3]{"True","True","False"}]
 
 // 单引号保护（含逗号的字符串）
-"'hello,world',0x01,[True,False]".ParseParameters();
-// → ["hello,world", "0x01", string[2]{"True","False"}]
+"'hello,world',0x01,[True,False]" → ["hello,world", "0x01", string[2]{"True","False"}]
 
 // 多层嵌套
-"[[1,2],[3,4]]".ParseParameters();
-// → [object[2]{string[2]{"1","2"}, string[2]{"3","4"}}]
+"[[1,2],[3,4]]" → [object[2]{string[2]{"1","2"}, string[2]{"3","4"}}]
 
 // 连续逗号（空 token 跳过）
-",,".ParseParameters();
-// → []
+",," → []
 ```
 
 **性能**：单次扫描 O(n)，零反射、零 Regex、零 Split、零 StringBuilder，适用于 200fps+ 高频调用。

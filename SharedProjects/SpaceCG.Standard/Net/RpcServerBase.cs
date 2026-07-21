@@ -179,7 +179,7 @@ namespace SpaceCG.Net
                 var parameters = method.GetParameters();
                 if (parameters.Any(p => p.ParameterType.IsByRef)) continue;
 
-                var paramsSign = parameters.GetParameterSignature();
+                var paramsSign = parameters.Select(p => p.GetType()).GetSignature();
 
                 if (paramsSign.Contains("REF")) continue;
                 var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
@@ -228,7 +228,7 @@ namespace SpaceCG.Net
                         // 使用 IsAssignableFrom 支持基类和接口类型的扩展方法
                         if (parameters[0].ParameterType.IsAssignableFrom(instanceType))
                         {
-                            var paramsSign = parameters.Skip(1).GetParameterSignature();
+                            var paramsSign = parameters.Skip(1).Select(p => p.ParameterType).GetSignature();
                             var objectMethodKey = $"{objectName}.{method.Name}({paramsSign})";
 
                             var count = 0;
@@ -570,7 +570,7 @@ namespace SpaceCG.Net
                 #region 跟据输入的参数签名查找方法
                 var paramsSign = "";
                 var paramsLength = invokeMessage.Parameters?.Length ?? 0;
-                if (paramsLength > 0) paramsSign = invokeMessage.Parameters.GetParameterSignature();
+                if (paramsLength > 0) paramsSign = invokeMessage.Parameters.Select(p => p.GetType()).GetSignature();
                 var methodCacheKey = $"{invokeMessage.ObjectName}.{invokeMessage.MethodName}({paramsSign})";
                 //Debug.WriteLine($"methodCacheKey:{methodCacheKey}");
 

@@ -141,8 +141,9 @@ namespace Z_TestWpfApp
         public void test(int a)
         {
             Trace.WriteLine($">>>>>>teset....{a}");
-            var s0 = ",,,";
-            var s1 = "0x01,3,[True,True,False],'hello world, hi say:\"hello I\'m world\"'";
+            var s0 = @"1,2,3,'hello world, hi say:""hello I\'m world""'";
+            //var s0 = ",,,";
+            var s1 = "0x01,3,[True,True,False],'hello world, hi say:\\\"hello I\\'m world\\\"'";
             var s2 = "0x01,[0,3,4,7],[True,True,False,True]";
             var s3 = "[[#FFDDDDDD,#00DDDDDD]],[15],1.5,-1";
             var s4 = "[[[#FFFFFF00,#FF00FF00],[#FFFFFF00,]]]";
@@ -151,28 +152,21 @@ namespace Z_TestWpfApp
 
             stopwatch.Restart();
 
-            var a0 = StringExtensions.ParseParameters(s0);
-            var a1 = StringExtensions.ParseParameters(s1);
-            var a2 = StringExtensions.ParseParameters(s2);
-            var a3 = StringExtensions.ParseParameters(s3);
-            var a4 = StringExtensions.ParseParameters(s4);
-            var a5 = StringExtensions.ParseParameters(s5);
+            StringExtensions.TryParseParameters(s0, out var a0);
+            StringExtensions.TryParseParameters(s1, out var a1);
+            StringExtensions.TryParseParameters(s2, out var a2);
+            StringExtensions.TryParseParameters(s3, out var a3);
+            StringExtensions.TryParseParameters(s4, out var a4);
+            StringExtensions.TryParseParameters(s5, out var a5);
 
-            var a44 = a4.GetParameterSignature();
+            var a44 = a4.Select(x => x.GetType()).GetSignature();
 
-            var t0 = a0.Select(x => x.GetType()).ToList();
-            var t1 = a1.Select(x => x.GetType()).ToList();
-            var t2 = a2.Select(x => x.GetType()).ToList();
-            var t3 = a3.Select(x => x.GetType()).ToList();
-            var t4 = a4.Select(x => x.GetType()).ToList();
-            var t5 = a5.Select(x => x.GetType()).ToList();
-
-            var si0 = t0.GetParameterSignature();
-            var si1 = t1.GetParameterSignature();
-            var si2 = t2.GetParameterSignature();
-            var si3 = t3.GetParameterSignature();
-            var si4 = t4.GetParameterSignature();
-            var si5 = t5.GetParameterSignature();
+            var t0 = a0.Select(x => x.GetType()).GetSignature();
+            var t1 = a1.Select(x => x.GetType()).GetSignature();
+            var t2 = a2.Select(x => x.GetType()).GetSignature();
+            var t3 = a3.Select(x => x.GetType()).GetSignature();
+            var t4 = a4.Select(x => x.GetType()).GetSignature();
+            var t5 = a5.Select(x => x.GetType()).GetSignature();
 
             var ticks = stopwatch.ElapsedTicks;
 

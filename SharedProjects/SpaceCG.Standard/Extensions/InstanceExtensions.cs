@@ -378,7 +378,7 @@ namespace SpaceCG.Extensions
             if (instance == null || string.IsNullOrWhiteSpace(methodName)) return false;
 
             var instanceType = instance.GetType();
-            var paramSignature = parameters.GetParameterSignature();
+            var paramSignature = parameters?.Select(p => p.GetType()).GetSignature();
             var instanceMethodKey = $"{instanceType.FullName}.{methodName}({paramSignature})";
 
             var methodInfo = MethodInfoCache.GetOrAdd(instanceMethodKey, (methodKey) =>
@@ -393,7 +393,7 @@ namespace SpaceCG.Extensions
                     if (methodParameters.Length != parameters.Length) continue;
                     if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;   // ref out 参数不支持
 
-                    var tempSignature = methodParameters.GetParameterSignature();
+                    var tempSignature = methodParameters.Select(p => p.ParameterType).GetSignature();
                     var tempMethodKey = $"{instanceType.FullName}.{methodName}({tempSignature})";
                     if (tempMethodKey != methodKey) continue;
 
@@ -436,7 +436,7 @@ namespace SpaceCG.Extensions
                             // 使用 IsAssignableFrom 支持基类和接口类型的扩展方法
                             if (methodParameters[0].ParameterType.IsAssignableFrom(instanceType))
                             {
-                                var tempSignature = methodParameters.Skip(1).GetParameterSignature();
+                                var tempSignature = methodParameters.Skip(1).Select(p => p.ParameterType).GetSignature();
                                 var tempMethodKey = $"{instanceType.FullName}.{method.Name}({tempSignature})";
                                 if (tempMethodKey != methodKey) continue;
 
@@ -466,7 +466,7 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <param name="instance">目标实例对象。<b>不可为 null</b>。</param>
         /// <param name="methodName">要调用的方法的名称。必须是 实例方法 或 实例扩展方法 的名称，不可为 <c>null</c>。</param>
-        /// <param name="parameters">传递给方法的业务参数数组的字符串形式（不包含扩展方法的 this 参数）。
+        /// <param name="paramText">传递给方法的业务参数数组的字符串形式（不包含扩展方法的 this 参数）。
         /// <list type="bullet">
         /// <item>多个参数使用 ',' 隔开</item>
         /// <item>基本元素只支持，String &amp; Value Type</item>
@@ -476,15 +476,20 @@ namespace SpaceCG.Extensions
         /// </param>
         /// <param name="returnResult">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
         /// <returns>如果成功执行方法，则为 <c>true</c>；否则为 <c>false</c>。</returns>
-        public static bool TryInvokeMethod(object instance, string methodName, string parameters, out object returnResult)
+        public static bool TryInvokeMethod(object instance, string methodName, string paramText, out object returnResult)
         {
             returnResult = null;
             if (instance == null || string.IsNullOrWhiteSpace(methodName)) return false;
 
-            return TryInvokeMethod(instance, methodName, parameters.ParseParameters(), out returnResult);
+            if (paramText.TryParseParameters(out var paramArray))
+            {
+                return TryInvokeMethod(instance, methodName, paramArray, out returnResult);
+            }
+            return false;
         }
 
         #endregion
+
 
         #region Invoke Static Method
         /// <summary>
@@ -502,11 +507,11 @@ namespace SpaceCG.Extensions
         /// <exception cref="Exception">此方法不抛出异常，所有错误通过返回 <c>false</c> 和日志记录处理。</exception>
         /// <remarks>
         /// <para>查找范围：仅 <c>public static</c> 方法，排除扩展方法（带有 <see cref="ExtensionAttribute"/> 的方法）。</para>
-        /// <para>参数匹配：通过 <see cref="TypeExtensions.GetParameterSignature"/> 基于参数类型生成方法签名进行匹配。
+        /// <para>参数匹配：通过 <see cref="TypeExtensions.GetSignature(IEnumerable{Type})"/> 基于参数类型生成方法签名进行匹配。
         /// 不支持 <c>ref</c> / <c>out</c> 参数。</para>
         /// <para>方法元数据通过 <see cref="MethodInfoCache"/> 缓存，缓存键格式为 <c>"static:TypeFullName.MethodName(SVT,...)"</c>，
         /// 相同签名的方法仅反射查找一次。</para>
-        /// <para>线程安全：通过 <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd"/> 保证缓存的线程安全性。</para>
+        /// <para>线程安全：通过 <see cref="ConcurrentDictionary{TKey, TValue}.GetOrAdd(TKey, Func{TKey, TValue})"/> 保证缓存的线程安全性。</para>
         /// </remarks>
         public static bool TryInvokeMethod(string typeFullName, string methodName, object[] parameters, out object returnResult)
         {
@@ -521,7 +526,7 @@ namespace SpaceCG.Extensions
             }
 
             var paramLength = parameters?.Length ?? 0;
-            var paramSignature = parameters.GetParameterSignature();
+            var paramSignature = parameters?.Select(p => p.GetType()).GetSignature();
             var staticMethodKey = $"[Static]{typeFullName}.{methodName}({paramSignature})";
 
             var methodInfo = MethodInfoCache.GetOrAdd(staticMethodKey, _ =>
@@ -535,7 +540,7 @@ namespace SpaceCG.Extensions
                     if (methodParameters.Length != paramLength) continue;
                     if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;
 
-                    var tempSignature = methodParameters.GetParameterSignature();
+                    var tempSignature = methodParameters.Select(p => p.ParameterType).GetSignature();
                     var tempMethodKey = $"[Static]{typeFullName}.{method.Name}({tempSignature})";
                     
                     if (tempMethodKey != staticMethodKey) continue;
@@ -570,6 +575,7 @@ namespace SpaceCG.Extensions
             return false;
         }
         #endregion
+
 
         #region Get Return Value
         /// <summary>
@@ -635,6 +641,7 @@ namespace SpaceCG.Extensions
             return rawResult is T typedResult ? typedResult : default;
         }
         #endregion
+
     }
 
 }
