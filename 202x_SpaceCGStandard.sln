@@ -16,11 +16,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard", "Builder
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SharedProjects", "SharedProjects", "{34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard", "SharedProjects\SpaceCG.Standard\SpaceCG.Standard.shproj", "{9635A542-CC5A-4BD8-9359-55D2D9410B4E}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Wpf", "Builder\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj", "{AB345686-8084-4A9F-9356-DD91336AFE43}"
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard.Wpf", "SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.shproj", "{837B66E2-9B60-4626-9B4A-0E739B683993}"
+EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard.LedRenderer", "SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.shproj", "{F0391A9D-3CB3-4A9E-ABEC-B20BE2FDCAFD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.LedRenderer", "Builder\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.csproj", "{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.WindowsApi", "Builder\SpaceCG.WindowsApi\SpaceCG.WindowsApi.csproj", "{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -40,23 +44,31 @@ Global
 		{AB345686-8084-4A9F-9356-DD91336AFE43}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AB345686-8084-4A9F-9356-DD91336AFE43}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AB345686-8084-4A9F-9356-DD91336AFE43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Release|Any CPU.Build.0 = Release|Any CPU
+		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{9635A542-CC5A-4BD8-9359-55D2D9410B4E} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
 		{AB345686-8084-4A9F-9356-DD91336AFE43} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{837B66E2-9B60-4626-9B4A-0E739B683993} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
+		{F0391A9D-3CB3-4A9E-ABEC-B20BE2FDCAFD} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
+		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems*{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}*SharedItemsImports = 5
-		SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.projitems*{837b66e2-9b60-4626-9b4a-0e739b683993}*SharedItemsImports = 13
-		SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems*{9635a542-cc5a-4bd8-9359-55d2d9410b4e}*SharedItemsImports = 13
-		SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems*{e2cf9c8a-adf0-4a43-a2d4-d1251155552f}*SharedItemsImports = 4
+		SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems*{b42abde9-7a46-4f92-a3d0-4ac3cd732061}*SharedItemsImports = 4
+		SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems*{f0391a9d-3cb3-4a9e-abec-b20be2fdcafd}*SharedItemsImports = 13
 	EndGlobalSection
 EndGlobal

@@ -41,6 +41,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Xml" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Core" />
@@ -98,12 +99,23 @@
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <Folder Include="SpaceCG\Extensions\" />
+  </ItemGroup>
   <ItemGroup>
     <None Include="Resources\Config.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-  <Import Project="..\SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems" Label="Shared" />
+  <ItemGroup>
+    <ProjectReference Include="..\Builder\SpaceCG.Standard\SpaceCG.Standard.csproj">
+      <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
+      <Name>SpaceCG.Standard</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Builder\SpaceCG.WindowsApi\SpaceCG.WindowsApi.csproj">
+      <Project>{12cec2d5-a670-4558-be27-a04de7e66f9b}</Project>
+      <Name>SpaceCG.WindowsApi</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

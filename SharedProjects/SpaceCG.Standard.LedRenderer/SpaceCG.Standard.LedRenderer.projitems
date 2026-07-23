@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
+    <HasSharedItems>true</HasSharedItems>
+    <SharedGUID>f0391a9d-3cb3-4a9e-abec-b20be2fdcafd</SharedGUID>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration">
+    <Import_RootNamespace>SpaceCG</Import_RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)Device\ColorFormat.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\ColorFormatExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\FrameExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\LedRenderBus.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\LedRenderBusExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\LedStripObject.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Drawing\DrawingDesktop.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Drawing\DrawingExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Drawing\IDrawingDisplay.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\SystemExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IO\ITransportChannel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IO\SerialPortTransport.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IO\TcpClientTransport.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IO\TransportChannel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IO\UdpClientTransport.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="$(MSBuildThisFileDirectory)Generic\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)串口全彩灯带控制器通信协议详解V2.1.pdf" />
+  </ItemGroup>
+</Project>

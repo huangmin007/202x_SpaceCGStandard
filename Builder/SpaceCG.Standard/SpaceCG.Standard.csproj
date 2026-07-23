@@ -9,6 +9,4 @@
     <Company>SpaceCG.CN</Company>
   </PropertyGroup>
 
-  <Import Project="..\..\SharedProjects\SpaceCG.Standard\SpaceCG.Standard.projitems" Label="Shared" />
-
 </Project>

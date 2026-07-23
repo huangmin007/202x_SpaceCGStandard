@@ -24,6 +24,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using System.Xml.Linq;
+using Microsoft.Win32;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
 using SpaceCG.Net;
@@ -39,6 +40,8 @@ namespace Z_TestWpfApp
 
         RpcClientBase rpcClient;
 
+        DeviceWatcher deviceWatcher;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -47,16 +50,16 @@ namespace Z_TestWpfApp
 
             Trace.TraceInformation("Hello...");
 
-            rpcServer = new RpcServer4X(2000);
+            rpcServer = new RpcServer4X(2000, RpcServer4X.XmlTerminate);
             rpcServer.RegisterObject("Demo", this);
-            rpcServer.Start();
-            
+            rpcServer.Start();            
         }
         protected override void OnClosing(CancelEventArgs e)
         {
             base.OnClosing(e);
 
             rpcServer?.Dispose();
+            //messageWindow?.Dispose();
         }
 
         protected override async void OnKeyDown(KeyEventArgs e)
@@ -73,7 +76,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D2:
-                    var result = await rpcClient.InvokeFuncAsync("Demo", "Test", new object[] { "Hello,world" });
+                    var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
                     Trace.TraceInformation($"Response::{result}");
                     Trace.TraceInformation($"ReturnType::{result.ReturnType}");
                     Trace.TraceInformation($"ReturnValue::{result.ReturnValue}");
@@ -177,6 +180,41 @@ namespace Z_TestWpfApp
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
+#if true
+            Trace.WriteLine($"Serial Devices ------------------------------------");
+            var serialDevices = SystemExtensions.GetSerialDevices();
+            foreach(var device in serialDevices)
+            {
+                Trace.WriteLine($"{device}");
+            }
+
+            Trace.WriteLine($"USB Devices ------------------------------------");
+            var usbDevices = SystemExtensions.GetUsbDevices();
+            foreach (var device in usbDevices)
+            {
+                Trace.WriteLine($"{device}");
+            }
+
+            Trace.WriteLine($"Disk Devices ------------------------------------");
+            var diskDevices = SystemExtensions.GetDiskDevices();
+            foreach (var device in diskDevices)
+            {
+                Trace.WriteLine($"{device}");
+            }
+
+            Trace.WriteLine($"Volume Devices ------------------------------------");
+            var volumeDevices = SystemExtensions.GetVolumeDevices();
+            foreach (var device in volumeDevices)
+            {
+                Trace.WriteLine($"{device}");
+            }
+#endif
+            deviceWatcher = new DeviceWatcher();
+            deviceWatcher.DeviceArrived += DeviceWatcher_DeviceArrived;
+            deviceWatcher.DeviceRemoved += DeviceWatcher_DeviceRemoved;
+            deviceWatcher.Start();
+
+
             test(0);
             var ips = GetLocalIPAddresses().ToArray();
 
@@ -233,6 +271,44 @@ namespace Z_TestWpfApp
 #endif
         }
 
+        private void DeviceWatcher_DeviceArrived(object sender, DeviceChangedEventArgs e)
+        {
+            //if (e.DeviceType != DeviceType.DBT_DEVTYP_DEVICEINTERFACE) return;
+            Trace.WriteLine($"DeviceArrived::EventType:{e.EventType} DeviceType:{e.DeviceType} Type:{e.GetType().Name}");
+            switch (e)
+            {
+                case VolumeDeviceChangedEventArgs vol:
+                    Trace.WriteLine($"  DriveLetter:{vol.DriveLetter} IsNetwork:{vol.IsNetworkDrive} Drive:{vol.Drive} {vol.Drive.VolumeLabel}");
+                    break;
+                case PortDeviceChangedEventArgs port:
+                    Trace.WriteLine($"  PortName:{port.PortName} FriendlyName:{port.PortFriendlyName}");
+                    break;
+                case InterfaceDeviceChangedEventArgs iface:
+                    Trace.WriteLine($"  DevicePath:{iface.DevicePath} ClassGuid:{iface.ClassGuid}");
+                    break;
+            }
+        }
+
+        private void DeviceWatcher_DeviceRemoved(object sender, DeviceChangedEventArgs e)
+        {
+            //if (e.DeviceType != DeviceType.DBT_DEVTYP_DEVICEINTERFACE) return;
+            Trace.WriteLine($"DeviceRemoved::EventType:{e.EventType} DeviceType:{e.DeviceType} Type:{e.GetType().Name}");
+            switch (e)
+            {
+                case VolumeDeviceChangedEventArgs vol:
+                    Trace.WriteLine($"  DriveLetter:{vol.DriveLetter} IsNetwork:{vol.IsNetworkDrive}");
+                    break;
+                case PortDeviceChangedEventArgs port:
+                    Trace.WriteLine($"  PortName:{port.PortName} FriendlyName:{port.PortFriendlyName}");
+                    break;
+                case InterfaceDeviceChangedEventArgs iface:
+                    Trace.WriteLine($"  DevicePath:{iface.DevicePath} ClassGuid:{iface.ClassGuid}");
+                    break;
+            }
+        }
+
+
+
         private string F2(ICollection<byte> b)
         {
             Trace.WriteLine(b.Count);
@@ -257,7 +333,7 @@ namespace Z_TestWpfApp
 
             Trace.WriteLine($"MSG:::{msg} ....");
 
-            return $"OK~{msg}";
+            return $"OK~{msg} />t";
         }
         public async Task Test2(string msg)
         {

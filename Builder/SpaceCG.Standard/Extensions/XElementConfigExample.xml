@@ -1,0 +1,129 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+
+<Configuration>
+	<!-- 定义模板的集合 -->
+	<Configuration.Templates>
+		<Template Name="Button_Icon_Template" Comment="使用 ICON 的按扭模板">
+			<Button.Background>
+				<ImageBrush ImageSource="{IconFile}"/>
+			</Button.Background>
+			<Button.Foreground>
+				<ImageBrush ImageSource="{IconFile}"/>
+			</Button.Foreground>
+		</Template>
+
+		<Template Name="Button_Home_Template">
+			<Button Name="Btn_Item_{ButtonID}" Width="300" Height="90" Margin="{Margin}" Opacity="1.01"/>
+			<Event Type="MouseUp" ElementType="Button" ElementName="Btn_Item_{ButtonID}">
+				<Action Target="Window" Method="LoadItem" Params="{ButtonID}" />
+			</Event>
+		</Template>
+
+		<Template Name="Button_Back_Template" Comment="按扭模板">
+			<Button Name="Btn_Back" Width="120" Height="120" Margin="1000,600">
+				<RefTemplate Name="Button_Icon_Template" IconFile="Contents/Icons/返回.png"/>
+			</Button>
+			<Event Type="MouseUp" ElementType="Button" ElementName="Btn_Back">
+				<Action Target="Window" Method="LoadItem" Params="0"/>
+			</Event>
+		</Template>
+
+		<Template Name="Item_Template">
+			<Item ID="{ID}" Comment="">
+				<MiddlePlayer Url="Contents/Resources/{VideoFile}">
+					<Action Target="MiddlePlayer" Method="Open"/>
+					<Event Type="OnFirstFrame" >
+						<MiddlePlayer Visibility="Visible"/>
+						<BackgroundPlayer Visibility="Hidden"/>
+						<ForegroundPlayer Visibility="Hidden"/>
+						<ButtonContainer Visibility="Visible"/>
+						<Action Target="BackgroundPlayer" Method="Pause"/>
+					</Event>
+				</MiddlePlayer>
+
+				<ButtonContainer Visibility="Hidden">
+					<RefTemplate Name="Button_Back_Template"/>
+				</ButtonContainer>
+			</Item>
+		</Template>
+	</Configuration.Templates>
+	<Configuration.Dictionary Comment="针对全局的字典配置项">
+		<Item Key="深蓝色" Value="#FF001EFF" />
+		<Item Key="绿色"	  Value="#FF00FF00" />
+		<Item Key="青蓝色" Value="#FF008EFF" />
+		<Item Key="橙黄色" Value="#FFFFFF00" />
+		<Item Key="红色"   Value="#FFFF0000" />
+		<Item Key="熄灭"   Value="#00000000" />
+	</Configuration.Dictionary>
+
+	<Scene Id="0" Name="正常充电"  >
+		<Scene.Dictionary Comment="针对当前场景的字典配置项">
+			<Item Key="电压灯带参数" Value="{深蓝色},15,20" />
+		</Scene.Dictionary>
+
+		<LedStripObject Address="0" Port="1" Action="FlowR" Params="{电压灯带参数}" Comment="电压" />
+		
+		<LedStripObject Address="1" Port="1" Action="FlowR" Params="{深蓝色},15,20" Comment="电压" />
+		<LedStripObject Address="1" Port="2" Action="FlowR" Params="{绿色},15,20" Comment="电流" />
+
+		<LedStripObject Address="1" Port="3" Action="Color" Params="{青蓝色}" Comment="温度 上行" />
+		<LedStripObject Address="1" Port="4" Action="Color" Params="{青蓝色}" Comment="温度 下行" />
+
+		<LedStripObject Address="1" Port="5" Action="Color" Params="{绿色}" Comment="充电电流" />
+		<LedStripObject Address="1" Port="6" Action="Color" Params="{熄灭}" Comment="负载电流" />
+
+		<LedStripObject Address="2" Port="1" Action="Color" Params="{青蓝色}" Comment="充电通信 下行" />
+		<LedStripObject Address="2" Port="2" Action="Color" Params="{青蓝色}" Comment="充电通信 上行" />
+
+		<LedStripObject Address="2" Port="3" Action="Color" Params="{青蓝色}" Comment="负载通信 下行" />
+		<LedStripObject Address="2" Port="4" Action="Color" Params="{青蓝色}" Comment="负载通信 下行" />
+	</Scene>
+		
+	<Items DefaultID="0" ListAutoLoop="False">
+		<Item ID="0" Comment="首页">
+			<BackgroundPlayer Url="Contents/Resources/Video_01.mp4" >
+				<Action Target="BackgroundPlayer" Method="Open"/>
+				<Event Type="OnFirstFrame">
+					<ButtonContainer Visibility="Visible"/>
+					<BackgroundPlayer Visibility="Visible"/>
+					<MiddlePlayer Visibility="Hidden"/>
+					<ForegroundPlayer Visibility="Hidden"/>
+				</Event>
+			</BackgroundPlayer>
+			<ButtonContainer Visibility="Hidden">
+				<RefTemplate Name="Button_Home_Template" ButtonID="2" Margin="120,200"/>
+				<RefTemplate Name="Button_Home_Template" ButtonID="3" Margin="120,330"/>
+				<RefTemplate Name="Button_Home_Template" ButtonID="4" Margin="120,450"/>
+
+				<RefTemplate Name="Button_Home_Template" ButtonID="5" Margin="860,200"/>
+				<RefTemplate Name="Button_Home_Template" ButtonID="6" Margin="860,330"/>
+				<RefTemplate Name="Button_Home_Template" ButtonID="7" Margin="860,450"/>
+			</ButtonContainer>
+		</Item>
+
+		<Item ID="2" Comment="">
+			<BackgroundPlayer Url="Contents/Resources/Video_02.mp4" >
+				<Action Target="BackgroundPlayer" Method="Open"/>
+				<Event Type="OnRenderFrame" Position="0.2">
+					<ButtonContainer Visibility="Visible" />
+					<ForegroundPlayer Visibility="Visible" />
+				</Event>
+			</BackgroundPlayer>
+
+			<ForegroundPlayer Url="Contents/Resources/case1.mp4" HorizontalAlignment="Left" VerticalAlignment="Top" Width="770" Height="480" Margin="256,168,100,120" >
+				<Action Target="ForegroundPlayer" Method="Open"/>
+			</ForegroundPlayer>
+
+			<ButtonContainer Visibility="Hidden">
+				<RefTemplate Name="Button_Back_Template"/>
+			</ButtonContainer>
+		</Item>
+
+		<RefTemplate Name="Item_Template" ID="3" VideoFile="Video_01.mp4"/>
+		<RefTemplate Name="Item_Template" ID="4" VideoFile="Video_02.mp4"/>
+		<RefTemplate Name="Item_Template" ID="5" VideoFile="Video_01.mp4"/>
+		<RefTemplate Name="Item_Template" ID="6" VideoFile="Video_02.mp4"/>
+		<RefTemplate Name="Item_Template" ID="7" VideoFile="Video_01.mp4"/>
+	</Items>
+
+</Configuration>
