@@ -18,6 +18,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Drawing\DrawingDesktop.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Drawing\DrawingExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Drawing\IDrawingDisplay.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\ArrayExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\SystemExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IO\ITransportChannel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IO\SerialPortTransport.cs" />
@@ -29,6 +30,7 @@
     <Folder Include="$(MSBuildThisFileDirectory)Generic\" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)ReadMe.md" />
     <None Include="$(MSBuildThisFileDirectory)串口全彩灯带控制器通信协议详解V2.1.pdf" />
   </ItemGroup>
 </Project>

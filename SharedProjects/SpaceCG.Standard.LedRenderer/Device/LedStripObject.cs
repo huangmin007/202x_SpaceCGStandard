@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Xml.Linq;
 using SpaceCG.Drawing;
+using SpaceCG.Extensions;
 
 namespace SpaceCG.Device
 {
@@ -26,6 +27,7 @@ namespace SpaceCG.Device
         internal const int FrameHeaderLength = 16;
         /// <summary>  默认的帧队列最大长度 </summary>
         internal const int DefaultQueueMaxCount = 3;
+        internal const int FramePoolMaxCount = 16;
         #endregion
 
         /// <summary>
@@ -41,7 +43,6 @@ namespace SpaceCG.Device
         /// <summary>
         /// Led 灯带支持的最大 Led 灯珠数量
         /// </summary>
-        //internal ushort MaxLedCount { get; private set; } = MaxRGBLedCount;
         internal ushort MaxLedCount => ColorFormat.GetChannelCount() == 3 ? MaxRGBLedCount : MaxWRGBLedCount;
         /// <summary>
         /// Led 灯带的组地址
@@ -66,18 +67,17 @@ namespace SpaceCG.Device
         /// <summary>
         /// Led 灯带的颜色格式
         /// </summary>
-        public ColorFormat ColorFormat { get; private set; }        
+        public ColorFormat ColorFormat { get; private set; } = ColorFormat.RGB;
         /// <summary>
         /// Led 灯带的灯珠数量
         /// </summary>
-        public ushort LedCount => (ushort)_ledPoints.Count;
+        public int LedCount => _ledPoints.Count;
         /// <summary>
         /// Led 灯带的唯一标识，用于标识 Led 灯带
         /// <para>由端口号和设备地址组成，UID = (Port &lt;&lt; 16) | Address</para>
         /// </summary>
         public uint UID => (uint)(Port << 16 | Address);
         #endregion
-
 
         #region 这些是渲染优化相关的属性 
         /// <summary>
@@ -101,35 +101,39 @@ namespace SpaceCG.Device
         /// <para>该参数如果大于 0，则应该与 <see cref="RepeatCount"/> 参数配合使用，以达渲染数据优化的目</para>
         /// <para>例如：整体呼吸效果、对称流水效果等等</para>
         /// </summary>
-        public ushort FillCount
+        public int FillCount
         {
-            get => _fillCount;
+            get
+            {
+                if (__fillCount <= 0) return LedCount;
+                if (__fillCount > LedCount) return LedCount;
+                return __fillCount;
+            }
             set
             {
-                if (value < 0) _fillCount = 0;
-                if (value > LedCount) _fillCount = LedCount;
-
-                _fillCount = value;
+                __fillCount = Math.Max(0, Math.Min(value, LedCount));
             }
         }
-        private ushort _fillCount = 0;
+        private int __fillCount = 0;
 
         /// <summary>
         /// 【渲染优化参数】 Led 灯带数据复制次数，默认为 1 次
         /// <para>该参数一般与 <see cref="FillCount"/> 参数配合使用，以达渲染数据优化的目的</para>
         /// </summary>
-        public ushort RepeatCount
+        public int RepeatCount
         {
-            get => _repeatCount;
+            get
+            {
+                if (__repeatCount < 1) return 1;
+                if (__repeatCount > LedCount) return LedCount;
+                return __repeatCount;
+            }
             set
             {
-                if (value < 1) _repeatCount = 1;
-                if (value > LedCount) _repeatCount = LedCount;
-
-                _repeatCount = value;
+                __repeatCount = Math.Max(1, Math.Min(value, LedCount));
             }
         }
-        private ushort _repeatCount = 1;
+        private volatile int __repeatCount = 1;
 
         /// <summary>
         /// 【渲染优化参数】待渲染的帧队列最大长度，默认为 3；如果队列满了，则丢弃最旧的帧。
@@ -145,7 +149,7 @@ namespace SpaceCG.Device
                 _queueMaxCount = value;
             }
         }
-        private int _queueMaxCount = DefaultQueueMaxCount;
+        private volatile int _queueMaxCount = DefaultQueueMaxCount;
 
         /// <summary>
         /// 允许使用 位图像素 数据，默认为 true。主要用于控制二维渲染数据，或外部数据插入渲染。
@@ -181,11 +185,14 @@ namespace SpaceCG.Device
 
         /// <summary>  Led 灯带待渲染的帧队列  </summary>
         private readonly ConcurrentQueue<byte[]> _frameQueue = new ConcurrentQueue<byte[]>();
+        /// <summary>  数据帧缓冲池，避免频繁创建和销毁数据帧  </summary>
+        private readonly ConcurrentQueue<byte[]> _framePool = new ConcurrentQueue<byte[]>();
         /// <inheritdoc cref="LedPoints"/> 
         private readonly List<System.Drawing.Point> _ledPoints = new List<System.Drawing.Point>(512);
 
-        private int _renderFps = 0;
-        private byte[] _lastFrame = Array.Empty<byte>();
+        private volatile int _renderFps = 0;
+        private volatile int _renderCount = 0;
+        private volatile byte[] _lastFrame = Array.Empty<byte>();
 
         private LedStripObject()
         {
@@ -217,13 +224,10 @@ namespace SpaceCG.Device
         /// <param name="point"></param>
         public void AddPoint(System.Drawing.Point point)
         {
-            if (point == null)
-                throw new ArgumentException("参数不能为空", nameof(point));
-
-            if (this._ledPoints.Count >= MaxLedCount)
+            if (_ledPoints.Count >= MaxLedCount)
                 throw new ArgumentOutOfRangeException($"Led 灯带({LedType}/{ColorFormat})的灯珠总数量不能超过 {MaxLedCount}.");
 
-            this._ledPoints.Add(point);
+            _ledPoints.Add(point);
         }
         /// <summary>
         /// 在当前灯带的指定索引处添加一颗灯珠，并映射到位图上的坐标位置
@@ -235,16 +239,13 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentOutOfRangeException"></exception>
         public void AddPoint(int index, System.Drawing.Point point)
         {
-            if (point == null)
-                throw new ArgumentException("参数不能为空", nameof(point));
-
-            if (index < 0 || index > this._ledPoints.Count)
+            if (index < 0 || index > _ledPoints.Count)
                 throw new ArgumentOutOfRangeException($"索引超出范围.");
 
-            if (this._ledPoints.Count >= MaxLedCount)
+            if (_ledPoints.Count >= MaxLedCount)
                 throw new ArgumentOutOfRangeException($"Led 灯带的灯珠总数量不能超过 {MaxLedCount}.");
 
-            this._ledPoints.Insert(index, point);
+            _ledPoints.Insert(index, point);
         }
         /// <summary>
         /// 在当前灯带的结尾处添加一组灯珠，并映射到位图上的坐标位置。
@@ -255,12 +256,12 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentNullException"></exception>
         public void AddPoints(IEnumerable<System.Drawing.Point> points)
         {
-            if (points == null || points.Count() == 0) return;
+            if (points == null || !points.Any()) return;
 
-            if (this._ledPoints.Count + points.Count() > MaxLedCount)
+            if (_ledPoints.Count + points.Count() > MaxLedCount)
                 throw new ArgumentOutOfRangeException($"添加的点数超过了 LED 灯带({LedType}/{ColorFormat})的限制长度 {MaxLedCount} 珠。");
 
-            this._ledPoints.AddRange(points);
+            _ledPoints.AddRange(points);
         }
         /// <summary>
         /// 在当前灯带的指定索引处添加一组灯珠，并映射到位图上的坐标位置。
@@ -270,16 +271,16 @@ namespace SpaceCG.Device
         /// <param name="points"></param>
         public void AddPoints(int index, IEnumerable<System.Drawing.Point> points)
         {
-            if (points == null || points.Count() == 0) return;
+            if (points == null || !points.Any()) return;
 
-            var ledCount = this._ledPoints.Count;
+            var ledCount = _ledPoints.Count;
             if (index < 0 || index > ledCount)
                 throw new ArgumentOutOfRangeException($"索引超出范围.");
 
             if (ledCount + points.Count() > MaxLedCount)
                 throw new ArgumentOutOfRangeException($"添加的点数超过了 LED 灯带({LedType}/{ColorFormat})的限制长度 {MaxLedCount} 珠。");
 
-            this._ledPoints.InsertRange(index, points);
+            _ledPoints.InsertRange(index, points);
         }
         /// <summary>
         /// 在当前灯带的结尾处添加一组灯珠，从 <paramref name="start"/> 到 <paramref name="end"/> 的直线点集，并映射到位图上的坐标位置。
@@ -292,35 +293,35 @@ namespace SpaceCG.Device
         /// <summary>
         /// 移除所有灯珠
         /// </summary>
-        public void ClearPoints() => this._ledPoints.Clear();
+        public void ClearPoints() => _ledPoints.Clear();
         /// <summary>
         /// 确定当前灯带是否包含指定坐标处的灯珠
         /// </summary>
         /// <param name="point"></param>
         /// <returns></returns>
-        public bool ContainsPoint(System.Drawing.Point point) => this._ledPoints.Contains(point);
+        public bool ContainsPoint(System.Drawing.Point point) => _ledPoints.Contains(point);
 
         /// <summary>
         /// 移除指定索引处的灯珠
         /// </summary>
         /// <param name="index"></param>
-        public void RemovePoint(int index) => this._ledPoints.RemoveAt(index);
+        public void RemovePoint(int index) => _ledPoints.RemoveAt(index);
         /// <summary>
         /// 移除指定坐标处的灯珠
         /// </summary>
         /// <param name="point"></param>
-        public void RemovePoint(System.Drawing.Point point) => this._ledPoints.Remove(point);
+        public void RemovePoint(System.Drawing.Point point) => _ledPoints.Remove(point);
         /// <summary>
         /// 移除指定范围的灯珠
         /// </summary>
         /// <param name="index"></param>
         /// <param name="count"></param>
-        public void RemovePoints(int index, int count) => this._ledPoints.RemoveRange(index, count);
+        public void RemovePoints(int index, int count) => _ledPoints.RemoveRange(index, count);
         /// <summary>
         /// 移除指定坐标集合的灯珠
         /// </summary>
         /// <param name="points"></param>
-        public void RemovePoints(IEnumerable<System.Drawing.Point> points) => this._ledPoints.RemoveAll(points.Contains);
+        public void RemovePoints(IEnumerable<System.Drawing.Point> points) => _ledPoints.RemoveAll(points.Contains);
         #endregion
 
 
@@ -379,10 +380,10 @@ namespace SpaceCG.Device
         {
             if (frame == null || frame.Length < 21 ||
                 frame[0] != 0xDD || frame[1] != 0x55 || frame[2] != 0xEE ||
-                frame[8] != 0x99 || frame[frame.Length - 2] != 0xAA || frame[frame.Length - 1] != 0xBB)
+                frame[frame.Length - 2] != 0xAA || frame[frame.Length - 1] != 0xBB)
                 throw new ArgumentException("数据帧格式错误", nameof(frame));
-
             if (frame[8] != 0x99) throw new ArgumentException("数据帧的功能码不正确");
+
             if (this.Port != frame[7]) throw new ArgumentException("数据帧的端口号不匹配");
             if (this.LedType != (LedType)frame[9]) throw new ArgumentException("数据帧的灯带类型不匹配");
             if (this.Address != (ushort)((frame[5] << 8) | frame[6])) throw new ArgumentException("数据帧的设备地址不匹配");
@@ -438,7 +439,7 @@ namespace SpaceCG.Device
         /// <param name="g"></param>
         /// <param name="b"></param>
         /// <param name="repeat"></param>
-        public void AddColorFrame(byte r, byte g, byte b, ushort repeat) => AddColorFrame((uint)(0xFF << 24 | r << 16 | g << 8 | b), repeat, ColorFormat.ARGB);
+        public void AddColorFrame(byte r, byte g, byte b, int repeat) => AddColorFrame((uint)(0xFF << 24 | r << 16 | g << 8 | b), repeat, ColorFormat.ARGB);
         /// <summary>
         /// 添加待渲染的颜色数据帧
         /// <para>输入颜色值 (<see cref="uint"/>类型) 数组 <paramref name="color"/> 颜色通道 <paramref name="colorFormat"/> 必须是 四通道 类型</para>
@@ -447,10 +448,10 @@ namespace SpaceCG.Device
         /// <param name="repeat">颜色数据重复次数</param>
         /// <param name="colorFormat"><paramref name="color"/> 数据的颜色值格式</param>
         /// <exception cref="ArgumentException"></exception>
-        public void AddColorFrame(uint color, ushort repeat, ColorFormat colorFormat = ColorFormat.ARGB)
+        public void AddColorFrame(uint color, int repeat, ColorFormat colorFormat = ColorFormat.ARGB)
         {
-            if (repeat == 0 || repeat > this.LedCount)
-                throw new ArgumentException($"参数 repeat 不能为 0 或超过灯珠数量 {this.LedCount} 范围");
+            if (repeat == 0 || repeat > LedCount)
+                throw new ArgumentException($"参数 repeat 不能为 0 或超过灯珠数量 {LedCount} 范围");
 
             // 通道索引表
             var inputIndices = colorFormat.GetChannelIndices();
@@ -487,7 +488,7 @@ namespace SpaceCG.Device
         /// <param name="repeat">颜色数据重复次数</param>
         /// <param name="colorFormat"><paramref name="colors"/> 数据的颜色值格式</param>
         /// <exception cref="ArgumentException"></exception>
-        public void AddColorFrame(IReadOnlyList<byte> colors, ushort repeat, ColorFormat colorFormat = ColorFormat.RGB)
+        public void AddColorFrame(IReadOnlyList<byte> colors, int repeat, ColorFormat colorFormat = ColorFormat.RGB)
         {
             if (colors == null || colors.Count == 0)
                 throw new ArgumentException("颜色值数组不能为空，或长度不正确");
@@ -550,7 +551,7 @@ namespace SpaceCG.Device
         /// <param name="repeat">颜色数据重复次数</param>
         /// <param name="colorFormat"><paramref name="colors"/> 数据的颜色值格式</param>
         /// <exception cref="ArgumentException"></exception>
-        public void AddColorFrame(IReadOnlyList<uint> colors, ushort repeat, ColorFormat colorFormat = ColorFormat.ARGB)
+        public void AddColorFrame(IReadOnlyList<uint> colors, int repeat, ColorFormat colorFormat = ColorFormat.ARGB)
         {
             if (colors == null || colors.Count == 0)
                 throw new ArgumentException("颜色值数组不能为空");
@@ -611,29 +612,43 @@ namespace SpaceCG.Device
         /// <param name="repeatCount">需要将填充数据复制的次数，不得小于 1 </param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        internal byte[] CreateEmptyFrame(ushort fillCount, ushort repeatCount)
+        internal byte[] CreateEmptyFrame(int fillCount, int repeatCount)
         {
             var ledCount = this.LedCount;
 
             if (fillCount <= 0) fillCount = 1;
-            if (fillCount > ledCount) fillCount = (ushort)ledCount;
+            if (fillCount > ledCount) fillCount = ledCount;
 
             //if (fillCount <= 0 || fillCount > ledCount)
             //    throw new ArgumentException($"数据填充的灯珠数量 {fillCount} 不能小于 1 或超过灯珠数量 {ledCount} 范围");
 
             if (repeatCount <= 0) repeatCount = 1;
-            if (repeatCount > ledCount) repeatCount = (ushort)ledCount;
+            if (repeatCount > ledCount) repeatCount = ledCount;
 
             //if (repeatCount <= 0 || repeatCount > ledCount)
             //    throw new ArgumentException($"数据复制的次数 {repeatCount} 不能小于 1 或超过灯珠数量 {ledCount} 范围");
 
             int rrCount = fillCount * repeatCount;
-            if (rrCount > ledCount) repeatCount = (ushort)Math.Ceiling(ledCount / (float)fillCount);
+            if (rrCount > ledCount) repeatCount = (int)Math.Ceiling(ledCount / (double)fillCount);
 
             var colorSize = fillCount * ColorFormat.GetChannelCount();
             var frameSize = colorSize + 18;
 
-            byte[] frame = new byte[frameSize];
+            byte[] frame = null;
+            while (_framePool.TryDequeue(out frame))
+            {
+                if (frame.Length != frameSize)
+                {
+                    frame = null;
+                    continue;
+                }
+                break;
+            }
+            if (frame == null)
+            {
+                frame = new byte[frameSize];
+                //Debug.WriteLine($"new frame size:{frameSize} {Address}_{Port}");
+            }
 
             //Trace.WriteLine($"Led {Address},{Port} LedCount:{ledCount}/{LedCount} FillCount:{fillCount}/{FillCount} RepeatCount:{repeatCount}/{RepeatCount} FrameSize:{frameSize}");
 
@@ -703,11 +718,23 @@ namespace SpaceCG.Device
         /// </summary>
         private void CheckFrameQueueCount()
         {
-            if (_frameQueue.Count > QueueMaxCount)
+            if (_frameQueue.Count <= QueueMaxCount) return;
+            if (!_frameQueue.TryPeek(out var frame)) return;
+
+            if (frame[8] != 0x99) return;
+            if (_frameQueue.TryDequeue(out var _frame))
             {
-                if (_frameQueue.TryPeek(out var frame) && frame[8] == 0x99)
-                    _frameQueue.TryDequeue(out var _frame);
+                ReturnFramePool(_frame);
             }
+        }       
+
+        private void ReturnFramePool(byte[] frame)
+        {
+            if (frame == null || frame.Length == 0) return;
+            _framePool.Enqueue(frame);
+
+            while (_framePool.Count > FramePoolMaxCount)
+                _framePool.TryDequeue(out _);
         }
 
         /// <summary>
@@ -726,11 +753,31 @@ namespace SpaceCG.Device
 
             if (_frameQueue.TryDequeue(out byte[] _frame))
             {
-                if (_lastFrame.SequenceEqual(_frame))
+                if (ArrayExtensions.SequenceEqual(_lastFrame, _frame))
                 {
-                    //Trace.WriteLine("不重复渲染相同的数据帧");
+                    _renderCount ++;
+                    if (_renderCount % 10 == 0)
+                    {
+                        ReturnFramePool(_lastFrame);
+
+                        frame = _frame;
+                        _lastFrame = _frame;
+                        Interlocked.Increment(ref _renderFps);
+                        //Debug.WriteLine($"重复渲染相同的数据帧：{_renderCount}  Pool:{_framePool.Count}");
+                        return true;
+                    }
+
+                    ReturnFramePool(_frame);
+
+                    if (_renderCount >= int.MaxValue) 
+                        _renderCount = 0;
+
+                    //Debug.WriteLine($"不在重复渲染相同的数据帧：{_renderCount}  Pool:{_framePool.Count}");
                     return false;
                 }
+
+                _renderCount = 0;
+                ReturnFramePool(_lastFrame);
 
                 frame = _frame;
                 _lastFrame = _frame;
@@ -803,10 +850,10 @@ namespace SpaceCG.Device
             ledStrip.Reserved = ushort.TryParse(element.Attribute(nameof(Reserved))?.Value, out ushort reserved) ? reserved : (ushort)0;
 
             ledStrip.Timeout = int.TryParse(element.Attribute(nameof(Timeout))?.Value, out int timeout) ? timeout : 0;
-            ledStrip.FillCount = ushort.TryParse(element.Attribute(nameof(FillCount))?.Value, out ushort fill) ? fill : (ushort)0;
-            ledStrip.RepeatCount = ushort.TryParse(element.Attribute(nameof(RepeatCount))?.Value, out ushort repeat) ? repeat : (ushort)0;
-            //ledStrip._fillCount = ushort.TryParse(element.Attribute(nameof(FillCount))?.Value, out ushort fill) ? fill : (ushort)0;
-            //ledStrip._repeatCount = ushort.TryParse(element.Attribute(nameof(RepeatCount))?.Value, out ushort repeat) ? repeat : (ushort)0;
+
+            ledStrip.FillCount = int.TryParse(element.Attribute(nameof(FillCount))?.Value, out int fill) ? fill : 0;
+            ledStrip.RepeatCount = int.TryParse(element.Attribute(nameof(RepeatCount))?.Value, out int repeat) ? repeat : 1;
+
             ledStrip.QueueMaxCount = int.TryParse(element.Attribute(nameof(QueueMaxCount))?.Value, out int queueMaxCount) ? queueMaxCount : DefaultQueueMaxCount;
             ledStrip.UseBitmapPixels = bool.TryParse(element.Attribute(nameof(UseBitmapPixels))?.Value, out bool useBitmapPixels) ? useBitmapPixels : true;
 

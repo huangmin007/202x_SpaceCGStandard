@@ -8,8 +8,32 @@
         Title="MainWindow" Height="450" Width="800" Loaded="Window_Loaded" >
     <Grid>
 
-        <Rectangle Name="Rectangle_0" Fill="Blue" Margin="100" />
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <TextBox Text="Hello...." Name="TextBox_0" Width="100" Height="60" />
+        <Grid Grid.Column="0">
+            <Canvas x:Name="Canvas_Leds" Margin="0">
+                <Canvas.Resources>
+                    <Style TargetType="Rectangle">
+                        <Setter Property="Width" Value="260" />
+                        <Setter Property="Height" Value="19" />
+                        <Setter Property="Fill" Value="#00002A33"/>
+                        <Setter Property="StrokeThickness" Value="0"/>
+                        <Setter Property="VerticalAlignment" Value="Top" />
+                        <Setter Property="HorizontalAlignment" Value="Left" />
+                    </Style>
+                </Canvas.Resources>
+                <d:Rectangle Fill="Red" Canvas.Left="20" />
+            </Canvas>
+        </Grid>
+        
+        <Grid Grid.Column="1">
+            <Rectangle Name="Rectangle_0" Fill="Blue" Margin="100" />
+
+            <TextBox Text="Hello...." Name="TextBox_0" Width="100" Height="60" />
+        </Grid>
+        
     </Grid>
 </Window>

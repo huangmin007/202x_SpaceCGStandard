@@ -42,6 +42,12 @@ namespace Z_TestWpfApp
 
         DeviceWatcher deviceWatcher;
 
+        // 准备两个数组，填充4MB大小的数据
+        private static readonly byte[] XBytes = Enumerable.Range(0, 1024 * 4).Select(c => (byte)c).ToArray();
+        private static readonly byte[] YBytes = Enumerable.Range(0, 1024 * 4).Select(c => (byte)c).ToArray();
+
+        LedRenderControl ledRenderControl;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -66,16 +72,18 @@ namespace Z_TestWpfApp
         {
             base.OnKeyDown(e);
             Trace.TraceInformation($"Key: {e.Key}");
-
+            
             stopwatch.Restart();
             long ms = 0;
             switch (e.Key)
             {
                 case Key.D1:
+                    ledRenderControl.RenderSceneId(1);
                     await rpcClient.InvokeActionAsync("Demo", "test", new object[] {1,2 });
                     break;
 
                 case Key.D2:
+                    ledRenderControl.RenderSceneId(2);
                     var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
                     Trace.TraceInformation($"Response::{result}");
                     Trace.TraceInformation($"ReturnType::{result.ReturnType}");
@@ -101,7 +109,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D:
-                    //test(0);
+                    test(0);
                     break;
 
                 case Key.A:
@@ -143,6 +151,17 @@ namespace Z_TestWpfApp
 
         public void test(int a)
         {
+            stopwatch.Restart();
+            var result = XBytes.SequenceEqual(0, XBytes.Length, YBytes, 0, YBytes.Length);
+            var ticks0 = stopwatch.ElapsedTicks;
+            Trace.WriteLine($"ticks:{ticks0}");
+
+            stopwatch.Restart();
+            var result1 = XBytes.SequenceEqual(0, XBytes.Length, YBytes, 0, YBytes.Length);
+            var ticks1 = stopwatch.ElapsedTicks;
+            Trace.WriteLine($"ticks:{ticks1}");
+
+
             Trace.WriteLine($">>>>>>teset....{a}");
             var s0 = @"1,2,3,'hello world, hi say:""hello I\'m world""'";
             //var s0 = ",,,";
@@ -152,7 +171,8 @@ namespace Z_TestWpfApp
             var s4 = "[[[#FFFFFF00,#FF00FF00],[#FFFFFF00,]]]";
             var s5 = "[#FFFFFF00,#FF00FF00]";
 
-
+            var f0 = new byte[] {0x01 };
+            
             stopwatch.Restart();
 
             StringExtensions.TryParseParameters(s0, out var a0);
@@ -214,6 +234,11 @@ namespace Z_TestWpfApp
             deviceWatcher.DeviceRemoved += DeviceWatcher_DeviceRemoved;
             deviceWatcher.Start();
 
+            var config = XElementExtensions.LoadConfig($"Resources/Config.xml");
+            ledRenderControl = new LedRenderControl(Canvas_Leds);
+            ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
+            ledRenderControl.StartRender();
+            ledRenderControl.RenderSceneId(1);
 
             test(0);
             var ips = GetLocalIPAddresses().ToArray();

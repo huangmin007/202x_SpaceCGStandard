@@ -7,6 +7,7 @@ using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {
+
     #region NativeMethods
     /// <summary>
     /// Windows SetupAPI P/Invoke 声明。
@@ -24,22 +25,22 @@ namespace SpaceCG.Extensions
         /// <summary>
         /// USB 设备接口 GUID（GUID_DEVINTERFACE_USB_DEVICE）。
         /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_USB_DEVICE = new Guid("A5DCBF10-6530-11D2-901F-00C04FB951ED");
+        //public static readonly Guid GUID_DEVINTERFACE_USB_DEVICE = new Guid("A5DCBF10-6530-11D2-901F-00C04FB951ED");
 
         /// <summary>
         /// 磁盘设备接口 GUID（GUID_DEVINTERFACE_DISK）。
         /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_DISK = new Guid("53F56307-B6BF-11D0-94F2-00A0C91EFB8B");
+        //public static readonly Guid GUID_DEVINTERFACE_DISK = new Guid("53F56307-B6BF-11D0-94F2-00A0C91EFB8B");
 
         /// <summary>
         /// 卷设备接口 GUID（GUID_DEVINTERFACE_VOLUME）。
         /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_VOLUME = new Guid("53F5630D-B6BF-11D0-94F2-00A0C91EFB8B");
+        //public static readonly Guid GUID_DEVINTERFACE_VOLUME = new Guid("53F5630D-B6BF-11D0-94F2-00A0C91EFB8B");
 
         /// <summary>
         /// 人机接口设备 (HID - 鼠标/键盘/游戏手柄等)
         /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_HID = new Guid("4D1E55B2-F16F-11CF-88CB-001111000030");
+        //public static readonly Guid GUID_DEVINTERFACE_HID = new Guid("4D1E55B2-F16F-11CF-88CB-001111000030");
         #endregion
 
 
@@ -52,7 +53,6 @@ namespace SpaceCG.Extensions
         internal const int DIGCF_DEVICEINTERFACE = 0x00000010;
 
         // ===== 设备注册表属性 ID =====
-
         /// <summary>包含设备的友好名称的 REG_SZ 字符串。</summary>
         internal const uint SPDRP_FRIENDLYNAME = 0x0000000C;
 
@@ -94,13 +94,13 @@ namespace SpaceCG.Extensions
         /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw </para>
         /// </summary>
         [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern IntPtr SetupDiGetClassDevs([In] Guid classGuid, [MarshalAs(UnmanagedType.LPWStr)] string enumerator, IntPtr hwndParent, uint flags);
+        internal static extern IntPtr SetupDiGetClassDevs([In] ref Guid classGuid, [MarshalAs(UnmanagedType.LPWStr)] string enumerator, IntPtr hwndParent, uint flags);
 
         /// <summary>
         /// 枚举包含在设备信息集中的设备接口。
         /// </summary>
         [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern bool SetupDiEnumDeviceInterfaces(IntPtr hDevInfoSet, IntPtr devInfoData, [In] Guid interfaceClassGuid, uint memberIndex, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
+        internal static extern bool SetupDiEnumDeviceInterfaces(IntPtr hDevInfoSet, IntPtr devInfoData, [In] ref Guid interfaceClassGuid, uint memberIndex, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
 
         /// <summary>
         /// 返回有关设备接口的详细信息（不返回 SP_DEVINFO_DATA）。
@@ -235,94 +235,6 @@ namespace SpaceCG.Extensions
         /// <inheritdoc/>
         public override string ToString() => $"{base.ToString()} PortName:{PortName}";
     }
-
-    /// <summary>
-    /// 物理磁盘设备信息（GUID_DEVINTERFACE_DISK）。物理层：Disk（磁盘设备）。
-    /// <para>表示物理层磁盘，对应 "\\.\PhysicalDrive0" 等设备路径。</para>
-    /// <para>轻量属性（枚举阶段填充）：FriendlyName, DevicePath, HardwareId, InstanceId。</para>
-    /// <para>重量属性（需额外 API 调用）：SerialNumber, IsMediaChange, SizeBytes, Volumes。</para>
-    /// <para>线程安全：数据载体类，读操作线程安全。</para>
-    /// </summary>
-    public sealed class DiskDeviceInfo : DeviceInfo
-    {
-        /// <summary>
-        /// 磁盘编号（从 DevicePath 解析，例如 "\\.\PhysicalDrive0" → "0"）。
-        /// <para>暂未实现自动解析，需调用方自行从 DevicePath 提取。</para>
-        /// </summary>
-        public int DiskNumber { get; internal set; }
-
-        /// <summary>
-        /// 是否为可移除/可热插拔媒体（如 U 盘、移动硬盘）。
-        /// <para>需通过 CreateFile + IOCTL_STORAGE_GET_HOTPLUG_INFO 获取。</para>
-        /// <para>未填充时为 false（默认值），无法与"非可移除"区分，需结合 IsDetailPopulated 判断。</para>
-        /// </summary>
-        public bool IsMediaChange { get; internal set; }
-
-        /// <summary>
-        /// 磁盘硬件序列号。
-        /// <para>需通过 CreateFile + IOCTL_STORAGE_QUERY_PROPERTY 获取 STORAGE_DEVICE_DESCRIPTOR.SerialNumber。</para>
-        /// <para>注意：不能通过 InstanceId 尾部提取（那是设备实例片段，非真实硬件序列号）。</para>
-        /// </summary>
-        public string SerialNumber { get; internal set; }
-
-        /// <summary>
-        /// 磁盘总大小（字节）。
-        /// <para>需通过 CreateFile + IOCTL_DISK_GET_DRIVE_GEOMETRY_EX 获取 DISK_GEOMETRY_EX.DiskSize。</para>
-        /// <para>未填充时为 0。</para>
-        /// </summary>
-        public long SizeBytes { get; internal set; }
-
-        /// <summary>
-        /// 此物理磁盘上包含的所有逻辑卷（一对多关联）。
-        /// <para>需通过 IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS 或 WMI 反向关联查询。</para>
-        /// <para>未填充时为 null。</para>
-        /// </summary>
-        public IReadOnlyList<VolumeDeviceInfo> Volumes { get; internal set; } = Array.Empty<VolumeDeviceInfo>();
-
-        /// <inheritdoc/>
-        public override string ToString() => $"{base.ToString()}  DiskNumber:{DiskNumber}  IsMediaChange:{IsMediaChange}  SerialNumber:{SerialNumber}  SizeBytes:{SizeBytes}";
-    }
-
-    /// <summary>
-    /// 逻辑卷设备信息（GUID_DEVINTERFACE_VOLUME）。
-    /// <para>表示逻辑层卷（分区），对应 "\\.\Volume{GUID}" 设备路径。</para>
-    /// <para>轻量属性（枚举阶段填充）：FriendlyName, DevicePath, HardwareId, InstanceId, VolumeName。</para>
-    /// <para>重量属性（需额外 API 调用）：DriveLetter, LabelName, IsNetworkDrive, FileSystem。</para>
-    /// </summary>
-    public sealed class VolumeDeviceInfo : DeviceInfo
-    {
-        /// <summary>
-        /// 卷 GUID 路径（从 DevicePath 直接取值，如 "\\?\Volume{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}"）。
-        /// <para>也可通过 GetVolumeNameForVolumeMountPoint 获取。</para>
-        /// </summary>
-        public string VolumeName { get; internal set; }
-        /// <summary>
-        /// 挂载的驱动器号（如 "C:"、"D:"）。
-        /// <para>需通过 GetVolumePathNamesForVolumeName 获取，未挂载的卷为 null。</para>
-        /// </summary>
-        public string DriveLetter { get; internal set; }
-        /// <summary>
-        /// 卷标名称（如 "系统盘"、"Data"）。
-        /// <para>需通过 GetVolumeInformation 或 DriveInfo.VolumeLabel 获取。</para>
-        /// </summary>
-        public string LabelName { get; internal set; }
-
-        /// <summary>
-        /// 是否为网络映射驱动器。
-        /// <para>需通过 GetDriveType 判断 DRIVE_REMOTE，未填充时为 false。</para>
-        /// </summary>
-        public bool IsNetworkDrive { get; internal set; }
-
-        /// <summary>
-        /// 文件系统类型（如 "NTFS"、"FAT32"、"exFAT"、"ReFS"）。
-        /// <para>需通过 GetVolumeInformation 或 DriveInfo.DriveFormat 获取。</para>
-        /// </summary>
-        public string FileSystem { get; internal set; }
-
-        /// <inheritdoc/>
-        public override string ToString() => $"{base.ToString()} VolumeName:{VolumeName} DriveLetter:{DriveLetter} LabelName:{LabelName} " +
-            $"FileSystem:{FileSystem}  IsNetworkDrive:{(IsNetworkDrive ? "Network" : "Local")}";
-    }
     #endregion
 
 
@@ -331,7 +243,7 @@ namespace SpaceCG.Extensions
     /// <para>使用 SetupAPI 枚举系统中的串口、USB、磁盘、卷等即插即用设备。</para>
     /// <para>线程安全：此类为静态工具类，不维护可变状态，可在多线程环境中并发调用。</para>
     /// </summary>
-    public static class SystemExtensions
+    internal static class SystemExtensions
     {
         /// <summary>
         /// INVALID_HANDLE_VALUE 常量值（-1），用于校验 SetupAPI 返回的无效句柄。
@@ -355,7 +267,7 @@ namespace SpaceCG.Extensions
         /// <returns>设备信息列表。</returns>
         internal static IReadOnlyList<T> EnumerateDevices<T>(Guid classGuid, Func<IntPtr, NativeMethods.SP_DEVINFO_DATA, string, T> selector)
         {
-            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(classGuid, null, IntPtr.Zero, (uint)(NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE));
+            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)(NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE));
             if (hDevInfoSet == IntPtr.Zero || hDevInfoSet == InvalidHandle) return Array.Empty<T>();
 
             var results = new List<T>(16);
@@ -365,7 +277,7 @@ namespace SpaceCG.Extensions
                 var interfaceData = new NativeMethods.SP_DEVICE_INTERFACE_DATA();
                 interfaceData.cbSize = (uint)Marshal.SizeOf(interfaceData);
 
-                while (NativeMethods.SetupDiEnumDeviceInterfaces(hDevInfoSet, IntPtr.Zero, classGuid, index, ref interfaceData))
+                while (NativeMethods.SetupDiEnumDeviceInterfaces(hDevInfoSet, IntPtr.Zero, ref classGuid, index, ref interfaceData))
                 {
                     index++;
                     if (TryGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, out string devicePath, out var devInfoData))
@@ -392,33 +304,7 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
-        #region 公共查询方法
-        /// <summary>
-        /// 枚举系统中所有可用的 USB 设备信息。
-        /// </summary>
-        /// <returns>USB 设备信息列表，若无设备返回空列表。</returns>
-        public static IReadOnlyList<UsbDeviceInfo> GetUsbDevices() => EnumerateDevices(NativeMethods.GUID_DEVINTERFACE_USB_DEVICE, (hDevInfoSet, devInfo, devPath) =>
-        {
-            string instanceId = GetDeviceInstanceId(devInfo.DevInst);
-            string hardwareId = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_HARDWAREID);
-            string friendlyName = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_FRIENDLYNAME);
-
-            ExtractVidPidFromHardwareId(hardwareId, out string vid, out string pid);
-
-            return new UsbDeviceInfo
-            {
-                Vid = vid,
-                Pid = pid,
-                DevicePath = devPath,
-                HardwareId = hardwareId,
-                InstanceId = instanceId,
-                FriendlyName = friendlyName,
-                ClassGuid = devInfo.ClassGuid,
-                SerialNumber = ExtractSerialNumberFromInstanceId(instanceId)
-            };
-        });
-
-        /// <summary>
+                /// <summary>
         /// 枚举系统中所有可用的串口设备信息。
         /// </summary>
         /// <returns>串口设备信息列表，若无设备返回空列表。</returns>
@@ -451,47 +337,6 @@ namespace SpaceCG.Extensions
             };
         });
 
-        /// <summary>
-        /// 枚举系统中所有可用的磁盘设备信息。
-        /// </summary>
-        /// <returns>磁盘设备信息列表，若无设备返回空列表。</returns>
-        public static IReadOnlyList<DiskDeviceInfo> GetDiskDevices() => EnumerateDevices(NativeMethods.GUID_DEVINTERFACE_DISK, (hDevInfoSet, devInfo, devPath) =>
-        {
-            string instanceId = GetDeviceInstanceId(devInfo.DevInst);
-            string hardwareId = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_HARDWAREID);
-            string friendlyName = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_FRIENDLYNAME);
-
-            return new DiskDeviceInfo
-            {
-                DevicePath = devPath,
-                HardwareId = hardwareId,
-                InstanceId = instanceId,
-                FriendlyName = friendlyName,
-                ClassGuid = devInfo.ClassGuid,
-                SerialNumber = ExtractSerialNumberFromInstanceId(instanceId)
-            };
-        });
-
-        /// <summary>
-        /// 枚举系统中所有可用的卷设备信息。
-        /// </summary>
-        /// <returns>卷设备信息列表，若无设备返回空列表。</returns>
-        public static IReadOnlyList<VolumeDeviceInfo> GetVolumeDevices() => EnumerateDevices(NativeMethods.GUID_DEVINTERFACE_VOLUME, (hDevInfoSet, devInfo, devPath) =>
-        {
-            string instanceId = GetDeviceInstanceId(devInfo.DevInst);
-            string hardwareId = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_HARDWAREID);
-            string friendlyName = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_FRIENDLYNAME);
-
-            return new VolumeDeviceInfo
-            {
-                DevicePath = devPath,
-                HardwareId = hardwareId,
-                InstanceId = instanceId,
-                FriendlyName = friendlyName,
-                ClassGuid = devInfo.ClassGuid,
-            };
-        });
-        #endregion
 
         #region 辅助解析方法
         /// <summary>
@@ -660,9 +505,9 @@ namespace SpaceCG.Extensions
                 pid = hardwareId.Substring(pidIndex + 4, 4);
             }
         }
-
         #endregion
 
     }
+
 
 }

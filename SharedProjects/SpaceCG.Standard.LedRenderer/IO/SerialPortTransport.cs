@@ -169,7 +169,7 @@ namespace SpaceCG.IO
                 if (port.FriendlyName.Contains(searchPattern)) return port.PortName;
             }
 
-            return string.Empty;
+            return searchPattern;
         }
 
     }

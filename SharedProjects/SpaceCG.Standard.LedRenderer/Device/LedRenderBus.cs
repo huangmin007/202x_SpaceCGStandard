@@ -104,7 +104,7 @@ namespace SpaceCG.Device
         public object Tag { get; set; }
 
         /// <summary>  登记在总线上最长的灯带灯珠数量  </summary>
-        public ushort MaxLedCount { get; private set; } = 0;
+        public int MaxLedCount { get; private set; } = 0;
         /// <summary>  登记在总线上所有灯带的灯珠总数量  </summary>
         public uint TotalLedCount { get; private set; } = 0;
         /// <summary>  默认没有登记的灯珠类型  </summary>
@@ -168,7 +168,7 @@ namespace SpaceCG.Device
             }
         }
         internal static Timer FpsTimer;
-        private static int checkTick = 0;
+        private static volatile int checkTick = 0;
         private static readonly List<LedRenderBus> BusCollections;
         private static IReadOnlyList<LedRenderBus> BusCollectionsReadOnly;
         static LedRenderBus()
@@ -746,7 +746,7 @@ namespace SpaceCG.Device
         /// <param name="g"></param>
         /// <param name="b"></param>
         /// <param name="repeat">颜色数据重复次数</param>
-        public void AddColorFrame(ushort address, byte r, byte g, byte b, ushort repeat) => AddColorFrame(address, (uint)(0xFF << 24 | r << 16 | g << 8 | b), repeat, ColorFormat.ARGB);
+        public void AddColorFrame(ushort address, byte r, byte g, byte b, int repeat) => AddColorFrame(address, (uint)(0xFF << 24 | r << 16 | g << 8 | b), repeat, ColorFormat.ARGB);
         /// <summary>
         /// 添加待渲染的帧
         /// <para>输入颜色值 (<see cref="uint"/>类型) 数组 <paramref name="color"/> 颜色通道 <paramref name="colorFormat"/> 必须是 四通道 类型</para>
@@ -756,7 +756,7 @@ namespace SpaceCG.Device
         /// <param name="repeat">颜色数据重复次数</param>
         /// <param name="colorFormat"><paramref name="color"/> 数据的颜色值格式</param>
         /// <exception cref="ArgumentException"></exception>
-        public void AddColorFrame(ushort address, uint color, ushort repeat, ColorFormat colorFormat = ColorFormat.ARGB)
+        public void AddColorFrame(ushort address, uint color, int repeat, ColorFormat colorFormat = ColorFormat.ARGB)
         {
             var ledCount = MaxLedCount;
             var ledType = DefaultLedType;
@@ -816,7 +816,7 @@ namespace SpaceCG.Device
         /// <param name="repeat">颜色数据重复次数</param>
         /// <param name="colorFormat"><paramref name="colors"/> 数据的颜色值格式</param>
         /// <exception cref="ArgumentException"></exception>
-        public void AddColorFrame(ushort address, IReadOnlyList<byte> colors, ushort repeat, ColorFormat colorFormat = ColorFormat.RGB)
+        public void AddColorFrame(ushort address, IReadOnlyList<byte> colors, int repeat, ColorFormat colorFormat = ColorFormat.RGB)
         {
             var ledCount = MaxLedCount;
             var ledType = DefaultLedType;
@@ -900,7 +900,7 @@ namespace SpaceCG.Device
         /// <param name="repeat">颜色数据重复次数</param>
         /// <param name="colorFormat"><paramref name="colors"/> 数据的颜色值格式</param>
         /// <exception cref="ArgumentException"></exception>
-        public void AddColorFrame(ushort address, IReadOnlyList<uint> colors, ushort repeat, ColorFormat colorFormat = ColorFormat.ARGB)
+        public void AddColorFrame(ushort address, IReadOnlyList<uint> colors, int repeat, ColorFormat colorFormat = ColorFormat.ARGB)
         {
             var ledCount = MaxLedCount;
             var ledType = DefaultLedType;
@@ -977,7 +977,7 @@ namespace SpaceCG.Device
         /// <param name="ledColorFormat">要填充的数据颜色格式</param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        internal byte[] CreateEmptyFrame(ushort address, ushort fillCount, ushort repeatCount, LedType ledType = LedType.WS2812B, ColorFormat ledColorFormat = ColorFormat.RGB)
+        internal byte[] CreateEmptyFrame(ushort address, int fillCount, int repeatCount, LedType ledType = LedType.WS2812B, ColorFormat ledColorFormat = ColorFormat.RGB)
         {
             var maxLedCount = ledColorFormat.GetMaxLedCount();
             if (fillCount <= 0 || fillCount > maxLedCount)

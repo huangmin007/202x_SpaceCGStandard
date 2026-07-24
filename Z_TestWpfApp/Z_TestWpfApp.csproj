@@ -35,7 +35,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <Prefer32Bit>false</Prefer32Bit>
+    <Prefer32Bit>true</Prefer32Bit>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
@@ -60,6 +60,8 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="SpaceCG\Extensions\BrushExtensions.cs" />
+    <Compile Include="SpaceCG\Extensions\LedRenderControl.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -99,15 +101,17 @@
   <ItemGroup>
     <None Include="App.config" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="SpaceCG\Extensions\" />
-  </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
     <None Include="Resources\Config.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Builder\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.csproj">
+      <Project>{b42abde9-7a46-4f92-a3d0-4ac3cd732061}</Project>
+      <Name>SpaceCG.Standard.LedRenderer</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Builder\SpaceCG.Standard\SpaceCG.Standard.csproj">
       <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
       <Name>SpaceCG.Standard</Name>

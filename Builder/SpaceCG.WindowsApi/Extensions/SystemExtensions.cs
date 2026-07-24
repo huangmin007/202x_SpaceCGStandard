@@ -94,13 +94,13 @@ namespace SpaceCG.Extensions
         /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw </para>
         /// </summary>
         [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern IntPtr SetupDiGetClassDevs([In] Guid classGuid, [MarshalAs(UnmanagedType.LPWStr)] string enumerator, IntPtr hwndParent, uint flags);
+        internal static extern IntPtr SetupDiGetClassDevs([In] ref Guid classGuid, [MarshalAs(UnmanagedType.LPWStr)] string enumerator, IntPtr hwndParent, uint flags);
 
         /// <summary>
         /// 枚举包含在设备信息集中的设备接口。
         /// </summary>
         [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern bool SetupDiEnumDeviceInterfaces(IntPtr hDevInfoSet, IntPtr devInfoData, [In] Guid interfaceClassGuid, uint memberIndex, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
+        internal static extern bool SetupDiEnumDeviceInterfaces(IntPtr hDevInfoSet, IntPtr devInfoData, [In] ref Guid interfaceClassGuid, uint memberIndex, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
 
         /// <summary>
         /// 返回有关设备接口的详细信息（不返回 SP_DEVINFO_DATA）。
@@ -355,7 +355,7 @@ namespace SpaceCG.Extensions
         /// <returns>设备信息列表。</returns>
         internal static IReadOnlyList<T> EnumerateDevices<T>(Guid classGuid, Func<IntPtr, NativeMethods.SP_DEVINFO_DATA, string, T> selector)
         {
-            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(classGuid, null, IntPtr.Zero, (uint)(NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE));
+            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)(NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE));
             if (hDevInfoSet == IntPtr.Zero || hDevInfoSet == InvalidHandle) return Array.Empty<T>();
 
             var results = new List<T>(16);
@@ -365,7 +365,7 @@ namespace SpaceCG.Extensions
                 var interfaceData = new NativeMethods.SP_DEVICE_INTERFACE_DATA();
                 interfaceData.cbSize = (uint)Marshal.SizeOf(interfaceData);
 
-                while (NativeMethods.SetupDiEnumDeviceInterfaces(hDevInfoSet, IntPtr.Zero, classGuid, index, ref interfaceData))
+                while (NativeMethods.SetupDiEnumDeviceInterfaces(hDevInfoSet, IntPtr.Zero, ref classGuid, index, ref interfaceData))
                 {
                     index++;
                     if (TryGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, out string devicePath, out var devInfoData))
