@@ -186,7 +186,7 @@ public abstract class RpcClientBase : IDisposable
     public int SendBufferSize { get; set; }         // 发送缓冲区 默认 32KB
     public int ReceiveBufferSize { get; set; }      // 接收缓冲区 默认 64KB
     public TimeSpan ResponseTimeout { get; set; }   // 请求超时 默认 3 秒
-    public TimeSpan ReconnectDelay { get; set; }    // 重连延迟 默认 3 秒（MaxValue=禁用）
+    public TimeSpan ReconnectDelay { get; set; }    // 重连延迟 默认 3 秒（小于 Zero 不重连）
     public byte[] Delimiters { get; protected set; }// 消息分隔符 默认 CRLF
 
     // 连接管理

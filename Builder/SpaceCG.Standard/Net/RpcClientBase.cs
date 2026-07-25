@@ -81,8 +81,7 @@ namespace SpaceCG.Net
         /// <summary>
         /// 获取或设置自动重连的延迟时间，默认 3 秒。
         /// <para>连接断开后等待此间隔再尝试重新连接。</para>
-        /// <para>设置 <see cref="TimeSpan.MaxValue"/> 时禁用自动重连。</para>
-        /// <para>设置 &lt;= 0 时立即重连（不等待），非常不建议。</para>
+        /// <para>设置小于 <see cref="TimeSpan.Zero"/> 时不会自动重连。</para>
         /// </summary>
         public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(3.0);
         /// <summary>
@@ -263,7 +262,7 @@ namespace SpaceCG.Net
                 catch (Exception ex)
                 {
                     var delay = ReconnectDelay;
-                    if (delay == TimeSpan.MaxValue) break;
+                    if (delay < TimeSpan.Zero) break;
                     Trace.TraceWarning($"RPC 客户端连接失败: {ex.Message}，重试中 .....");
 
                     if (delay > TimeSpan.Zero)
