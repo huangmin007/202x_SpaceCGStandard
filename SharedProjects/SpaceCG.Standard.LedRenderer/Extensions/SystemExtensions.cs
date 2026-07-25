@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Text;
+using System.Text.RegularExpressions;
 using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {
-
     #region NativeMethods
     /// <summary>
     /// Windows SetupAPI P/Invoke 声明。
@@ -16,56 +16,28 @@ namespace SpaceCG.Extensions
     [SuppressUnmanagedCodeSecurity]
     internal static partial class NativeMethods
     {
-        #region 设备接口 GUID（readonly，按值传递给 P/Invoke
+        #region 设备接口 GUID（readonly，按 ref 传递给 P/Invoke）
         /// <summary>
-        /// 串口设备接口 GUID（GUID_DEVINTERFACE_COMPORT）。
+        /// 端口类设备 GUID（GUID_DEVCLASS_PORTS）。
+        /// <para>用于 SetupDiGetClassDevs 按设备类枚举，而非按接口枚举。</para>
         /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_COMPORT = new Guid("86E0D1E0-8089-11D0-9CE4-08003E301F73");
-
-        /// <summary>
-        /// USB 设备接口 GUID（GUID_DEVINTERFACE_USB_DEVICE）。
-        /// </summary>
-        //public static readonly Guid GUID_DEVINTERFACE_USB_DEVICE = new Guid("A5DCBF10-6530-11D2-901F-00C04FB951ED");
-
-        /// <summary>
-        /// 磁盘设备接口 GUID（GUID_DEVINTERFACE_DISK）。
-        /// </summary>
-        //public static readonly Guid GUID_DEVINTERFACE_DISK = new Guid("53F56307-B6BF-11D0-94F2-00A0C91EFB8B");
-
-        /// <summary>
-        /// 卷设备接口 GUID（GUID_DEVINTERFACE_VOLUME）。
-        /// </summary>
-        //public static readonly Guid GUID_DEVINTERFACE_VOLUME = new Guid("53F5630D-B6BF-11D0-94F2-00A0C91EFB8B");
-
-        /// <summary>
-        /// 人机接口设备 (HID - 鼠标/键盘/游戏手柄等)
-        /// </summary>
-        //public static readonly Guid GUID_DEVINTERFACE_HID = new Guid("4D1E55B2-F16F-11CF-88CB-001111000030");
+        public static readonly Guid GUID_DEVCLASS_PORTS = new Guid("4D36E978-E325-11CE-BFC1-08002BE10318");
         #endregion
 
-
         #region SetupAPI 标志位
-
         /// <summary>仅获取当前存在的设备。</summary>
         internal const int DIGCF_PRESENT = 0x00000002;
-
         /// <summary>返回接口类设备。</summary>
         internal const int DIGCF_DEVICEINTERFACE = 0x00000010;
 
         // ===== 设备注册表属性 ID =====
-        /// <summary>包含设备的友好名称的 REG_SZ 字符串。</summary>
-        internal const uint SPDRP_FRIENDLYNAME = 0x0000000C;
-
-        /// <summary>端口名称（COMx）。</summary>
-        internal const uint SPDRP_PORTNAME = 0x00000037;
-
         /// <summary>包含设备硬件 ID 列表的 REG_MULTI_SZ 字符串。</summary>
         internal const uint SPDRP_HARDWAREID = 0x00000001;
-
+        /// <summary>包含设备的友好名称的 REG_SZ 字符串。</summary>
+        internal const uint SPDRP_FRIENDLYNAME = 0x0000000C;
         /// <summary>包含设备位置信息的字符串。</summary>
         internal const uint SPDRP_LOCATION_INFORMATION = 0x0000000D;
         #endregion
-
 
         #region SetupAPI 结构体定义
         [StructLayout(LayoutKind.Sequential)]
@@ -87,7 +59,6 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
-
         #region P/Invoke 函数声明
         /// <summary>
         /// 返回设备信息集的句柄，其中包含本地计算机请求的设备信息元素。
@@ -97,10 +68,16 @@ namespace SpaceCG.Extensions
         internal static extern IntPtr SetupDiGetClassDevs([In] ref Guid classGuid, [MarshalAs(UnmanagedType.LPWStr)] string enumerator, IntPtr hwndParent, uint flags);
 
         /// <summary>
-        /// 枚举包含在设备信息集中的设备接口。
+        /// 枚举设备信息集中的设备信息元素。
+        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdienumdeviceinfo</para>
         /// </summary>
-        [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern bool SetupDiEnumDeviceInterfaces(IntPtr hDevInfoSet, IntPtr devInfoData, [In] ref Guid interfaceClassGuid, uint memberIndex, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
+        /// <param name="DeviceInfoSet">SetupDiGetClassDevs 返回的设备信息集句柄。</param>
+        /// <param name="MemberIndex">从 0 开始的索引，每次调用应递增。</param>
+        /// <param name="DeviceInfoData">输出：填充的设备信息数据（调用前需设置 cbSize）。</param>
+        /// <returns>成功返回 true，枚举完毕或失败返回 false。</returns>
+        [DllImport("setupapi.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetupDiEnumDeviceInfo(IntPtr DeviceInfoSet, uint MemberIndex, ref SP_DEVINFO_DATA DeviceInfoData);
 
         /// <summary>
         /// 返回有关设备接口的详细信息（不返回 SP_DEVINFO_DATA）。
@@ -148,7 +125,7 @@ namespace SpaceCG.Extensions
     /// Windows 设备基础信息（抽象基类）。
     /// <para>包含 SetupAPI/CfgMgr32 可轻量获取的公共属性，不依赖 CreateFile/DeviceIoControl。</para>
     /// </summary>
-    public abstract class DeviceInfo
+    public class DeviceInfo
     {
         /// <summary>
         /// 设备友好名称（设备管理器显示的名称）。
@@ -179,13 +156,13 @@ namespace SpaceCG.Extensions
         /// <summary>设备接口类的 GUID</summary>
         public Guid ClassGuid { get; internal set; }
 
+        /// <summary> Display Name </summary> 
         public virtual string DisplayName => FriendlyName ?? DevicePath ?? InstanceId;
 
         /// <inheritdoc /> 
         public override string ToString() =>
             $"FriendlyName:{FriendlyName}  HardwareId:{HardwareId}  InstanceId:{InstanceId}  DevicePath:{DevicePath}  ({ClassGuid})";
     }
-
     /// <summary>
     /// USB 设备信息。
     /// <para>继承自 <see cref="DeviceInfo"/>，增加 USB 特有的 VID/PID/SerialNumber 属性。</para>
@@ -217,7 +194,6 @@ namespace SpaceCG.Extensions
         /// <inheritdoc/>
         public override string ToString() => $"{base.ToString()} Vid:{Vid} Pid:{Pid} SerialNumber:{SerialNumber}";
     }
-
     /// <summary>
     /// 串口设备信息。
     /// <para>继承自 <see cref="UsbDeviceInfo"/>（因为现代串口设备多为 USB 转串口芯片）。</para>
@@ -243,7 +219,7 @@ namespace SpaceCG.Extensions
     /// <para>使用 SetupAPI 枚举系统中的串口、USB、磁盘、卷等即插即用设备。</para>
     /// <para>线程安全：此类为静态工具类，不维护可变状态，可在多线程环境中并发调用。</para>
     /// </summary>
-    internal static class SystemExtensions
+    internal static partial class SystemExtensions
     {
         /// <summary>
         /// INVALID_HANDLE_VALUE 常量值（-1），用于校验 SetupAPI 返回的无效句柄。
@@ -259,40 +235,45 @@ namespace SpaceCG.Extensions
 
         #region 核心枚举引擎 (复用逻辑)
         /// <summary>
-        /// 通用的设备枚举引擎，封装了 SetupAPI 的标准调用流程。
+        /// 通用设备信息枚举引擎，封装 SetupAPI 的 SetupDiEnumDeviceInfo 标准调用流程。
+        /// <para>适用于通过设备安装类 GUID 枚举的设备类型：Ports、Net、Bluetooth 等。</para>
+        /// 因为 SetupDiEnumDeviceInfo 不遍历接口层，仅枚举设备节点。</para>
+        /// <para>内部自动处理句柄生命周期（try-finally + SetupDiDestroyDeviceInfoList）。</para>
         /// </summary>
-        /// <typeparam name="T">返回的设备信息类型。</typeparam>
-        /// <param name="classGuid">设备接口 GUID。</param>
-        /// <param name="selector">用于从设备数据构建目标对象的工厂函数。</param>
-        /// <returns>设备信息列表。</returns>
-        internal static IReadOnlyList<T> EnumerateDevices<T>(Guid classGuid, Func<IntPtr, NativeMethods.SP_DEVINFO_DATA, string, T> selector)
+        /// <typeparam name="T">返回的设备信息类型，必须继承自 <see cref="DeviceInfo"/>。</typeparam>
+        /// <param name="classGuid">设备安装类 GUID。</param>
+        /// <param name="selector">
+        /// 工厂函数，从设备信息集句柄和 SP_DEVINFO_DATA 构建目标对象。
+        /// 返回 null 表示跳过当前设备。
+        /// </param>
+        /// <returns>设备信息列表，枚举失败或设备为空时返回空列表。</returns>
+        internal static IReadOnlyList<T> EnumerateDeviceInfos<T>(Guid classGuid, Func<IntPtr, NativeMethods.SP_DEVINFO_DATA, T> selector)
         {
-            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)(NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE));
-            if (hDevInfoSet == IntPtr.Zero || hDevInfoSet == InvalidHandle) return Array.Empty<T>();
+            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)NativeMethods.DIGCF_PRESENT);
+            if (hDevInfoSet == IntPtr.Zero || hDevInfoSet == InvalidHandle)
+                return Array.Empty<T>();
 
-            var results = new List<T>(16);
+            var devices = new List<T>(16);
+
             try
             {
                 uint index = 0;
-                var interfaceData = new NativeMethods.SP_DEVICE_INTERFACE_DATA();
-                interfaceData.cbSize = (uint)Marshal.SizeOf(interfaceData);
+                var devInfo = new NativeMethods.SP_DEVINFO_DATA();
+                devInfo.cbSize = (uint)Marshal.SizeOf(typeof(NativeMethods.SP_DEVINFO_DATA));
 
-                while (NativeMethods.SetupDiEnumDeviceInterfaces(hDevInfoSet, IntPtr.Zero, ref classGuid, index, ref interfaceData))
+                while (NativeMethods.SetupDiEnumDeviceInfo(hDevInfoSet, index, ref devInfo))
                 {
                     index++;
-                    if (TryGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, out string devicePath, out var devInfoData))
+                    T device = selector(hDevInfoSet, devInfo);
+                    if (device != null)
                     {
-                        T device = selector(hDevInfoSet, devInfoData, devicePath);
-                        if (device != null)
-                        {
-                            results.Add(device);
-                        }
+                        devices.Add(device);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Trace.TraceWarning($"枚举设备信息失败 (GUID: {classGuid})：{ex.Message}");
+                Trace.TraceWarning($"枚举设备信息数据失败 (GUID: {classGuid})：{ex.Message}");
                 return Array.Empty<T>();
             }
             finally
@@ -300,22 +281,24 @@ namespace SpaceCG.Extensions
                 NativeMethods.SetupDiDestroyDeviceInfoList(hDevInfoSet);
             }
 
-            return results;
+            return devices;
         }
         #endregion
 
-                /// <summary>
+        /// <summary>
         /// 枚举系统中所有可用的串口设备信息。
+        /// <para>基于 GUID_DEVCLASS_PORTS 设备安装类枚举，通过 SetupDiEnumDeviceInfo 而非 SetupDiEnumDeviceInterfaces。</para>
+        /// <para>注意：此方案无法获取 DevicePath（SetupDiEnumDeviceInfo 不遍历接口层），DevicePath 始终为 null。</para>
         /// </summary>
         /// <returns>串口设备信息列表，若无设备返回空列表。</returns>
-        public static IReadOnlyList<SerialDeviceInfo> GetSerialDevices() => EnumerateDevices(NativeMethods.GUID_DEVINTERFACE_COMPORT, (hDevInfoSet, devInfo, devPath) =>
+        public static IReadOnlyList<SerialDeviceInfo> GetSerialDevices() => EnumerateDeviceInfos(NativeMethods.GUID_DEVCLASS_PORTS, (hDevInfoSet, devInfo) =>
         {
             string instanceId = GetDeviceInstanceId(devInfo.DevInst);
-            string portName = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_PORTNAME);
             string hardwareId = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_HARDWAREID);
             string friendlyName = GetDevicePropertyString(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_FRIENDLYNAME);
 
-            if (string.IsNullOrEmpty(portName) && !string.IsNullOrEmpty(friendlyName))
+            string portName = string.Empty;
+            if (!string.IsNullOrEmpty(friendlyName))
             {
                 string parsed = ExtractPortNameFromFriendlyName(friendlyName);
                 if (!string.IsNullOrEmpty(parsed)) portName = parsed;
@@ -325,15 +308,17 @@ namespace SpaceCG.Extensions
 
             return new SerialDeviceInfo
             {
-                Vid = vid,
-                Pid = pid,
                 PortName = portName,
-                DevicePath = devPath,
+                FriendlyName = friendlyName,
                 HardwareId = hardwareId,
                 InstanceId = instanceId,
-                FriendlyName = friendlyName,
                 ClassGuid = devInfo.ClassGuid,
-                SerialNumber = ExtractSerialNumberFromInstanceId(instanceId)
+                Vid = vid,
+                Pid = pid,
+                SerialNumber = ExtractSerialNumberFromInstanceId(instanceId),
+
+                // SetupDiEnumDeviceInfo 无法得到 DevicePath
+                DevicePath = null
             };
         });
 
@@ -507,7 +492,31 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
+        /// <summary>
+        /// 获取当前计算机上与搜索模式匹配的串行端口号。
+        /// <para>若 searchPattern 本身已是 "COM" + 数字的格式（如 "COM3"、"COM14"），直接返回。</para>
+        /// <para>否则通过 <see cref="GetSerialDevices"/> 枚举所有串口设备，匹配 FriendlyName 包含 searchPattern 的设备。</para>
+        /// <para>匹配不区分大小写。若找到多个匹配设备，返回第一个。若未找到任何匹配，返回原始的 searchPattern。</para>
+        /// </summary>
+        /// <param name="searchPattern">
+        /// 查找匹配模式，如 "CH340"、"USB Serial" 或直接 "COM3"。
+        /// 若传入 "COM" + 数字格式，无需枚举直接返回。
+        /// </param>
+        /// <returns>匹配的串口号名称（例如 "COM3"、"COM14"），若未匹配到则返回原始 searchPattern。</returns>
+        public static string GetPortName(string searchPattern)
+        {
+            var PortNameRegex = new Regex("^COM[0-9]{1,3}$", RegexOptions.IgnoreCase);
+            if (PortNameRegex.IsMatch(searchPattern)) return searchPattern;
+
+            var ports = SystemExtensions.GetSerialDevices();
+            foreach (var port in ports)
+            {
+                if (string.IsNullOrWhiteSpace(port.FriendlyName)) continue;
+                if (port.FriendlyName.IndexOf(searchPattern, StringComparison.OrdinalIgnoreCase) >= 0) return port.PortName;
+            }
+
+            return searchPattern;
+        }
+
     }
-
-
 }

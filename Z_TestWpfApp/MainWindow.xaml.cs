@@ -228,6 +228,16 @@ namespace Z_TestWpfApp
             {
                 Trace.WriteLine($"{device}");
             }
+#if false
+            Trace.WriteLine($"HID Devices ------------------------------------");
+            var devices = SystemExtensions.GetMonitorDevices();
+            foreach (var device in devices)
+            {
+                Trace.WriteLine($"{device}");
+            }
+#endif
+
+            var port = SystemExtensions.GetPortName("CH343");
 #endif
             deviceWatcher = new DeviceWatcher();
             deviceWatcher.DeviceArrived += DeviceWatcher_DeviceArrived;

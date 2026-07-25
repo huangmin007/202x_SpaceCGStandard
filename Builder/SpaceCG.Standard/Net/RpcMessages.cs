@@ -39,6 +39,8 @@ namespace SpaceCG.Net
         /// 重置参数重置，用于重用消息实例。
         /// </summary>
         void Reset();
+
+        void Return();
     }
 
     /// <summary>
@@ -125,6 +127,24 @@ namespace SpaceCG.Net
             ResponseMode = 0;
             Description = string.Empty;
             Timestamp = DateTimeOffset.UtcNow;            
+        }
+
+        /// <summary>
+        /// 将当前消息实例归还到对象池中，以供后续复用。
+        /// <para>
+        /// 调用时机：
+        /// <list type="bullet">
+        /// <item>服务端：在方法调用完成、响应消息已发送后调用。</item>
+        /// <item>客户端：在收到服务端响应消息并完成处理后调用。</item>
+        /// </list>
+        /// </para>
+        /// <para>当前状态：对象池功能暂未启用（<see cref="RpcMessagePool{T}"/> 待集成），方法体为空。
+        /// 启用后内部将调用 <see cref="RpcMessagePool{T}.Return(T)"/> 归还实例，池容量达到上限时实例将被丢弃由 GC 回收。</para>
+        /// <para>注意：归还后不应再访问该实例的任何属性，否则可能读取到残留数据，或是空的无效数据。</para>
+        /// </summary>
+        public void Return()
+        {
+            Reset();
         }
 
         /// <inheritdoc />
@@ -302,6 +322,20 @@ namespace SpaceCG.Net
             ReturnValue = null;
 
             Timestamp = DateTimeOffset.UtcNow;
+        }
+
+        /// <summary>
+        /// 将当前消息实例归还到对象池中，以供后续复用。
+        /// <para>
+        /// 调用时机：在客户端或服务端完成对响应消息的处理后调用。
+        /// </para>
+        /// <para>当前状态：对象池功能暂未启用（<see cref="RpcMessagePool{T}"/> 待集成），方法体为空。
+        /// 启用后内部将调用 <see cref="RpcMessagePool{T}.Return(T)"/> 归还实例，池容量达到上限时实例将被丢弃由 GC 回收。</para>
+        /// <para>注意：归还后不应再访问该实例的任何属性，否则可能读取到残留数据，或是空的无效数据。</para>
+        /// </summary>
+        public void Return()
+        {
+            Reset();
         }
 
         /// <inheritdoc cref="Create(InvokeMessage, int, string, Type, object)" />

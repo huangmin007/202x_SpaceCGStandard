@@ -731,11 +731,30 @@ namespace SpaceCG.Net
         /// <returns>一个表示异步写入操作的任务。</returns>
         private async Task WriteResponseMessageAsync(InvokeMessage invokeMessage, ResponseMessage responseMessage, CancellationToken cancellationToken)
         {
-            if (invokeMessage == null || responseMessage == null) return;
-
-            if (invokeMessage.ResponseMode < 0) return;
-            if (invokeMessage.ResponseMode == 0 && responseMessage.Code == 0) return;
-            if (invokeMessage.TcpClient == null || !invokeMessage.TcpClient.Connected) return;
+            if (invokeMessage == null || responseMessage == null)
+            {
+                invokeMessage?.Return();
+                responseMessage?.Return();
+                return;
+            }
+            if (invokeMessage.ResponseMode < 0)
+            {
+                invokeMessage?.Return();
+                responseMessage?.Return();
+                return;
+            }
+            if (invokeMessage.ResponseMode == 0 && responseMessage.Code == 0)
+            {
+                invokeMessage?.Return();
+                responseMessage?.Return();
+                return;
+            }
+            if (invokeMessage.TcpClient == null || !invokeMessage.TcpClient.Connected)
+            {
+                invokeMessage?.Return();
+                responseMessage?.Return();
+                return;
+            }
 
             byte[] responseBytes = null;
             try
@@ -745,10 +764,17 @@ namespace SpaceCG.Net
             catch (Exception ex)
             {
                 Trace.TraceWarning($"序列化客户端 {invokeMessage.ClientEndPoint} 响应消息异常：({ex.GetType().Name}) {ex.Message}");
+                invokeMessage?.Return();
+                responseMessage?.Return();
                 return;
             }
 
-            if (responseBytes == null || responseBytes.Length == 0) return;
+            if (responseBytes == null || responseBytes.Length == 0)
+            {
+                invokeMessage?.Return();
+                responseMessage?.Return();
+                return;
+            }
 
             if (ClientWriteSemaphores.TryGetValue(invokeMessage.TcpClient, out var semaphoreSlim))
             {
@@ -772,11 +798,17 @@ namespace SpaceCG.Net
                 {
                     try { semaphoreSlim.Release(); }
                     catch (ObjectDisposedException) { }
+
+                    invokeMessage?.Return();
+                    responseMessage?.Return();
                 }
             }
             else
             {
                 Trace.TraceWarning($"客户端 {invokeMessage.ClientEndPoint} 未找到写入消息信号量。");
+
+                invokeMessage?.Return();
+                responseMessage?.Return();
             }
         }
 #endregion

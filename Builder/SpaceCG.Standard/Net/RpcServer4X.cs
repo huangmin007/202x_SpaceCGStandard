@@ -26,6 +26,7 @@ namespace SpaceCG.Net
         /// </summary>
         public RpcServer4X(int localPort = 2000) : this(IPAddress.Any, localPort)
         {
+            this.Delimiters = XmlTerminate;
         }
         /// <summary>
         /// 使用指定的端口创建 <see cref="RpcServer4X"/> 实例。

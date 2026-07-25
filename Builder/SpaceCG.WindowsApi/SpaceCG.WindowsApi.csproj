@@ -43,13 +43,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\..\SharedProjects\SpaceCG.Standard\Trace.cs">
+    <Compile Include="..\SpaceCG.Standard\Trace.cs">
       <Link>Trace.cs</Link>
     </Compile>
     <Compile Include="Generic\DeviceWatcher.cs" />
     <Compile Include="Extensions\SystemExtensions.cs" />
     <Compile Include="Interop\NativeMethods.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
