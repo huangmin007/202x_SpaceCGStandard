@@ -490,27 +490,7 @@ namespace SpaceCG.Extensions
                 }
             }
         }
-        /// <summary> 检查连接状态  </summary>
-        public void CheckConnectStatus()
-        {
-            foreach (var ledRenderBus in LedRenderBus.Collections)
-            {
-                if (ledRenderBus.IsConnected) continue;
-
-                Trace.TraceInformation($"Reconnect....{ledRenderBus.Name}");
-
-                try
-                {
-                    ledRenderBus.StopRender();
-                    ledRenderBus.StartRender();
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError($"StartRender ({ledRenderBus.Name}) Exception: {ex.Message}");
-                }
-            }
-        }
-
+        
         /// <summary>  取消延时渲染任务  </summary>
         private void CancelRenderTask()
         {
@@ -583,18 +563,6 @@ namespace SpaceCG.Extensions
                     var elementObject = _canvas.FindName(elementName) as Shape;
                     if (elementObject == null) continue;
 
-#if false
-                    ushort fillCount = 0, repeatCount = 1;
-                    if (ledStripElement.TryGetValue("FillCount", out fillCount) || ledStripElement.TryGetValue("RepeatCount", out repeatCount))
-                    {
-                        var ledStripObject = LedRenderBus.Collections.GetLedStrips().Where(s => s.Address == address && s.Port == port).Select(s => s).FirstOrDefault();
-                        if (ledStripObject != null)
-                        {
-                            ledStripObject.FillCount = fillCount;
-                            ledStripObject.RepeatCount = repeatCount;
-                        }
-                    }
-#endif
                     var actionValue = ledStripElement.Attribute("Action")?.Value;
                     if (string.IsNullOrWhiteSpace(actionValue)) continue;
                     if (!StringExtensions.TryParseParameters(ledStripElement.Attribute("Params")?.Value, out var paramArray)) continue;

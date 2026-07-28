@@ -5,7 +5,6 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Shapes;
 
 namespace SpaceCG.Extensions
 {
@@ -16,16 +15,8 @@ namespace SpaceCG.Extensions
     {
         public const double ElementHeight = 20.0;
 
-        /// <summary>
-        /// 淡入动画，渐渐显示
-        /// </summary>
-        public static DoubleAnimation OpacityFadeInAnimation = new DoubleAnimation(1.0, new Duration(TimeSpan.FromSeconds(0.5)));
-        /// <summary>
-        /// 淡出动画，渐渐消失
-        /// </summary>
-        public static DoubleAnimation OpacityFadeOutAnimation = new DoubleAnimation(0.0, new Duration(TimeSpan.FromSeconds(0.5)));
-
         #region 静态效果
+        #region Color Brush
         /// <summary>
         /// 【静态效果】纯颜色笔刷
         /// </summary>
@@ -104,7 +95,9 @@ namespace SpaceCG.Extensions
 
             return drawingBrush;
         }
+        #endregion
 
+        #region Linear Brush
         /// <summary>
         /// 【静态效果】线性渐变色笔刷，从左到右平均渐变
         /// </summary>
@@ -133,7 +126,7 @@ namespace SpaceCG.Extensions
         /// 【静态效果】线性渐变色笔刷，从左到右平均渐变
         /// </summary>
         /// <param name="colors"></param>
-        /// <param name="width"></param>
+        /// <param name="width">显示宽度</param>
         /// <returns></returns>
         public static Brush LinearBrush(IEnumerable<Color> colors, int width)
         {
@@ -295,59 +288,10 @@ namespace SpaceCG.Extensions
             return drawingBrush;
         }
         #endregion
-
-
-        /// <summary>
-        /// 设置笔刷的 Blink 动画效果
-        /// </summary>
-        /// <param name="brush"></param>
-        /// <param name="from"></param>
-        /// <param name="to"></param>
-        /// <param name="duration"></param>
-        /// <returns></returns>
-        public static Brush SetBrushBlinkAnimation(Brush brush, double from = -0.2, double to = 1.2, double duration = 1.5)
-        {
-            if (brush == null) return null;
-
-            DoubleAnimation blinkAnimation = new DoubleAnimation()
-            {
-                To = to,
-                From = from,
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever,
-                Duration = TimeSpan.FromSeconds(duration),
-            };
-
-            brush.BeginAnimation(Brush.OpacityProperty, blinkAnimation);
-            return brush;
-        }
-        /// <summary>
-        /// 设置笔刷的 Flow 动画效果
-        /// </summary>
-        /// <param name="brush"></param>
-        /// <param name="flowStep"></param>
-        /// <param name="duration"></param>
-        /// <returns></returns>
-        public static Brush SetBrushFlowAnimation(Brush brush, double flowStep, double duration = 1.5)
-        {
-            if (brush == null) return null;
-
-            var flowAnaimation = new DoubleAnimation()
-            {
-                By = flowStep,
-                RepeatBehavior = RepeatBehavior.Forever,
-                Duration = new Duration(TimeSpan.FromSeconds(duration))
-            };
-
-            var transform = new TranslateTransform();
-            transform.BeginAnimation(TranslateTransform.XProperty, flowAnaimation);
-            brush.Transform = transform;
-
-            return brush;
-        }
-
+        #endregion
 
         #region 动态效果
+        #region Blink Color/Linear
         /// <summary>
         /// 【动态效果】单色纯色笔刷，闪烁/呼吸颜色刷
         /// </summary>
@@ -442,7 +386,9 @@ namespace SpaceCG.Extensions
             brush.BeginAnimation(SolidColorBrush.OpacityProperty, blinkAnimation);
             return brush;
         }
+        #endregion
 
+        #region Flow Color/Linear/Brush
         /// <summary>
         /// 【动态效果】多段纯色/颜色流动效果
         /// </summary>
@@ -469,7 +415,7 @@ namespace SpaceCG.Extensions
 
             return brush;
         }
-
+        
         /// <summary>
         /// 【动态效果】单段渐变色流动效果
         /// </summary>
@@ -522,7 +468,7 @@ namespace SpaceCG.Extensions
 
             return brush;
         }
-
+        
         /// <summary>
         /// 【动态效果】从起始位置到终止位置的颜色填充流动效果
         /// </summary>
@@ -563,6 +509,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="FlowBrushFromTo(Brush, double, double, double, double, AlignmentX)"/>
         public static Brush FlowBrushFromTo(Color color, double from, double to, double flowTime = 1.5, double repeatCount = 1, AlignmentX alignmentX = AlignmentX.Left) => FlowBrushFromTo(new SolidColorBrush(color), from, to, flowTime, repeatCount, alignmentX);
+        #endregion
         #endregion
 
 
@@ -673,72 +620,5 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
-
-        /// <summary>
-        /// 设置 Shape 的笔刷颜色，不改变 Shape 的笔刷类型
-        /// </summary>
-        /// <param name="shape"></param>
-        /// <param name="color"></param>
-        public static void SetShapeColor(Shape shape, Color color)
-        {
-            if (color == null || color.A == 0)
-            {
-                color = Colors.Black;
-                shape.BeginAnimation(Shape.OpacityProperty, OpacityFadeOutAnimation);
-                return;
-            }
-            else
-            {
-                shape.BeginAnimation(Shape.OpacityProperty, OpacityFadeInAnimation);
-            }
-
-            if (shape.Fill is SolidColorBrush colorBrush)
-            {
-                colorBrush.Color = color;
-            }
-            else if (shape.Fill is DrawingBrush drawingBrush && drawingBrush.Drawing is GeometryDrawing geometryDrawing)
-            {
-                if (geometryDrawing.Brush is SolidColorBrush solidBrush)
-                {
-                    solidBrush.Color = color;
-                }
-                else if (geometryDrawing.Brush is LinearGradientBrush linearGradientBrush)
-                {
-                    var brush = new LinearGradientBrush();
-                    brush.EndPoint = linearGradientBrush.EndPoint;
-                    brush.StartPoint = linearGradientBrush.StartPoint;
-
-                    foreach (var stop in linearGradientBrush.GradientStops)
-                    {
-                        var nColor = Color.FromArgb(stop.Color.A, color.R, color.G, color.B);
-                        brush.GradientStops.Add(new GradientStop(nColor, stop.Offset));
-                    }
-
-                    geometryDrawing.Brush = brush;
-                }
-            }
-
-            //shape.Visibility = color == Colors.Transparent || color.A == 0 ? Visibility.Hidden : Visibility.Visible;
-        }
-        /// <summary>
-        /// 设置 Shape 颜色
-        /// </summary>
-        /// <param name="shape"></param>
-        /// <param name="color"></param>
-        public static void SetShapeColor(Shape shape, string color)
-        {
-            Color nColor = Colors.Transparent;
-
-            try
-            {
-                nColor = (Color)ColorConverter.ConvertFromString(color);
-            }
-            catch (Exception ex)
-            {
-                nColor = Colors.Transparent;
-            }
-
-            SetShapeColor(shape, nColor);
-        }
     }
 }

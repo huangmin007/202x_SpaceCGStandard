@@ -487,13 +487,12 @@ namespace SpaceCG.Extensions
             }
             return false;
         }
-
         #endregion
 
 
         #region Invoke Static Method
         /// <summary>
-        /// 尝试通过类型名称和方法名称动态查找并调用静态方法。
+        /// 尝试通过 <b>类型名称</b> 和 <b>方法名称</b> 动态查找并调用 <b>静态方法</b>。
         /// </summary>
         /// <param name="typeFullName">包含静态方法的类型全名（含命名空间），如 <c>"System.Math"</c>。</param>
         /// <param name="methodName">要调用的静态方法名称，不可为 <c>null</c> 或空白。</param>
@@ -534,7 +533,7 @@ namespace SpaceCG.Extensions
                 foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public))
                 {
                     if (method.Name != methodName) continue;
-                    if (method.IsDefined(typeof(ExtensionAttribute), false)) continue;  // 扩展方法
+                    if (method.IsDefined(typeof(ExtensionAttribute), false)) continue;  // 排除扩展方法
 
                     var methodParameters = method.GetParameters();
                     if (methodParameters.Length != paramLength) continue;

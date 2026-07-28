@@ -138,7 +138,7 @@ namespace SpaceCG.Device
             foreach (var ledRenderBus in collections)
             {
                 try
-                {
+                {                    
                     if (!ledRenderBus.IsConnected)
                     {
                         Trace.TraceInformation($"Reconnect....{ledRenderBus.Name}");

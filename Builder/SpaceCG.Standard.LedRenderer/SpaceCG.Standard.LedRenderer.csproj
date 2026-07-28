@@ -50,11 +50,18 @@
     <Compile Include="..\SpaceCG.Standard\Trace.cs">
       <Link>Trace.cs</Link>
     </Compile>
+    <Compile Include="Extensions\LedRenderControl.cs" />
     <Compile Include="Drawing\DrawingWpfElement.cs" />
+    <Compile Include="Extensions\BrushExtensions.cs" />
     <Compile Include="Extensions\DrawingExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj">
+      <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
+      <Name>SpaceCG.Standard</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="..\..\SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems" Label="Shared" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

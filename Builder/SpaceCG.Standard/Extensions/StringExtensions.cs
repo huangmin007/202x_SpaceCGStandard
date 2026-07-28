@@ -169,7 +169,7 @@ namespace SpaceCG.Extensions
         }
 
 
-        #region 自定义文本参数解析
+        #region TryParseParameters 自定义文本参数解析
         /// <summary>
         /// 将逗号分隔的参数文本解析为强类型嵌套数组结构。
         /// <para>适用场景：配置文件参数解析、RPC 调试参数输入、命令行参数列表等高频调用路径。</para>
@@ -491,6 +491,7 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
+
         #region TryConvertTo 将字符串转换为指定值类型
         /// <summary>
         /// 将单个字符串标量转换为指定值类型，"string→强类型值" 的标量转换器。
@@ -699,6 +700,7 @@ namespace SpaceCG.Extensions
                 return false;
             }
             #endregion
+
             // 通用性值类型转换
             try
             {

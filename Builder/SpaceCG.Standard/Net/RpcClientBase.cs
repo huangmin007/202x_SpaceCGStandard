@@ -263,13 +263,18 @@ namespace SpaceCG.Net
                 {
                     var delay = ReconnectDelay;
                     if (delay < TimeSpan.Zero) break;
-                    Trace.TraceWarning($"RPC 客户端连接失败: {ex.Message}，重试中 .....");
+                    if (cancellationToken.IsCancellationRequested) break;
 
                     if (delay > TimeSpan.Zero)
                     {
-                        await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                        Trace.TraceWarning($"RPC 客户端连接失败: {ex.Message}，重试中 .....");
+                        try
+                        {
+                            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                            continue;
+                        }
+                        catch (OperationCanceledException) { break; }
                     }
-                    continue;
                 }
 
                 await HandleServerSessionAsync(_tcpClient, cancellationToken).ConfigureAwait(false);

@@ -79,13 +79,20 @@ namespace SpaceCG.Generic
                 }
                 return Math.Max(0, _writePosition - _readPosition);
             }
-        }        
+        }
+        /// <summary>
+        /// 缓冲区实际容量。
+        /// </summary>
+        public int Capacity => _bufferSize;
+
         /// <summary>获取当前读指针位置。</summary>
         public int ReadPosition => _readPosition;
         /// <summary>获取当前写指针位置。</summary>
         public int WritePosition => _writePosition;
         /// <summary>获取内部缓冲区数组引用（供子类在事件回调中访问）。</summary>
         internal byte[] InternalBuffer => _buffer;
+        /// <summary>  对象是否已被释放。 </summary>
+        internal bool IsDisposed => _disposed;
 
         /// <summary>
         /// 每当成功解析出一条完整数据包时触发。
@@ -103,7 +110,7 @@ namespace SpaceCG.Generic
         /// 使用指定缓冲区大小初始化解析器。
         /// </summary>
         /// <param name="bufferSize">
-        /// 缓冲区最大字节数。紧凑阈值自动设为 <c>bufferSize / 8</c>，超出后旧数据将被丢弃。必须大于 0。
+        /// 缓冲区最大字节数,必须大于 0。紧凑阈值自动设为 <c>bufferSize / 4</c>。
         /// </param>
         /// <exception cref="ArgumentException"><paramref name="bufferSize"/> 小于或等于 0 时抛出。</exception>
         public ProtocolParser(int bufferSize)
@@ -169,7 +176,7 @@ namespace SpaceCG.Generic
         /// <exception cref="ArgumentNullException"><paramref name="stream"/> 为 null 时抛出。</exception>
         /// <exception cref="ArgumentException"><paramref name="stream"/> 不支持读取时抛出。</exception>
         /// <exception cref="OperationCanceledException">操作被取消或信号量等待被中断时抛出。</exception>
-        public async Task ReadFromAsync(Stream stream, CancellationToken cancellationToken = default)
+        public async Task ReadFromAsync(Stream stream, CancellationToken cancellationToken)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(ProtocolParser));
             if (stream == null)
@@ -194,20 +201,16 @@ namespace SpaceCG.Generic
                     // 尝试解析已有数据
                     ParseBufferInternal();
                 }
+                catch (Exception ex) when (ex is ObjectDisposedException || ex is OperationCanceledException) { break; }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning($"ProtocolParser.ReadFromAsync 异常：{ex.Message}");
+                    break;
+                }
                 finally
                 {
                     _syncSemaphore.Release();
                 }
-            }
-
-            await _syncSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
-            {
-                ParseBufferInternal();
-            }
-            finally
-            {
-                _syncSemaphore.Release();
             }
         }
 

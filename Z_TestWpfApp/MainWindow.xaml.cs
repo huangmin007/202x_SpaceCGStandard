@@ -1,30 +1,18 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO.Ports;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Reflection;
 using System.Security;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Xml.Linq;
-using Microsoft.Win32;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
 using SpaceCG.Net;
@@ -37,16 +25,13 @@ namespace Z_TestWpfApp
     public partial class MainWindow : Window
     {
         RpcServerBase rpcServer;
-
         RpcClientBase rpcClient;
-
-        DeviceWatcher deviceWatcher;
+        //DeviceWatcher deviceWatcher;
+        LedRenderControl ledRenderControl;
 
         // 准备两个数组，填充4MB大小的数据
         private static readonly byte[] XBytes = Enumerable.Range(0, 1024 * 4).Select(c => (byte)c).ToArray();
         private static readonly byte[] YBytes = Enumerable.Range(0, 1024 * 4).Select(c => (byte)c).ToArray();
-
-        LedRenderControl ledRenderControl;
 
         public MainWindow()
         {
@@ -58,14 +43,26 @@ namespace Z_TestWpfApp
 
             rpcServer = new RpcServer4X(2000, RpcServer4X.XmlTerminate);
             rpcServer.RegisterObject("Demo", this);
-            rpcServer.Start();            
+            //rpcServer.Start();            
         }
         protected override void OnClosing(CancelEventArgs e)
         {
             base.OnClosing(e);
 
             rpcServer?.Dispose();
-            //messageWindow?.Dispose();
+
+            _serialPort?.Dispose();
+
+            _cts?.Cancel();
+            connectTask?.Wait(3000);
+
+            //client?.Dispose();
+            protocolParser?.Dispose();
+
+            connectTask?.Dispose();
+
+            _cts?.Dispose();
+
         }
 
         protected override async void OnKeyDown(KeyEventArgs e)
@@ -144,6 +141,10 @@ namespace Z_TestWpfApp
 
                     Trace.WriteLine($"Result:{result2},ReturnValue:{returnValue2}  use:{ms}");
                     break;
+
+                case Key.C:
+                    _cts?.Cancel();
+                    break;
             }
         }
 
@@ -197,10 +198,30 @@ namespace Z_TestWpfApp
 
             Trace.TraceInformation($"test");
         }
+        //private TcpClient client;
+        private CancellationTokenSource _cts;
+        private ProtocolParser protocolParser;
+        private Task connectTask;
+
+        private SerialPort _serialPort;
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-#if true
+            _cts = new CancellationTokenSource();
+
+            //protocolParser = new FixedLengthProtocolParser(8);
+            protocolParser = new FooterProtocolParser(new byte[] { 0x0D, 0x0A });
+            //protocolParser = new HeaderFooterProtocolParser(new byte[] { 0x41, 0x42 }, new byte[] { 0x0D, 0x0A });
+            protocolParser.PacketReceived += ProtocolParser_PacketReceived;
+            //connectTask = protocolParser.TcpConnectAsync("127.0.0.1", 2001, _cts.Token);
+
+            //var client = new TcpClient();
+            //_ = client.ConnectWithRetryAsync("127.0.0.1", 2001, protocolParser, newClient => { client = newClient; }, _cts.Token);
+
+            _serialPort = new SerialPort("COM3", 115200);
+            _serialPort.Open();
+            _ = protocolParser.ReadFromAsync(_serialPort.BaseStream, _cts.Token);
+#if false
             Trace.WriteLine($"Serial Devices ------------------------------------");
             var serialDevices = SystemExtensions.GetSerialDevices();
             foreach(var device in serialDevices)
@@ -239,16 +260,17 @@ namespace Z_TestWpfApp
 
             var port = SystemExtensions.GetPortName("CH343");
 #endif
+#if false
             deviceWatcher = new DeviceWatcher();
             deviceWatcher.DeviceArrived += DeviceWatcher_DeviceArrived;
             deviceWatcher.DeviceRemoved += DeviceWatcher_DeviceRemoved;
             deviceWatcher.Start();
-
+#endif
             var config = XElementExtensions.LoadConfig($"Resources/Config.xml");
-            ledRenderControl = new LedRenderControl(Canvas_Leds);
-            ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
-            ledRenderControl.StartRender();
-            ledRenderControl.RenderSceneId(1);
+            //ledRenderControl = new LedRenderControl(Canvas_Leds);
+            //ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
+            //ledRenderControl.StartRender();
+            //ledRenderControl.RenderSceneId(1);
 
             test(0);
             var ips = GetLocalIPAddresses().ToArray();
@@ -256,7 +278,7 @@ namespace Z_TestWpfApp
             var ips2 = NetworkExtensions.GetLocalIPv4Addresses().ToArray();
 
             var config2 = XElementExtensions.LoadConfig($"Resources/Config.xml");
-            Trace.WriteLine($"config...{config2}");
+            //Trace.WriteLine($"config...{config2}");
 
             //var str = "System.Collections.Generic.IEnumerable`1[System.Collections.Generic.IEnumerable`1[System.Int32]]";
             //var returnType = Type.GetType(str, true);
@@ -264,7 +286,7 @@ namespace Z_TestWpfApp
 
             rpcClient = new RpcClient4X("127.0.0.1", 2000);
             rpcClient.ResponseTimeout = TimeSpan.FromSeconds(2000);
-            rpcClient.Connect();
+            //rpcClient.Connect();
 
             const string Dictionary = nameof(Dictionary);
 
@@ -304,6 +326,14 @@ namespace Z_TestWpfApp
             Trace.WriteLine($"Test22::{paramsSings_2}");
             Trace.WriteLine($"Test::{paramsSings_2}");
 #endif
+        }
+
+        private void ProtocolParser_PacketReceived(object sender, PacketEventArgs e)
+        {
+            Trace.WriteLine($"PacketReceived::{e.Packet.Count}");
+
+            var content = Encoding.UTF8.GetString(e.Packet.Array, e.Packet.Offset, e.Packet.Count);
+            Trace.WriteLine($"PacketReceived::{content}");
         }
 
         private void DeviceWatcher_DeviceArrived(object sender, DeviceChangedEventArgs e)

@@ -289,7 +289,7 @@ namespace SpaceCG.Device
         {
             if (_isRendering || _renderTask != null) return;
 
-            if (!Channel.IsConnected)  Channel.Open();
+            if (!Channel.IsConnected) Channel.Open();
 
             _isRendering = true;
             _renderTask = Task.Factory.StartNew(RenderingBusThread, this, TaskCreationOptions.LongRunning);
