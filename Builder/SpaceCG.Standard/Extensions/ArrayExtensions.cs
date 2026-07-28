@@ -456,13 +456,17 @@ namespace SpaceCG.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe static bool SequenceEqual(this byte[] source, byte[] destination)
         {
+            if (ReferenceEquals(source, destination)) return true;
             if (source == null || destination == null) return false;
-            if (source.Length != destination.Length) return false;
+
+            var sLength = source.Length;
+            if (sLength != destination.Length) return false;
+            if (sLength == 0) return true;
 
             fixed (byte* ps = source)
             fixed (byte* pd = destination)
             {
-                return SequenceEqual(ps, 0, source.Length, pd, 0, source.Length);
+                return SequenceEqual(ps, 0, sLength, pd, 0, sLength);
             }
         }
         #endregion

@@ -50,6 +50,7 @@
     <Compile Include="..\SpaceCG.Standard\Trace.cs">
       <Link>Trace.cs</Link>
     </Compile>
+    <Compile Include="Device\DataFramePool.cs" />
     <Compile Include="Extensions\LedRenderControl.cs" />
     <Compile Include="Drawing\DrawingWpfElement.cs" />
     <Compile Include="Extensions\BrushExtensions.cs" />

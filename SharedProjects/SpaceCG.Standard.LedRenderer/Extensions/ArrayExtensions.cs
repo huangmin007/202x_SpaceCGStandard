@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
@@ -131,7 +128,7 @@ namespace SpaceCG.Extensions
         /// <param name="destCount">目标数组中要比较的字节数，必须与 <paramref name="srcCount"/> 相等。</param>
         /// <returns>
         /// <c>true</c>：两个数组指定区域的内容完全相等；
-        /// <c>false</c>：数组为 null、长度不匹配或内容不相等。
+        /// <c>false</c>：任一数组为 null、长度不匹配或内容不相等。
         /// </returns>
         /// <exception cref="ArgumentOutOfRangeException">
         /// 当 <paramref name="srcOffset"/> 或 <paramref name="destOffset"/> 超出数组边界时抛出。
@@ -140,7 +137,8 @@ namespace SpaceCG.Extensions
         public unsafe static bool SequenceEqual(this byte[] source, int srcOffset, int srcCount, byte[] destination, int destOffset, int destCount)
         {
             if (source == null || destination == null) return false;
-            if (srcCount != destCount || srcCount <= 0) return false;
+            if (srcCount != destCount) return false;
+            if (srcCount == 0) return true;
 
             // 边界检查：确保偏移 + 计数不超出数组末尾
             if (srcOffset < 0 || srcOffset + srcCount > source.Length)
@@ -163,19 +161,23 @@ namespace SpaceCG.Extensions
         /// <param name="source">源字节数组，不可为 null。</param>
         /// <param name="destination">目标字节数组，不可为 null。</param>
         /// <returns>
-        /// <c>true</c>：两个数组内容完全相同（包括均为 null 或长度均为 0）；
-        /// <c>false</c>：任一数组为 null、长度不相等或内容不匹配。
+        /// <c>true</c>：两个数组长度相同且内容完全一致；
+        /// <c>false</c>：任一数组为 null、长度不同或内容不同。
         /// </returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public unsafe static bool SequenceEqual(this byte[] source, byte[] destination)
         {
+            if (ReferenceEquals(source, destination)) return true;
             if (source == null || destination == null) return false;
-            if (source.Length != destination.Length) return false;
+
+            var sLength = source.Length;
+            if (sLength != destination.Length) return false;
+            if (sLength == 0) return true;
 
             fixed (byte* ps = source)
             fixed (byte* pd = destination)
             {
-                return SequenceEqual(ps, 0, source.Length, pd, 0, source.Length);
+                return SequenceEqual(ps, 0, sLength, pd, 0, sLength);
             }
         }
         #endregion
