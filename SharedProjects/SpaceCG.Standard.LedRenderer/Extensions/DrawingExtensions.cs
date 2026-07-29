@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Drawing;
 
-namespace SpaceCG.Drawing
+namespace SpaceCG.Extensions
 {
     /// <summary>
     /// 扫描方向

@@ -100,4 +100,5 @@ namespace SpaceCG.IO
         void Write(byte[] buffer, int offset, int count);
 
     }
+    
 }

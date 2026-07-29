@@ -2,8 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using SpaceCG.Device;
 
-namespace SpaceCG.Device
+namespace SpaceCG.Extensions
 {
     /// <summary>
     /// 颜色格式的扩展方法
@@ -13,7 +14,8 @@ namespace SpaceCG.Device
         /// <summary>
         /// 颜色格式对应的通道索引表
         /// </summary>
-        public static readonly IReadOnlyDictionary<ColorFormat, byte[]> ColorChannelIndices = new Dictionary<ColorFormat, byte[]>
+
+        public static readonly IReadOnlyDictionary<ColorFormat, IReadOnlyList<byte>> ColorChannelIndices = new Dictionary<ColorFormat, IReadOnlyList<byte>>
         {
             { ColorFormat.RGB, new byte[] { (byte)ColorChannel.R, (byte)ColorChannel.G, (byte)ColorChannel.B } },
             { ColorFormat.RBG, new byte[] { (byte)ColorChannel.R, (byte)ColorChannel.B, (byte)ColorChannel.G } },
@@ -38,7 +40,7 @@ namespace SpaceCG.Device
         /// <param name="format">颜色格式</param>
         /// <returns>通道数量，三通道格式返回 3，四通道格式返回 4</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int GetChannelCount(this ColorFormat format) => ColorChannelIndices[format].Length;
+        public static int GetChannelCount(this ColorFormat format) => ColorChannelIndices[format].Count;
 
         /// <summary>
         /// 获取颜色格式支持的最大 LED 灯珠数量
@@ -47,7 +49,7 @@ namespace SpaceCG.Device
         /// <param name="format">颜色格式</param>
         /// <returns>最大 LED 灯珠数量</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int GetMaxLedCount(this ColorFormat format) => ColorChannelIndices[format].Length == 3 ? 1024 : 768;
+        public static int GetMaxLedCount(this ColorFormat format) => ColorChannelIndices[format].Count == 3 ? 1024 : 768;
 
         /// <summary>
         /// 获取颜色格式对应的通道索引表
@@ -56,7 +58,7 @@ namespace SpaceCG.Device
         /// <param name="format">颜色格式</param>
         /// <returns>通道索引表，数组元素为 <see cref="ColorChannel"/> 枚举值</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte[] GetChannelIndices(this ColorFormat format) => ColorChannelIndices[format];
+        public static IReadOnlyList<byte> GetChannelIndices(this ColorFormat format) => ColorChannelIndices[format];
         
 
         /// <summary>
@@ -77,7 +79,7 @@ namespace SpaceCG.Device
 
             // 通道索引表
             var inputIndices = ColorChannelIndices[inputFormat];
-            int inputChannelCount = inputIndices.Length;
+            int inputChannelCount = inputIndices.Count;
 
             if (inputColors.Count < inputChannelCount || inputColors.Count % inputChannelCount != 0)
                 throw new ArgumentException("输入颜色数据格式无效");
@@ -85,7 +87,7 @@ namespace SpaceCG.Device
             if (inputFormat == outputFormat) return inputColors.ToArray();
 
             var outputIndices = ColorChannelIndices[outputFormat];
-            int outputChannelCount = outputIndices.Length;
+            int outputChannelCount = outputIndices.Count;
 
             // 计算输出的像素数量
             int pixelCount = inputColors.Count / inputChannelCount;
@@ -120,8 +122,8 @@ namespace SpaceCG.Device
             var outputIndices = ColorChannelIndices[outputFormat];
 
             // 颜色的通道数量
-            int inputChannelCount = inputIndices.Length;
-            int outputChannelCount = outputIndices.Length;
+            int inputChannelCount = inputIndices.Count;
+            int outputChannelCount = outputIndices.Count;
 
             if (inputColors.Count < inputChannelCount || inputColors.Count % inputChannelCount != 0)
                 throw new ArgumentException("输入颜色数据格式无效");
@@ -142,7 +144,8 @@ namespace SpaceCG.Device
             int[] channelMap = new int[outputChannelCount];
             for (i = 0; i < outputChannelCount; i++)
             {
-                channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
+                channelMap[i] = inputIndices.IndexOf(outputIndices[i]);
+                //channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
             }
 
             for (i = 0; i < pixelCount; i++)
@@ -173,13 +176,13 @@ namespace SpaceCG.Device
                 throw new ArgumentNullException("输入颜色数据为空");
 
             var inputIndices = ColorChannelIndices[inputFormat];
-            int inputChannelCount = inputIndices.Length;
+            int inputChannelCount = inputIndices.Count;
 
             if (inputChannelCount != 4)
                 throw new ArgumentException("输入颜色数据格式无效，输入格式必须为四通道");
 
             var outputIndices = ColorChannelIndices[outputFormat];
-            int outputChannelCount = outputIndices.Length;
+            int outputChannelCount = outputIndices.Count;
 
             // 计算输出的像素数量
             int pixelCount = inputColors.Count;
@@ -211,8 +214,8 @@ namespace SpaceCG.Device
             var outputIndices = ColorChannelIndices[outputFormat];
 
             // 颜色的通道数量
-            int inputChannelCount = inputIndices.Length;
-            int outputChannelCount = outputIndices.Length;
+            int inputChannelCount = inputIndices.Count;
+            int outputChannelCount = outputIndices.Count;
 
             if (inputChannelCount != 4)
                 throw new ArgumentException("输入颜色数据格式无效，输入格式必须为四通道");
@@ -226,7 +229,8 @@ namespace SpaceCG.Device
             int[] channelMap = new int[outputChannelCount];
             for (i = 0; i < outputChannelCount; i++)
             {
-                channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
+                channelMap[i] = inputIndices.IndexOf(outputIndices[i]);
+                //channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
             }
 
             for (i = 0; i < pixelCount; i++)
@@ -261,7 +265,7 @@ namespace SpaceCG.Device
                 throw new ArgumentException("像素数据为空或宽度或高度小于等于 0");
 
             var inputIndices = ColorChannelIndices[pixelFormat];     // 输入像素排列的通道索引表            
-            var inputChannelCount = inputIndices.Length;            // 颜色的通道数量
+            var inputChannelCount = inputIndices.Count;            // 颜色的通道数量
 
             if (stride < width * inputChannelCount)
                 throw new ArgumentException("stride 必须大于等于 width * inputChannelCount");
@@ -272,14 +276,15 @@ namespace SpaceCG.Device
 
             // 输出像素排列的通道索引表
             var outputIndices = ColorChannelIndices[outputFormat];            
-            var outputChannelCount = outputIndices.Length;
+            var outputChannelCount = outputIndices.Count;
             byte[] results = new byte[outputRectangle.Width * outputRectangle.Height * outputChannelCount];
 
             // 预计算索引映射，如果存在 -1, 则表示需要补充 Alpha 通道
             int[] channelMap = new int[outputChannelCount];
             for (var i = 0; i < outputChannelCount; i++)
             {
-                channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
+                channelMap[i] = inputIndices.IndexOf(outputIndices[i]);
+                //channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
             }
 
             var frameOffset = 0;

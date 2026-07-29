@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
-namespace SpaceCG.Device
+namespace SpaceCG.Extensions
 {
     /// <summary>
     /// 数据帧扩展方法
     /// </summary>
-    internal static class FrameExtensions
+    internal static partial class FrameExtensions
     {
         /// <summary>
         /// 判断颜色数据帧是否有效
@@ -34,8 +34,8 @@ namespace SpaceCG.Device
             byte port = GetPort(frame);
             if (port > 30) return false;
 
-            // 功能码 0x99
-            if (frame[8] != 0x99) return false;
+            // 功能码 0x98 & 0x99
+            if (frame[8] != 0x98 && frame[8] != 0x99) return false;
 
             // 数据长度 3~3072
             int dataLength = GetDataLength(frame);
@@ -48,27 +48,67 @@ namespace SpaceCG.Device
             return true;
         }
 
+        /// <summary>
+        /// 获取组地址
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort GetGroup(this byte[] frame) => (ushort)((frame[3] << 8) | frame[4]);
 
+        /// <summary>
+        /// 获取设备地址
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort GetAddress(this byte[] frame) => (ushort)((frame[5] << 8) | frame[6]);
 
+        /// <summary>
+        /// 获取端口地址
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte GetPort(this byte[] frame) => frame[7];
 
+        /// <summary>
+        /// 获取功能码
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte GetFuncCode(this byte[] frame) => frame[8];
 
+        /// <summary>
+        /// 获取灯珠类型
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte GetLedType(this byte[] frame) => frame[9];
 
+        /// <summary>
+        /// 获取数据长度(颜色数据)
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort GetDataLength(this byte[] frame) => (ushort)((frame[12] << 8) | frame[13]);
 
+        /// <summary>
+        /// 获取扩展次数
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort GetRepeatCount(this byte[] frame) => (ushort)((frame[14] << 8) | frame[15]);
 
+        /// <summary>
+        /// 获取颜色数据
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         //public static byte[] GetData(byte[] frame) => frame[16..^2];
         public static IEnumerable<byte> GetFrameData(byte[] frame) => frame.Skip(16).Take(frame.Length - 18);

@@ -10,20 +10,22 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Device\ColorFormat.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Device\ColorFormatExtensions.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Device\FrameExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\FramePoolModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\LedRenderBus.Collections.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\ColorFormatExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\FrameExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Device\LedRenderBus.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Device\LedRenderBusExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\LedRenderBusExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Device\LedStripObject.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Drawing\DrawingDesktop.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Drawing\DrawingExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\DrawingExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Drawing\IDrawingDisplay.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\ArrayExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\SystemExtensions.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Extensions\TransportExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IO\ITransportChannel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IO\SerialPortTransport.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IO\TcpClientTransport.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)IO\TransportChannel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IO\UdpClientTransport.cs" />
   </ItemGroup>
   <ItemGroup>

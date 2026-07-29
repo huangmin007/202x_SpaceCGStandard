@@ -80,18 +80,6 @@ namespace SpaceCG.Extensions
         internal static extern bool SetupDiEnumDeviceInfo(IntPtr DeviceInfoSet, uint MemberIndex, ref SP_DEVINFO_DATA DeviceInfoData);
 
         /// <summary>
-        /// 返回有关设备接口的详细信息（不返回 SP_DEVINFO_DATA）。
-        /// </summary>
-        [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern bool SetupDiGetDeviceInterfaceDetail(IntPtr hDevInfoSet, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData, IntPtr deviceInterfaceDetailData, uint deviceInterfaceDetailDataSize, out uint requiredSize, IntPtr deviceInfoData);
-
-        /// <summary>
-        /// 返回有关设备接口的详细信息（同时返回 SP_DEVINFO_DATA）。
-        /// </summary>
-        [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern bool SetupDiGetDeviceInterfaceDetail(IntPtr hDevInfoSet, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData, IntPtr deviceInterfaceDetailData, uint deviceInterfaceDetailDataSize, out uint requiredSize, ref SP_DEVINFO_DATA deviceInfoData);
-
-        /// <summary>
         /// 检索指定的即插即用设备属性。
         /// </summary>
         [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -162,45 +150,14 @@ namespace SpaceCG.Extensions
         /// <inheritdoc /> 
         public override string ToString() =>
             $"FriendlyName:{FriendlyName}  HardwareId:{HardwareId}  InstanceId:{InstanceId}  DevicePath:{DevicePath}  ({ClassGuid})";
-    }
-    /// <summary>
-    /// USB 设备信息。
-    /// <para>继承自 <see cref="DeviceInfo"/>，增加 USB 特有的 VID/PID/SerialNumber 属性。</para>
-    /// <para>所有属性均可在枚举阶段通过字符串解析轻量填充，不依赖设备 I/O。</para>
-    /// </summary>
-    public class UsbDeviceInfo : DeviceInfo
-    {
-        /// <summary>
-        /// USB Vendor ID（供应商 ID）。
-        /// <para>从 <see cref="DeviceInfo.HardwareId"/> 中解析 "VID_XXXX" 模式，提取 4 位十六进制值。</para>
-        /// <para>非 USB 设备或解析失败时为 null。</para>
-        /// </summary>
-        public string Vid { get; internal set; }
-
-        /// <summary>
-        /// USB Product ID（产品 ID）。
-        /// <para>从 <see cref="DeviceInfo.HardwareId"/> 中解析 "PID_XXXX" 模式，提取 4 位十六进制值。</para>
-        /// <para>非 USB 设备或解析失败时为 null。</para>
-        /// </summary>
-        public string Pid { get; internal set; }
-
-        /// <summary>
-        /// USB 设备硬件序列号。
-        /// <para>从 <see cref="DeviceInfo.InstanceId"/> 最后一个反斜杠后提取。</para>
-        /// <para>若提取结果包含 '&amp;' 字符，判定为 Windows 自动生成的伪序列号，返回 null。</para>
-        /// </summary>
-        public string SerialNumber { get; internal set; }
-
-        /// <inheritdoc/>
-        public override string ToString() => $"{base.ToString()} Vid:{Vid} Pid:{Pid} SerialNumber:{SerialNumber}";
-    }
+    }    
     /// <summary>
     /// 串口设备信息。
     /// <para>继承自 <see cref="UsbDeviceInfo"/>（因为现代串口设备多为 USB 转串口芯片）。</para>
     /// <para>对于主板原生串口（非 USB），Vid/Pid/SerialNumber 将为 null。</para>
     /// <para>所有属性均可在枚举阶段轻量填充，不依赖设备 I/O。</para>
     /// </summary>
-    public sealed class SerialDeviceInfo : UsbDeviceInfo
+    public sealed class SerialDeviceInfo : DeviceInfo
     {
         /// <summary>
         /// 串口名称（例如 "COM3"、"COM10"）。
@@ -232,6 +189,9 @@ namespace SpaceCG.Extensions
         /// <para>x64: 8（4 字节 cbSize + 4 字节对齐填充）。</para>
         /// </summary>
         internal static readonly int DetailDataCbSize = IntPtr.Size == 8 ? 8 : 6;
+
+        public static readonly Regex PortNameRegex = new Regex("^COM[0-9]{1,3}$", RegexOptions.IgnoreCase);
+
 
         #region 核心枚举引擎 (复用逻辑)
         /// <summary>
@@ -304,69 +264,17 @@ namespace SpaceCG.Extensions
                 if (!string.IsNullOrEmpty(parsed)) portName = parsed;
             }
 
-            ExtractVidPidFromHardwareId(hardwareId, out string vid, out string pid);
-
             return new SerialDeviceInfo
             {
                 PortName = portName,
-                FriendlyName = friendlyName,
                 HardwareId = hardwareId,
                 InstanceId = instanceId,
+                FriendlyName = friendlyName,
                 ClassGuid = devInfo.ClassGuid,
-                Vid = vid,
-                Pid = pid,
-                SerialNumber = ExtractSerialNumberFromInstanceId(instanceId),
-
-                // SetupDiEnumDeviceInfo 无法得到 DevicePath
-                DevicePath = null
             };
         });
 
-
-        #region 辅助解析方法
-        /// <summary>
-        /// 调用 SetupDiGetDeviceInterfaceDetail 获取设备接口详细信息和设备信息数据。
-        /// <para>内部封装两次调用模式：第一次获取缓冲区大小，第二次获取实际数据。</para>
-        /// </summary>
-        /// <param name="hDevInfoSet">设备信息集句柄。</param>
-        /// <param name="interfaceData">设备接口数据。</param>
-        /// <param name="devicePath">输出：设备路径字符串；失败时为 null。</param>
-        /// <param name="devInfoData">输出：设备信息数据；失败时为默认值。</param>
-        /// <returns>成功返回 true，失败返回 false。</returns>
-        internal static bool TryGetDeviceInterfaceDetail(IntPtr hDevInfoSet, ref NativeMethods.SP_DEVICE_INTERFACE_DATA interfaceData, out string devicePath, out NativeMethods.SP_DEVINFO_DATA devInfoData)
-        {
-            devicePath = null;
-            devInfoData = default;
-
-            // 第一次调用：获取所需缓冲区大小
-            NativeMethods.SetupDiGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, IntPtr.Zero, 0, out uint requiredSize, IntPtr.Zero);
-
-            if (requiredSize == 0) return false;
-
-            IntPtr detailBuffer = Marshal.AllocHGlobal((int)requiredSize);
-            try
-            {
-                // 写入 SP_DEVICE_INTERFACE_DETAIL_DATA 的 cbSize（x86: 6, x64: 8）
-                Marshal.WriteInt32(detailBuffer, DetailDataCbSize);
-
-                devInfoData = new NativeMethods.SP_DEVINFO_DATA();
-                devInfoData.cbSize = (uint)Marshal.SizeOf(devInfoData);
-
-                bool success = NativeMethods.SetupDiGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, detailBuffer, requiredSize, out requiredSize, ref devInfoData);
-
-                if (!success) return false;
-
-                IntPtr pDevicePath = IntPtr.Add(detailBuffer, DetailDataCbSize);
-                devicePath = Marshal.PtrToStringUni(pDevicePath);
-
-                return true;
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(detailBuffer);
-            }
-        }
-
+        #region 辅助解析方法        
         /// <summary>
         /// 从 SetupAPI 获取指定设备属性字符串。
         /// <para>内部自动处理缓冲区不足的情况，并兼容 REG_SZ 和 REG_MULTI_SZ 类型。</para>
@@ -443,53 +351,6 @@ namespace SpaceCG.Extensions
 
             return friendlyName.Substring(com, end - com);
         }
-
-        /// <summary>
-        /// 从设备实例 ID 中提取硬件序列号。
-        /// <para>实例 ID 格式通常为 "...\XXXX"，提取最后一个反斜杠后的部分作为序列号。</para>
-        /// <para>若提取结果包含 '&amp;' 字符，则判定为 Windows 自动生成的伪序列号，返回 null。</para>
-        /// </summary>
-        /// <param name="instanceId">设备实例 ID 字符串。</param>
-        /// <returns>硬件序列号；若实例 ID 无效或为伪序列号则返回 null。</returns>
-        internal static string ExtractSerialNumberFromInstanceId(string instanceId)
-        {
-            if (string.IsNullOrEmpty(instanceId)) return null;
-
-            int pos = instanceId.LastIndexOf('\\');
-            if (pos < 0) return null;
-
-            string value = instanceId.Substring(pos + 1);
-            // 如果包含 '&'，说明是 Windows 生成的伪序列号，而非真实硬件序列号
-            if (value.Contains("&")) return null;
-
-            return value;
-        }
-
-        /// <summary>
-        /// 从硬件 ID 字符串中解析 USB 设备的 VID（Vendor ID）和 PID（Product ID）。
-        /// <para>识别 "VID_XXXX" 和 "PID_XXXX" 模式，提取其后 4 位十六进制标识符。</para>
-        /// </summary>
-        /// <param name="hardwareId">硬件 ID 字符串（如 "USB\VID_1A86&PID_7523"）。</param>
-        /// <param name="vid">输出：Vendor ID（不含 "VID_" 前缀）；解析失败时为 null。</param>
-        /// <param name="pid">输出：Product ID（不含 "PID_" 前缀）；解析失败时为 null。</param>
-        internal static void ExtractVidPidFromHardwareId(string hardwareId, out string vid, out string pid)
-        {
-            vid = null;
-            pid = null;
-            if (string.IsNullOrWhiteSpace(hardwareId)) return;
-
-            int vidIndex = hardwareId.IndexOf("VID_", StringComparison.OrdinalIgnoreCase);
-            if (vidIndex >= 0 && vidIndex + 8 <= hardwareId.Length)
-            {
-                vid = hardwareId.Substring(vidIndex + 4, 4);
-            }
-
-            int pidIndex = hardwareId.IndexOf("PID_", StringComparison.OrdinalIgnoreCase);
-            if (pidIndex >= 0 && pidIndex + 8 <= hardwareId.Length)
-            {
-                pid = hardwareId.Substring(pidIndex + 4, 4);
-            }
-        }
         #endregion
 
         /// <summary>
@@ -505,10 +366,9 @@ namespace SpaceCG.Extensions
         /// <returns>匹配的串口号名称（例如 "COM3"、"COM14"），若未匹配到则返回原始 searchPattern。</returns>
         public static string GetPortName(string searchPattern)
         {
-            var PortNameRegex = new Regex("^COM[0-9]{1,3}$", RegexOptions.IgnoreCase);
             if (PortNameRegex.IsMatch(searchPattern)) return searchPattern;
 
-            var ports = SystemExtensions.GetSerialDevices();
+            var ports = GetSerialDevices();
             foreach (var port in ports)
             {
                 if (string.IsNullOrWhiteSpace(port.FriendlyName)) continue;

@@ -13,11 +13,11 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Xml.Linq;
-using SpaceCG.Device;
 using SpaceCG.Drawing;
+using SpaceCG.Extensions;
 using SpaceCG.IO;
 
-namespace SpaceCG.Extensions
+namespace SpaceCG.Device
 {
     /// <summary>
     /// LedRenderControl 类用于在 WPF 应用程序中实现 LED 灯带的渲染功能。
@@ -185,7 +185,7 @@ namespace SpaceCG.Extensions
             const int DefaultHeight = 10;
             foreach (var busElement in ledDevices.Elements("LedRenderBus"))
             {
-                if (!Enum.TryParse<TransportType>(busElement.Attribute(nameof(TransportChannel.Type))?.Value, true, out var type)) continue;
+                if (!Enum.TryParse<TransportType>(busElement.Attribute(nameof(ITransportChannel.Type))?.Value, true, out var type)) continue;
 
                 var ledStripElements = busElement.Elements(nameof(LedStripObject));
                 if (!ledStripElements.Any()) continue;
@@ -268,7 +268,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var ledRenderBus in LedRenderBus.Collections)
             {
-                ledRenderBus.RenderPixels(frame.Pixels, frame.Stride, frame.Width, frame.Height, frame.PixelFormat);
+                ledRenderBus.RenderPixels(frame.Pixels, frame.Width, frame.Height, frame.Stride, frame.PixelFormat);
             }
 
             FpsBuilder.Clear();
@@ -572,7 +572,7 @@ namespace SpaceCG.Extensions
                     {
                         if (ledStripObject.Address == address && ledStripObject.Port == port)
                         {
-                            ledStripObject.UseBitmapPixels = true;
+                            ledStripObject.IsRenderEnabled = true;
                             var element = ledStripObject.Tag as XElement;
 
                             if (ledStripElement.TryGetValue("Timeout", out int timeout))

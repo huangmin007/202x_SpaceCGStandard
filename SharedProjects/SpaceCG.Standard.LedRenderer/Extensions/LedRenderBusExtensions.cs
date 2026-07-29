@@ -3,8 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO.Ports;
 using System.Linq;
+using SpaceCG.Device;
 
-namespace SpaceCG.Device
+namespace SpaceCG.Extensions
 {
     /// <summary>
     /// <see cref="LedRenderBus"/> 集合扩展方法
@@ -89,7 +90,7 @@ namespace SpaceCG.Device
             {
                 foreach(var ledStrip in renderBus.LedStrips.Values)
                 {
-                    ledStrip.UseBitmapPixels = false;
+                    ledStrip.IsRenderEnabled = false;
                     ledStrip.ClearFrames(off);
                 }
             }
@@ -105,7 +106,7 @@ namespace SpaceCG.Device
             {
                 foreach (var ledStrip in renderBus.LedStrips.Values)
                 {
-                    ledStrip.UseBitmapPixels = true;
+                    ledStrip.IsRenderEnabled = true;
                 }
             }
         }
@@ -178,7 +179,7 @@ namespace SpaceCG.Device
         {
             foreach (var renderBus in collections)
             {
-                renderBus.AddColorFrame(0, color, renderBus.MaxLedCount, colorFormat);
+                renderBus.AddColorFrame(0, color, renderBus.LedCount, colorFormat);
             }
         }
 
@@ -192,7 +193,7 @@ namespace SpaceCG.Device
         {
             foreach (var renderBus in collections)
             {
-                renderBus.AddColorFrame(0, colors, renderBus.MaxLedCount, colorFormat);
+                renderBus.AddColorFrame(0, colors, renderBus.LedCount, colorFormat);
             }
         }
 
@@ -206,7 +207,7 @@ namespace SpaceCG.Device
         {
             foreach (var renderBus in collections)
             {
-                renderBus.AddColorFrame(0, colors, renderBus.MaxLedCount, colorFormat);
+                renderBus.AddColorFrame(0, colors, renderBus.LedCount, colorFormat);
             }
         }
 

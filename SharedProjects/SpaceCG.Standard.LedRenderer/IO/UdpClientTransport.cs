@@ -15,9 +15,9 @@ namespace SpaceCG.IO
         /// <inheritdoc/>
         public object Tag { get; set; }
 
-        private int _port;
-        private string _hostname;
-        private bool _isConnect = false;
+        private readonly int _port;
+        private readonly string _hostname;
+        private bool _isConnected = false;
 
         /// <inheritdoc/>
         public TransportType Type => TransportType.UDP;
@@ -26,7 +26,7 @@ namespace SpaceCG.IO
         public string Name => $"{Type}_{_hostname}_{_port}";
 
         /// <inheritdoc/>
-        public bool IsConnected => _udpClient == null ? false : _isConnect;
+        public bool IsConnected => _udpClient == null ? false : _isConnected;
         /// <inheritdoc/>
         public int Available => _udpClient == null ? 0 : _udpClient.Available;
 
@@ -62,19 +62,43 @@ namespace SpaceCG.IO
             _udpClient.Client.SendBufferSize = 8192 * 128;
             _udpClient.Client.ReceiveBufferSize = 8192 * 64;
         }
+        /// <summary>
+        /// UDP 客户传输连接对象
+        /// </summary>
+        /// <param name="arguments"></param>
+        /// <exception cref="ArgumentException"></exception>
+        public UdpClientTransport(params string[] arguments)
+        {
+            if (arguments == null || arguments.Length == 0)
+                throw new ArgumentException("参数不能为空", nameof(arguments));
+            if (arguments.Length < 2)
+                throw new ArgumentException("参数个数不能小于2，应包括 hostname 和 port", nameof(arguments));
+
+            if (!int.TryParse(arguments[1], out var port) || port < 1 || port > 65535)
+                throw new ArgumentException("端口号不正确", nameof(arguments));
+
+            _port = port;
+            _hostname = arguments[0];
+
+            _udpClient = new UdpClient(_hostname, _port);
+            _udpClient.Client.SendBufferSize = 8192 * 128;
+            _udpClient.Client.ReceiveBufferSize = 8192 * 64;
+        }
 
         /// <inheritdoc/>
         public void Open()
         {
             if (_udpClient == null) return;
+            if (_isConnected) return;
+
             try
             {
-                _isConnect = true;
+                _isConnected = true;
                 _udpClient.Connect(_hostname, _port);
             }
             catch (Exception ex)
             {
-                _isConnect = false;
+                _isConnected = false;
                 Trace.TraceWarning($"UDP({Name}) 建立连接失败：{ex.Message}");
             }
         }
@@ -83,7 +107,7 @@ namespace SpaceCG.IO
         {
             if (_udpClient == null) return;
 
-            _isConnect = false;
+            _isConnected = false;
             _udpClient.Close();
         }
 

@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using SpaceCG.Extensions;
 using SpaceCG.IO;
 
 namespace SpaceCG.Device
@@ -14,7 +15,7 @@ namespace SpaceCG.Device
     /// <summary>
     /// Led 渲染总线对象
     /// </summary>
-    public sealed class LedRenderBus : IDisposable
+    public sealed partial class LedRenderBus : FramePoolModel, IDisposable
     {
         /// <summary>
         /// 默认数据帧发送后等待的时间，单位：毫秒
@@ -56,38 +57,7 @@ namespace SpaceCG.Device
         }
         private int _resposeTimeout = DefaultResposeTimeout;
 
-        /// <summary>
-        /// 备注信息，用于标识总线的用途或其他信息
-        /// </summary>
-        public string Comment { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 传输通道类型
-        /// </summary>
-        public TransportType Type => Channel.Type;
-        /// <summary>
-        /// 传输通道对象
-        /// </summary>
-        private ITransportChannel Channel { get;  set; }        
-        /// <summary>
-        /// 传输通道名称
-        /// </summary>
-        public string Name => Channel != null ? Channel.Name : string.Empty;
-        /// <summary>
-        /// 传输通道是否处于连接状态
-        /// </summary>
-        public bool IsConnected => Channel != null && Channel.IsConnected;
-        /// <summary>
-        /// 总线是否处于渲染状态
-        /// </summary>
-        public bool IsRendering { get; private set; } = false;
-        /// <summary>
-        /// 当前总线的渲染帧率
-        /// </summary>
-        public int Fps { get; private set; } = 0;
-        /// <summary>
-        /// 每帧的渲染处理时间，单位：ms, 默认为 40ms
-        /// </summary>
+        /// <summary> 每帧的渲染处理时间，单位：ms, 默认为 40ms </summary>
         public int Interval
         {
             get => _interval;
@@ -102,21 +72,44 @@ namespace SpaceCG.Device
 
         /// <summary> 获取或设置一个用于存储有关此元素的自定义信息的任意对象值。 </summary>
         public object Tag { get; set; }
+        /// <summary> 备注信息，用于标识总线的用途或其他信息 </summary>
+        public string Comment { get; set; } = string.Empty;
 
-        /// <summary>  登记在总线上最长的灯带灯珠数量  </summary>
-        public int MaxLedCount { get; private set; } = 0;
+        /// <summary>
+        /// 总线是否处于渲染状态
+        /// </summary>
+        public bool IsRendering { get; private set; } = false;
+
+        #region TransportChannel
+        /// <summary>
+        /// 传输通道类型
+        /// </summary>
+        public TransportType Type => Channel.Type;
+        /// <summary>
+        /// 传输通道对象
+        /// </summary>
+        private ITransportChannel Channel { get; set; }        
+        /// <summary>
+        /// 传输通道名称
+        /// </summary>
+        public string Name => Channel != null ? Channel.Name : string.Empty;
+        /// <summary>
+        /// 传输通道是否处于连接状态
+        /// </summary>
+        public bool IsConnected => Channel != null && Channel.IsConnected;
+        #endregion
+
+
         /// <summary>  登记在总线上所有灯带的灯珠总数量  </summary>
-        public uint TotalLedCount { get; private set; } = 0;
-        /// <summary>  默认没有登记的灯珠类型  </summary>
-        public LedType DefaultLedType { get; private set; } = LedType.WS2812B;
-        /// <summary>  默认没有登记的灯珠颜色格式  </summary>
-        public ColorFormat DefaultColorFormat { get; private set; } = ColorFormat.RGB;
+        public int TotalLedCount { get; private set; } = 0;        
         /// <summary>
         ///  总线上所有 Led 设备的地址集合(非重复的设备地址集合)
         /// </summary>
         public IEnumerable<ushort> LedDevices { get; private set; }
        
         private Task _renderTask;
+        private CancellationTokenSource _cts;
+
         private volatile int _renderFps = 0;
         private volatile bool _isRendering = false;
 
@@ -130,10 +123,6 @@ namespace SpaceCG.Device
         public IReadOnlyDictionary<uint, LedStripObject> LedStrips => _ledStrips;
         private readonly ConcurrentDictionary<uint, LedStripObject> _ledStrips = new ConcurrentDictionary<uint, LedStripObject>(2, 7);
         
-        /// <summary>
-        /// 总线上的帧队列
-        /// </summary>
-        private readonly ConcurrentQueue<byte[]> _frameQueue = new ConcurrentQueue<byte[]>();
         /// <summary>
         /// Led 数据帧渲染异常消息字典
         /// </summary>
@@ -154,49 +143,6 @@ namespace SpaceCG.Device
             {"ResponseTimeout", "自定义，设备响应超时" },
         };
 
-        #region Static Collections 静态集合
-        /// <summary>
-        /// 所有渲染总线的集合
-        /// </summary>
-        public static IReadOnlyList<LedRenderBus> Collections
-        {
-            get
-            {
-                if (BusCollectionsReadOnly == null)
-                    BusCollectionsReadOnly = BusCollections.AsReadOnly();
-                return BusCollectionsReadOnly;
-            }
-        }
-        internal static Timer FpsTimer;
-        private static volatile int checkTick = 0;
-        private static readonly List<LedRenderBus> BusCollections;
-        private static IReadOnlyList<LedRenderBus> BusCollectionsReadOnly;
-        static LedRenderBus()
-        {
-            BusCollections = new List<LedRenderBus>(32);
-            FpsTimer = new Timer(OnTimerCallback, null, 300, 1000);
-        }
-        private static void OnTimerCallback(object state)
-        {
-            // 计时帧率计算法
-            foreach (var bus in BusCollections)
-            {
-                foreach (var ledStrip in bus.LedStrips.Values)
-                {
-                    ledStrip.ResetRenderFps();
-                }
-                bus.Fps = Interlocked.Exchange(ref bus._renderFps, 0);
-            }
-
-            checkTick++;
-            if (checkTick > 3)
-            {
-                checkTick = 0;
-                BusCollections.CheckConnection();
-            }
-        }
-        #endregion
-
         /// <summary>
         /// Led 渲染总线
         /// </summary>
@@ -209,25 +155,24 @@ namespace SpaceCG.Device
             if (string.IsNullOrWhiteSpace(transportParams))
                 throw new ArgumentNullException(nameof(transportParams), "参数不能为空");
 
-            string[] transportParamsArray;
-            if (transportParams.IndexOf(',') != -1)
-                transportParamsArray = transportParams.Split(',');
-            else if (transportParams.IndexOf(':') != -1)
-                transportParamsArray = transportParams.Split(':');
-            else if (transportParams.IndexOf(';') != -1)
-                transportParamsArray = transportParams.Split(';');
-            else
-                throw new ArgumentException("参数格式错误，多个参数以逗号分隔");
+            var arguments = transportParams.SplitParams();
 
-            Channel = new TransportChannel(type, transportParamsArray);
+            if (type == TransportType.SERIAL)
+                Channel = new SerialPortTransport(arguments);
+            else if (type == TransportType.TCP)
+                Channel = new TcpClientTransport(arguments);
+            else if (type == TransportType.UDP)
+                Channel = new UdpClientTransport(arguments);
+
             Channel.ReadTimeout = 300;
             Channel.WriteTimeout = 300;
-
             BusCollections.Add(this);
-            DefaultLedType = defaultLedType;
-            DefaultColorFormat = defaultColorFormat;        
-        }
 
+            Port = 0;   // 当端口为 0 时，对当前总线上连接的所有端口有效
+            Address = 0;    // 当地址为 0 时，对当前总线上连接的所有设备有效
+            LedType = defaultLedType;
+            ColorFormat = defaultColorFormat;
+        }
 
         #region 添加/移除灯带
         /// <summary>
@@ -245,8 +190,8 @@ namespace SpaceCG.Device
             if (!_ledStrips.TryAdd(ledStrip.UID, ledStrip))
                 throw new ArgumentException($"添加 LedStrip 到总线失败");
 
-            MaxLedCount = _ledStrips.Values.Max(x => x.LedCount);
-            TotalLedCount = (uint)_ledStrips.Values.Sum(x => x.LedCount);
+            LedCount = _ledStrips.Values.Max(x => x.LedCount);
+            TotalLedCount = _ledStrips.Values.Sum(x => x.LedCount);
             LedDevices = LedStrips.Values.Select(x => x.Address).Distinct();
         }
         /// <summary>
@@ -257,8 +202,8 @@ namespace SpaceCG.Device
         {
             _ledStrips.TryRemove(uid, out _);
 
-            MaxLedCount = _ledStrips.Values.Max(x => x.LedCount);
-            TotalLedCount = (uint)_ledStrips.Values.Sum(x => x.LedCount);
+            LedCount = _ledStrips.Values.Max(x => x.LedCount);
+            TotalLedCount = _ledStrips.Values.Sum(x => x.LedCount);
             LedDevices = LedStrips.Values.Select(x => x.Address).Distinct();
         }
         /// <summary>
@@ -274,28 +219,31 @@ namespace SpaceCG.Device
         {
             _ledStrips.Clear();
 
-            MaxLedCount = 0;
+            LedCount = 0;
             TotalLedCount = 0;
             LedDevices = Array.Empty<ushort>();
         }
         #endregion
 
-
-        #region Render Contrl 渲染控制
+        #region Channel / Render Contrl 渲染控制
+        /// <summary> 打开总线传输通道  </summary>
+        public void OpenChannel() => Channel.Open();
+        /// <summary> 关闭总线传输通道  </summary>
+        public void CloseChannel() => Channel.Close();
+        
         /// <summary>
-        /// 启动总线渲染线程
+        /// 启动渲染线程
         /// </summary>
         public void StartRender()
         {
-            if (_isRendering || _renderTask != null) return;
-
-            if (!Channel.IsConnected) Channel.Open();
+            if (_isRendering) return;
 
             _isRendering = true;
-            _renderTask = Task.Factory.StartNew(RenderingBusThread, this, TaskCreationOptions.LongRunning);
+            _cts = new CancellationTokenSource();
+            _renderTask = Task.Factory.StartNew(RenderingBusThread, this, _cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
         /// <summary>
-        /// 启动总线渲染线程，并指定渲染间隔时间
+        /// 启动渲染线程，并指定渲染间隔时间
         /// </summary>
         /// <param name="interval"></param>
         public void StartRender(int interval)
@@ -304,16 +252,24 @@ namespace SpaceCG.Device
             StartRender();        
         }
         /// <summary>
-        /// 停止总线渲染线程
+        /// 停止渲染线程
         /// </summary>
         public void StopRender()
         {
-            if (!_isRendering || _renderTask == null) return;
+            try { _cts?.Cancel(); }
+            catch { }
+
+            try
+            {
+                _renderTask?.Wait(1000);
+                _renderTask?.Dispose();
+            }
+            finally { _renderTask = null; }
+
+            try { _cts?.Dispose(); }
+            finally { _cts = null; }
 
             _isRendering = false;
-            _renderTask?.Wait();
-            _renderTask?.Dispose();
-            _renderTask = null;
         }
         /// <summary>
         /// 暂停渲染指定的灯带（可用于使用其它方式插入渲染数据，例如：传感器数据、外部的交互数据等影响而临时插入的渲染数据）<br/>
@@ -326,8 +282,8 @@ namespace SpaceCG.Device
             {
                 foreach (var ledStrip in LedStrips.Values)
                 {
-                    ledStrip.UseBitmapPixels = false;
-                    ledStrip.ClearFrames(false);
+                    ledStrip.IsRenderEnabled = false;
+                    ledStrip.ClearRenderingFrames();
                 }
                 return;
             }
@@ -336,8 +292,8 @@ namespace SpaceCG.Device
             {
                 if (ledStrip.Address == address)
                 {
-                    ledStrip.UseBitmapPixels = false;
-                    ledStrip.ClearFrames(false);
+                    ledStrip.IsRenderEnabled = false;
+                    ledStrip.ClearRenderingFrames();
                     break;
                 }
             }
@@ -353,7 +309,7 @@ namespace SpaceCG.Device
             {
                 foreach (var ledStrip in LedStrips.Values)
                 {
-                    ledStrip.UseBitmapPixels = true;
+                    ledStrip.IsRenderEnabled = true;
                 }
                 return;
             }
@@ -362,7 +318,7 @@ namespace SpaceCG.Device
             {
                 if (ledStrip.Address == address)
                 {
-                    ledStrip.UseBitmapPixels = true;
+                    ledStrip.IsRenderEnabled = true;
                     break;
                 }
             }
@@ -378,69 +334,25 @@ namespace SpaceCG.Device
             {
                 foreach (var ledStrip in LedStrips.Values)
                 {
-                    ledStrip.ClearFrames(false);
+                    ledStrip.ClearRenderingFrames();
                 }
-
                 if (off)
                 {
-                    var frame = CreateEmptyFrame(address, 1, MaxLedCount, DefaultLedType, DefaultColorFormat);
-                    if (DefaultColorFormat.GetChannelCount() == 4)
-                    {
-                        var indices = DefaultColorFormat.GetChannelIndices();
-                        for (int i = 0; i < indices.Length; i++)
-                        {
-                            if (indices[i] == (byte)ColorChannel.A)
-                                frame[LedStripObject.FrameHeaderLength + i] = 0xFF;
-                        }
-                    }
-                    _frameQueue.Enqueue(frame);
+                    AddColorFrame(0xFF000000, LedCount, ColorFormat.ARGB);
                 }
                 return;
             }
 
             foreach (var ledStrip in LedStrips.Values)
             {
-                if (ledStrip.Address == address)
+                if (ledStrip.Address != address) continue;
+
+                ledStrip.ClearRenderingFrames();
+                if (off)
                 {
-                    ledStrip.ClearFrames(false);
-                    break;
+                    ledStrip.AddColorFrame(0xFF0000, ledStrip.LedCount, ColorFormat.ARGB);
                 }
-            }
-
-            if (off)
-            {
-                var ledCount = MaxLedCount;
-                var ledType = DefaultLedType;
-                var ledColorFormat = DefaultColorFormat;
-
-                if (address != 0)
-                {
-                    var ledStrips = from ledStrip in LedStrips.Values
-                                    where ledStrip.Address == address
-                                    orderby ledStrip.LedCount descending
-                                    select ledStrip;
-
-                    if (ledStrips.Count() > 0)
-                    {
-                        var ledSprit = ledStrips.First();
-
-                        ledType = ledSprit.LedType;
-                        ledCount = ledSprit.LedCount;
-                        ledColorFormat = ledSprit.ColorFormat;
-                    }
-                }
-
-                var frame = CreateEmptyFrame(address, 1, ledCount, ledType, ledColorFormat);
-                if (DefaultColorFormat.GetChannelCount() == 4)
-                {
-                    var indices = DefaultColorFormat.GetChannelIndices();
-                    for (int i = 0; i < indices.Length; i++)
-                    {
-                        if (indices[i] == (byte)ColorChannel.A)
-                            frame[LedStripObject.FrameHeaderLength + i] = 0xFF;
-                    }
-                }
-                _frameQueue.Enqueue(frame);
+                break;
             }
         }
         #endregion
@@ -465,7 +377,7 @@ namespace SpaceCG.Device
 
             try
             {
-                RenderPixels(bmpd.Scan0, bmpd.Stride, bitmap.Width, bitmap.Height, ColorFormat.BGR);
+                RenderPixels(bmpd.Scan0, bitmap.Width, bitmap.Height, bmpd.Stride, ColorFormat.BGR);
             }
             catch (Exception ex)
             {
@@ -478,28 +390,28 @@ namespace SpaceCG.Device
         }
 
         /// <inheritdoc cref="RenderPixels(byte*, int, int, int, ColorFormat)"/>
-        public unsafe void RenderPixels(IntPtr pixels, int stride, int width, int height, ColorFormat pixelFormat)
-            => RenderPixels((byte*)pixels, stride, width, height, pixelFormat);
+        public unsafe void RenderPixels(IntPtr pixels, int width, int height, int stride, ColorFormat pixelFormat)
+            => RenderPixels((byte*)pixels, width, height, stride, pixelFormat);
 
         /// <summary>
         /// 渲染像素数据到总线的所有灯带中。二维渲染，参考 <see cref="LedStripObject.LedPoints"/> 集合的顺序及坐标数据。
         /// <para><see cref="LedStripObject"/> 对象会跟据自身参数取 <paramref name="pixels"/> 的部份数据进行渲染</para>
         /// </summary>
         /// <param name="pixels">图像的像素数据的指针</param>
-        /// <param name="stride">图像的扫描宽度</param>
         /// <param name="width">图像的宽度</param>
         /// <param name="height">图像的高度</param>
+        /// <param name="stride">图像的扫描宽度</param>
         /// <param name="pixelFormat">图像的颜色格式</param>
         /// <exception cref="ArgumentException"></exception>
-        public unsafe void RenderPixels(byte* pixels, int stride, int width, int height, ColorFormat pixelFormat)
+        public unsafe void RenderPixels(byte* pixels, int width, int height, int stride, ColorFormat pixelFormat)
         {
             if (LedStrips.Count == 0 || this.IsRendering == false) return;
 
             if (pixels == null || width <= 0 || height <= 0 || stride < width * 3)
                 throw new ArgumentException("参数不能为空或图像尺寸不得为 0");
 
-            var inputIndices = pixelFormat.GetChannelIndices();     // 输入像素排列的通道索引表
-            var inputChannelCount = inputIndices.Length;            // 颜值的通道数量
+            var inputIndices = pixelFormat.GetChannelIndices();    // 输入像素排列的通道索引表
+            var inputChannelCount = inputIndices.Count;            // 颜值的通道数量
 
             if (stride < width * inputChannelCount)
                 throw new ArgumentException($"stride 必须大于等于 width * {inputChannelCount}");
@@ -510,7 +422,7 @@ namespace SpaceCG.Device
             {
                 foreach (var ledStrip in LedStrips.Values)
                 {
-                    if (!ledStrip.UseBitmapPixels) continue;
+                    if (!ledStrip.IsRenderEnabled) continue;
 
                     var ledCount = ledStrip.LedCount;
                     if (ledCount <= 0) continue;
@@ -521,18 +433,18 @@ namespace SpaceCG.Device
 
                     // 输出像素排列的通道索引表
                     var outputIndices = ledStrip.ColorFormat.GetChannelIndices();
-                    var outputChannelCount = outputIndices.Length;
+                    var outputChannelCount = outputIndices.Count;
 
                     // 预计算索引映射，如果存在 -1, 则表示需要补充 Alpha 通道
                     int[] channelMap = new int[outputChannelCount];
                     for (var i = 0; i < outputChannelCount; i++)
                     {
-                        channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
+                        channelMap[i] = inputIndices.IndexOf(outputIndices[i]);
                     }
 
                     var ledPoints = ledStrip.LedPoints;
-                    var frameOffset = LedStripObject.FrameHeaderLength;
-                    var frame = ledStrip.CreateEmptyFrame(ledCount, ledStrip.RepeatCount);
+                    var frameOffset = FrameHeaderLength;
+                    var frame = ledStrip.CreateColorFrame(ledCount, ledStrip.RepeatCount);
 
                     for (int i = 0; i < ledCount; i++)
                     {
@@ -582,7 +494,7 @@ namespace SpaceCG.Device
         /// <param name="colorFormat"> <paramref name="color"/> 的颜色格式，默认为 ARGB</param>
         public void SetPowerOnColor(ushort address, uint color, bool isShow = true, ColorFormat colorFormat = ColorFormat.ARGB)
         {
-            var ledCount = MaxLedCount;
+            var ledCount = LedCount;
             var ledType = DefaultLedType;
             var ledColorFormat = DefaultColorFormat;
 
@@ -616,8 +528,8 @@ namespace SpaceCG.Device
                 var outputIndices = ledColorFormat.GetChannelIndices();
 
                 // 颜色的通道数量
-                int inputChannelCount = inputIndices.Length;
-                int outputChannelCount = outputIndices.Length;
+                int inputChannelCount = inputIndices.Count;
+                int outputChannelCount = outputIndices.Count;
 
                 if (inputChannelCount != 4)
                     throw new ArgumentException("输入颜色值 (uint类型) 的通道数量必须为 4 ", nameof(colorFormat));
@@ -627,7 +539,7 @@ namespace SpaceCG.Device
                 {
                     outputOffset = j + LedStripObject.FrameHeaderLength;
 
-                    index = Array.IndexOf(inputIndices, outputIndices[j]);
+                    index = inputIndices.IndexOf(outputIndices[j]);
 
                     frame[outputOffset] = (byte)((color >> (24 - index * 8)) & 0xFF);
                 }
@@ -736,7 +648,7 @@ namespace SpaceCG.Device
         }
         #endregion
 
-
+#if false
         #region AddColorFrame
         /// <summary>
         /// 添加待渲染的帧
@@ -758,9 +670,9 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentException"></exception>
         public void AddColorFrame(ushort address, uint color, int repeat, ColorFormat colorFormat = ColorFormat.ARGB)
         {
-            var ledCount = MaxLedCount;
-            var ledType = DefaultLedType;
-            var ledColorFormat = DefaultColorFormat;
+            var ledCount = LedCount;
+            var ledType = LedType;
+            var ledColorFormat = ColorFormat;
 
             if (address != 0)
             {
@@ -787,8 +699,8 @@ namespace SpaceCG.Device
             var outputIndices = ledColorFormat.GetChannelIndices();
 
             // 颜色的通道数量
-            int inputChannelCount = inputIndices.Length;
-            int outputChannelCount = outputIndices.Length;
+            int inputChannelCount = inputIndices.Count;
+            int outputChannelCount = outputIndices.Count;
 
             if (inputChannelCount != 4)
                 throw new ArgumentException("输入颜色值 (uint类型) 的通道数量必须为 4 ", nameof(colorFormat));
@@ -800,7 +712,7 @@ namespace SpaceCG.Device
             {
                 outputOffset = j + LedStripObject.FrameHeaderLength;
 
-                index = Array.IndexOf(inputIndices, outputIndices[j]);
+                index = inputIndices.IndexOf(outputIndices[j]);
 
                 frame[outputOffset] = (byte)((color >> (24 - index * 8)) & 0xFF);
             }
@@ -818,7 +730,7 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentException"></exception>
         public void AddColorFrame(ushort address, IReadOnlyList<byte> colors, int repeat, ColorFormat colorFormat = ColorFormat.RGB)
         {
-            var ledCount = MaxLedCount;
+            var ledCount = LedCount;
             var ledType = DefaultLedType;
             var ledColorFormat = DefaultColorFormat;
 
@@ -849,8 +761,8 @@ namespace SpaceCG.Device
             var outputIndices = ledColorFormat.GetChannelIndices();
 
             // 颜值的通道数量
-            int inputChannelCount = inputIndices.Length;
-            int outputChannelCount = outputIndices.Length;
+            int inputChannelCount = inputIndices.Count;
+            int outputChannelCount = outputIndices.Count;
 
             if (colors.Count < inputChannelCount || colors.Count % inputChannelCount != 0)
                 throw new ArgumentException($"颜色数据长度 {colors.Count} 与通道数 {inputChannelCount} 不匹配", nameof(colors));
@@ -873,7 +785,7 @@ namespace SpaceCG.Device
                 int[] channelMap = new int[outputChannelCount];
                 for (i = 0; i < outputChannelCount; i++)
                 {
-                    channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
+                    channelMap[i] = inputIndices.IndexOf(outputIndices[i]);
                 }
 
                 for (i = 0; i < renderCount; i++)
@@ -902,7 +814,7 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentException"></exception>
         public void AddColorFrame(ushort address, IReadOnlyList<uint> colors, int repeat, ColorFormat colorFormat = ColorFormat.ARGB)
         {
-            var ledCount = MaxLedCount;
+            var ledCount = LedCount;
             var ledType = DefaultLedType;
             var ledColorFormat = DefaultColorFormat;
 
@@ -933,8 +845,8 @@ namespace SpaceCG.Device
             var outputIndices = ledColorFormat.GetChannelIndices();
 
             // 颜色的通道数量
-            int inputChannelCount = inputIndices.Length;
-            int outputChannelCount = outputIndices.Length;
+            int inputChannelCount = inputIndices.Count;
+            int outputChannelCount = outputIndices.Count;
 
             if (inputChannelCount != 4)
                 throw new ArgumentException("输入颜色值 (uint类型) 的通道数量必须为 4 ", nameof(colorFormat));
@@ -947,7 +859,7 @@ namespace SpaceCG.Device
             int[] channelMap = new int[outputChannelCount];
             for (i = 0; i < outputChannelCount; i++)
             {
-                channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
+                channelMap[i] = inputIndices.IndexOf(outputIndices[i]);
             }
 
             for (i = 0; i < renderCount; i++)
@@ -964,7 +876,7 @@ namespace SpaceCG.Device
             _frameQueue.Enqueue(frame);
         }
         #endregion
-
+#endif
 
         /// <summary>
         /// 创建空白的颜色（黑色 0x000000）的数据帧（跟据需要填充数据的灯珠数量 <paramref name="fillCount"/> 和 复制数据的次数 <paramref name="repeatCount"/> 的参数创建空白帧）
@@ -1261,9 +1173,9 @@ namespace SpaceCG.Device
                 Trace.TraceWarning($"{nameof(LedRenderBus)} 配置节点不存在或名称不正确");
                 return false;
             }
-            if (!Enum.TryParse<TransportType>(element.Attribute(nameof(TransportChannel.Type))?.Value, true, out var type))
+            if (!Enum.TryParse<TransportType>(element.Attribute(nameof(Type))?.Value, true, out var type))
             {
-                Trace.TraceWarning($"{nameof(LedRenderBus)} 配置节点中 {nameof(TransportChannel.Type)} 属性值不正确");
+                Trace.TraceWarning($"{nameof(LedRenderBus)} 配置节点中 {nameof(Type)} 属性值不正确");
                 return false;
             }
             if (string.IsNullOrWhiteSpace(element.Attribute("Params")?.Value))

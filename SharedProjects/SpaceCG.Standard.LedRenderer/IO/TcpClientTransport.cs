@@ -9,8 +9,8 @@ namespace SpaceCG.IO
     /// </summary>
     internal class TcpClientTransport : ITransportChannel
     {
-        private int _port;
-        private string _hostname;
+        private readonly int _port;
+        private readonly string _hostname;
 
         /// <summary>
         /// <see cref="TcpClient"/> 对象
@@ -52,13 +52,32 @@ namespace SpaceCG.IO
         /// <param name="port"></param>
         public TcpClientTransport(string hostname, int port)
         {
-            if (string.IsNullOrEmpty(hostname))
+            if (string.IsNullOrWhiteSpace(hostname))
                 throw new ArgumentException("参数不能为空", nameof(hostname));
+
             if (port <= 0 || port > 65535)
                 throw new ArgumentException("端口号不正确", nameof(port));
 
-            _port = port;
-            _hostname = hostname;
+            this._port = port;
+            this._hostname = hostname;
+        }
+        /// <summary>
+        /// TCP 客户传输连接对象
+        /// </summary>
+        /// <param name="arguments">TCP 客户端连接参数，格式：hostname port </param>
+        /// <exception cref="ArgumentException"></exception>
+        public TcpClientTransport(params string[] arguments)
+        {
+            if (arguments == null || arguments.Length == 0)
+                throw new ArgumentException("参数不能为空", nameof(arguments));
+            if (arguments.Length < 2)
+                throw new ArgumentException("参数个数不能小于2，应包括 hostname 和 port", nameof(arguments));
+
+            if (!int.TryParse(arguments[1], out var port) || port < 1 || port > 65535)
+                throw new ArgumentException("端口号不正确", nameof(arguments));
+
+            this._port = port;
+            this._hostname = arguments[0];
         }
         
         /// <inheritdoc/>
@@ -103,6 +122,7 @@ namespace SpaceCG.IO
             if (_tcpClient == null || !IsConnected) return 0;
             return _tcpClient.GetStream().Read(buffer, offset, count);
         }
+
         /// <inheritdoc/>
         public void Write(byte[] buffer, int offset, int count)
         {
@@ -137,8 +157,17 @@ namespace SpaceCG.IO
         /// <returns></returns>
         private static bool IsOnline(TcpClient tcpClient)
         {
-            if (tcpClient == null) return false;
-            return !((tcpClient.Client.Poll(0, SelectMode.SelectRead) && (tcpClient.Client.Available == 0)) || !tcpClient.Client.Connected);
+            if (tcpClient == null || tcpClient.Client == null) return false;
+
+            try
+            {
+                if (!tcpClient.Client.Connected) return false;
+                return !(tcpClient.Client.Poll(0, SelectMode.SelectRead) && tcpClient.Client.Available == 0);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
     }
 }

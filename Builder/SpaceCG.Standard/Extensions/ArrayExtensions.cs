@@ -302,13 +302,17 @@ namespace SpaceCG.Extensions
 
         #region SequenceEqual 优化
         /// <summary>
-        /// 原生 memcmp 函数声明，用于逐字节比较两块内存区域。
+        /// 原生 C 运行时内存比较函数（ucrtbase.dll），用于逐字节比较两块内存区域。
         /// <para>来自 Universal CRT（ucrtbase.dll），调用约定为 Cdecl。</para>
         /// <para>注意：当前代码使用自实现的 32 字节展开比较算法，此声明仅作为备选方案保留。</para>
         /// </summary>
+        /// <param name="b1">第一个内存块指针。</param>
+        /// <param name="b2">第二个内存块指针。</param>
+        /// <param name="count">比较的字节数。</param>
+        /// <returns>0 表示内容完全相同；非 0 表示不相等。</returns>
         [System.Security.SuppressUnmanagedCodeSecurity]
         [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, SetLastError = false)]
-        //[DllImport("libc", CallingConvention = CallingConvention.Cdecl, SetLastError = false)] // Linux / macOS 回退方案：调用标准 C 库
+        //[DllImport("libc", CallingConvention = CallingConvention.Cdecl, SetLastError = false)]  // Linux / macOS 调用标准 C 库
         public unsafe static extern int memcmp(byte* b1, byte* b2, int count);
 
         /// <summary>

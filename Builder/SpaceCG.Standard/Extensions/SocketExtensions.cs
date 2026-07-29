@@ -28,7 +28,8 @@ namespace SpaceCG.Extensions
 
             try
             {
-                return !(socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0) && socket.Connected;
+                if (!socket.Connected) return false;
+                return !(socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0);
             }
             catch (Exception) { return false; }
         }

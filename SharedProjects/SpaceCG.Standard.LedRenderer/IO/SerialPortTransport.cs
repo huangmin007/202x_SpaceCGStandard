@@ -18,31 +18,22 @@ namespace SpaceCG.IO
 
         /// <inheritdoc/>
         public object Tag { get; set; }
-
-        /// <summary>
-        /// <see cref="SerialPort"/> 对象
-        /// </summary>
-        private SerialPort _serialPort;
-
+        
         /// <inheritdoc/>
         public TransportType Type => TransportType.SERIAL;
-
         /// <inheritdoc/>
         public string Name => $"{Type}_{_serialPort.PortName}_{_serialPort.BaudRate}";
 
         /// <inheritdoc/>
         public bool IsConnected => _serialPort == null ? false : _serialPort.IsOpen;
-
         /// <inheritdoc/>
         public int Available => _serialPort == null ? 0 : _serialPort.BytesToRead;
-
         /// <inheritdoc/>
         public int ReadTimeout
         {
             get { return _serialPort.ReadTimeout; }
             set { _serialPort.ReadTimeout = value; }
         }
-
         /// <inheritdoc/>
         public int WriteTimeout
         {
@@ -50,7 +41,11 @@ namespace SpaceCG.IO
             set { _serialPort.WriteTimeout = value; }
         }
 
-        private readonly string PortName = string.Empty;
+        /// <summary>
+        /// <see cref="SerialPort"/> 对象
+        /// </summary>
+        private SerialPort _serialPort;
+        private readonly string _portName = string.Empty;
 
         /// <summary>
         /// 串口传输连接对象
@@ -66,14 +61,50 @@ namespace SpaceCG.IO
                 throw new ArgumentException("参数不能为空", nameof(portName));
             if (baudRate <= 0) throw new ArgumentException("波特率必须大于0");
 
-            this.PortName = portName;
+            this._portName = portName;
 
             _serialPort = new SerialPort();
-            _serialPort.PortName = GetPortName(PortName);
+            _serialPort.PortName = GetPortName(_portName);
             _serialPort.BaudRate = baudRate;
-            _serialPort.DataBits = dataBits;
             _serialPort.Parity = (Parity)Enum.Parse(typeof(Parity), parity.ToString());
+            _serialPort.DataBits = dataBits;
             _serialPort.StopBits = (StopBits)Enum.Parse(typeof(StopBits), stopBits.ToString());
+
+            _serialPort.NewLine = "\r\n";
+            _serialPort.ReadBufferSize = 4096 * 8;
+            _serialPort.WriteBufferSize = 2048 * 64;
+        }
+
+        /// <summary>
+        /// 串口传输连接对象
+        /// </summary>
+        /// <param name="arguments">串口配置参数，依次为：串口名称、波特率、校验位、数据位、停止位</param>
+        /// <exception cref="ArgumentException"></exception>
+        public SerialPortTransport(params string[] arguments)
+        {
+            if (arguments == null || arguments.Length == 0) 
+                throw new ArgumentException("参数不能为空", nameof(arguments));
+            if (arguments.Length < 2)
+                throw new ArgumentException("参数个数不能小于2，应包括串口名称和波特率", nameof(arguments));
+
+            if (!int.TryParse(arguments[1], out var baudRate)) 
+                throw new ArgumentException("波特率必须为整数", nameof(arguments));
+
+            var parity = Parity.None;
+            var dataBits = 8;
+            var stopBits = StopBits.One;
+            if (arguments.Length >= 3 && Enum.TryParse(arguments[2], out parity)) { }
+            if (arguments.Length >= 4 && int.TryParse(arguments[3], out dataBits)) { }
+            if (arguments.Length >= 5 && Enum.TryParse(arguments[4], out stopBits)) { }
+
+            this._portName = arguments[0];
+
+            _serialPort = new SerialPort();
+            _serialPort.PortName = GetPortName(_portName);
+            _serialPort.BaudRate = baudRate;
+            _serialPort.Parity = parity;
+            _serialPort.DataBits = dataBits;
+            _serialPort.StopBits = stopBits;
 
             _serialPort.NewLine = "\r\n";
             _serialPort.ReadBufferSize = 4096 * 8;
@@ -84,15 +115,17 @@ namespace SpaceCG.IO
         public void Open()
         {
             if (_serialPort == null) return;
+            if (_serialPort.IsOpen) return;
 
             try
             {
                 if (!_serialPort.IsOpen)
                 {
-                    _serialPort.PortName = GetPortName(PortName);
+                    _serialPort.PortName = GetPortName(_portName);
+
                     if (string.IsNullOrWhiteSpace(_serialPort.PortName))
                     {
-                        Trace.TraceWarning($"跟据 {PortName} 获取串口失败");
+                        Trace.TraceWarning($"跟据 {_portName} 获取串口失败");
                         return;
                     }
 
@@ -101,7 +134,7 @@ namespace SpaceCG.IO
                     _serialPort.DiscardOutBuffer();
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Trace.TraceWarning($"({Name}) 建立连接失败：{ex.Message}");
                 throw ex;
@@ -120,14 +153,15 @@ namespace SpaceCG.IO
         /// <inheritdoc/>
         public int Read(byte[] buffer, int offset, int count)
         {
-            if (_serialPort == null) return 0;
+            if (_serialPort == null || !_serialPort.IsOpen) return 0;
 
             return _serialPort.Read(buffer, offset, count);
         }
+
         /// <inheritdoc/>
         public void Write(byte[] buffer, int offset, int count)
         {
-            if (_serialPort == null) return;
+            if (_serialPort == null || !_serialPort.IsOpen) return;
 
             _serialPort.Write(buffer, offset, count);
             _serialPort.BaseStream.Flush();
@@ -163,10 +197,14 @@ namespace SpaceCG.IO
         {
             if (PortNameRegexForWindows.IsMatch(searchPattern)) return searchPattern;
 
-            var ports = SystemExtensions.GetSerialDevices();
+            var ports = Extensions.GetSerialDevices();
             foreach (var port in ports)
             {
-                if (port.FriendlyName.Contains(searchPattern)) return port.PortName;
+                if (string.IsNullOrWhiteSpace(port.FriendlyName)) continue;
+                if (port.FriendlyName.IndexOf(searchPattern, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return port.PortName;
+                }
             }
 
             return searchPattern;

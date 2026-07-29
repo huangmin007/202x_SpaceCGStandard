@@ -3,7 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Media.Imaging;
 
-namespace SpaceCG.Drawing
+namespace SpaceCG.Extensions
 {
     
     /// <summary>
