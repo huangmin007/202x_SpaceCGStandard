@@ -137,7 +137,7 @@ namespace SpaceCG.Drawing
             {
                 FrameTimes.Dequeue();
             }
-            Fps = FrameTimes.Count;            
+            Fps = FrameTimes.Count;
         }
 
 

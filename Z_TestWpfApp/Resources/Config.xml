@@ -19,18 +19,18 @@
 	<!-- 灯带设备配置 -->
 	<LedDevices>
 		<LedRenderBus Type="SERIAL" Params="CH343,460800" Interval="40" Comment="">
-			<LedStripObject Address="1" Port="1" ColorFormat="GRB" Count="85" FillCount="15" RepeatCount="17" Comment="右1" />
-			<!--
+			<LedStripObject Address="1" Port="1" Count="100" Comment="右1" />
+			
 			<LedStripObject Address="1" Port="2" ColorFormat="GRB" Count="165" Comment="右2" />
-			<LedStripObject Address="1" Port="3" ColorFormat="GRB" Count="210" Comment="右3" />
+			<LedStripObject Address="1" Port="3" ColorFormat="GRB" Count="110" Comment="右3" />
 			<LedStripObject Address="1" Port="4" ColorFormat="GRB" Count="165" Comment="右4" />
 			<LedStripObject Address="1" Port="5" ColorFormat="GRB" Count="272" Comment="右5" />
 			<LedStripObject Address="1" Port="6" ColorFormat="GRB" Count="100" Comment="右6" />
-			-->
+			
 		</LedRenderBus>
 <!--
 		<LedRenderBus Type="SERIAL" Params="CH B,921600" Interval="40" Comment="">
-			<LedStripObject Address="2" Port="1" ColorFormat="GRB" Count="103" Comment="右7" />
+			<LedStripObject Address="2" Port="1" ColorFormat="GRB" Count="103" FillCount="15" RepeatCount="17" Comment="右7" />
 			<LedStripObject Address="2" Port="2" ColorFormat="GRB" Count="232" Comment="右8" />
 			<LedStripObject Address="2" Port="3" ColorFormat="GRB" Count="400" Comment="右9" />
 			<LedStripObject Address="2" Port="4" ColorFormat="GRB" Count="200" FillCount="4" RepeatCount="100" Comment="右10" />
@@ -52,13 +52,13 @@
 			</Scene.Dictionary>
 
 			<LedStripObject Address="1" Port="1" Action="FlowLinearBrush" Params="{浅白色流水_正向}" Comment="" />
-			<!--
+			
 			<LedStripObject Address="1" Port="2" Action="FlowLinearBrush" Params="{浅白色流水_反向}" Comment="" />
 			<LedStripObject Address="1" Port="3" Action="FlowLinearBrush" Params="{浅白色流水_正向}" Comment="右3" />
 			<LedStripObject Address="1" Port="4" Action="FlowLinearBrush" Params="{浅白色流水_正向}" Comment="" />
 			<LedStripObject Address="1" Port="5" Action="FlowLinearBrush" Params="{浅白色流水_反向}" Comment="" />
 			<LedStripObject Address="1" Port="6" Action="FlowLinearBrush" Params="{浅白色流水_反向}" Comment="右6" />
--->
+
 		</Scene>
 
 		<Scene Id="1" Name="生物活性材料(浅蓝色)" RFID="0453874754" >
@@ -71,22 +71,24 @@
 			</Scene.Dictionary>
 
 			<LedStripObject Address="1" Port="1" Action="FlowLinearBrush" Params="{浅蓝色流水_正向}" Comment="" />
-			<!--
+			
 			<LedStripObject Address="1" Port="2" Action="FlowLinearBrush" Params="{浅蓝色流水_反向}" Comment="" />
 			<LedStripObject Address="1" Port="3" Action="GroupBlackAndFlowLinearBrush" Params="{浅蓝色流水_正向_右3}" Comment="右3" />
 			<LedStripObject Address="1" Port="4" Action="FlowLinearBrush" Params="{浅蓝色流水_正向}" Comment="" />
-			<LedStripObject Address="1" Port="5" Action="FlowLinearBrush" Params="{浅蓝色流水_反向}" Comment="" /-->
+			<LedStripObject Address="1" Port="5" Action="FlowLinearBrush" Params="{浅蓝色流水_反向}" Comment="" />
+			
 
 		</Scene>
 
 		<Scene Id="2" Name="绿色与可持续材料(浅绿色)" RFID="0453875215" >
 			<Scene.Dictionary>
-				<Item Key="浅绿色_常亮" Value="#FF00DD66" />
+				<Item Key="浅绿色_常亮" Value="#FF000033" />
 				<Item Key="浅绿色流水_正向" Value="[[#1100DD66,#FF00DD66]],[15],1.5,1" />
 				<Item Key="浅绿色流水_反向" Value="[[#FF00DD66,#1100DD66]],[15],1.5,-1" />
 			</Scene.Dictionary>
 
 			<LedStripObject Address="1" Port="1" FillCount="1" RepeatCount="85"  Action="ColorBrush" Params="{浅绿色_常亮}" Comment="" />
+			
 		</Scene>
 
 		<Scene Id="3" Name="智能响应型材料(浅黄色)" RFID="0453875216" >

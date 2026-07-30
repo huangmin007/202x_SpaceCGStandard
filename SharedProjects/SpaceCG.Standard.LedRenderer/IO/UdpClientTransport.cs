@@ -112,6 +112,12 @@ namespace SpaceCG.IO
         }
 
         /// <inheritdoc/>
+        public int ReadByte()
+        {
+            throw new NotImplementedException();
+        }
+
+        /// <inheritdoc/>
         public int Read(byte[] buffer, int offset, int count)
         {
             if (_udpClient == null) return 0;

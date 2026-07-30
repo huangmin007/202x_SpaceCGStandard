@@ -83,6 +83,12 @@ namespace SpaceCG.IO
         void ClearWriteBuffer();
 
         /// <summary>
+        /// 从传输通道同步读取一个字节。
+        /// </summary>
+        /// <returns></returns>
+        int ReadByte();
+
+        /// <summary>
         /// 从传输通道同步读取数据。
         /// </summary>
         /// <param name="buffer">接收数据的字节数组。</param>

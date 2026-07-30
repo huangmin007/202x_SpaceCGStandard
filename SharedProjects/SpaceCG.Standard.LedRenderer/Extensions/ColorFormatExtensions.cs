@@ -145,7 +145,6 @@ namespace SpaceCG.Extensions
             for (i = 0; i < outputChannelCount; i++)
             {
                 channelMap[i] = inputIndices.IndexOf(outputIndices[i]);
-                //channelMap[i] = Array.IndexOf(inputIndices, outputIndices[i]);
             }
 
             for (i = 0; i < pixelCount; i++)

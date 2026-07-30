@@ -88,11 +88,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var renderBus in collections)
             {
-                foreach(var ledStrip in renderBus.LedStrips.Values)
-                {
-                    ledStrip.IsRenderEnabled = false;
-                    ledStrip.ClearFrames(off);
-                }
+                renderBus.PauseRender(0);                
             }
         }
 
@@ -104,10 +100,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var renderBus in collections)
             {
-                foreach (var ledStrip in renderBus.LedStrips.Values)
-                {
-                    ledStrip.IsRenderEnabled = true;
-                }
+                renderBus.ResumeRender(0);
             }
         }
 
@@ -116,11 +109,11 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <param name="collections"></param>
         /// <param name="off"></param>
-        public static void ClearRender(this IEnumerable<LedRenderBus> collections, bool off)
+        public static void ClearRender(this IEnumerable<LedRenderBus> collections, bool clear)
         {
             foreach (var renderBus in collections)
             {
-                renderBus.ClearRender(0, off);
+                renderBus.ClearRender(0, clear);
             }
         }
 
@@ -128,7 +121,7 @@ namespace SpaceCG.Extensions
         /// 检查 <see cref="LedRenderBus"/> 集合资源中所有 <see cref="LedRenderBus"/> 对象的连接状态
         /// </summary>
         /// <param name="collections"></param>
-        public static void CheckConnection(this IEnumerable<LedRenderBus> collections)
+        public static void CheckChannelConnection(this IEnumerable<LedRenderBus> collections)
         {
             if (!SerialPort.GetPortNames().Any())
             {
@@ -142,14 +135,15 @@ namespace SpaceCG.Extensions
                 {                    
                     if (!ledRenderBus.IsConnected)
                     {
-                        Trace.TraceInformation($"Reconnect....{ledRenderBus.Name}");
-                        ledRenderBus.StopRender();
-                        ledRenderBus.StartRender();
+                        Trace.TraceInformation($"Close Channel....{ledRenderBus.Name}");
+                        ledRenderBus.CloseChannel();
+
+                        ledRenderBus.OpenChannel();
                     }
                 }
                 catch (Exception ex)
                 {
-                    Trace.TraceError($"StartRender ({ledRenderBus.Name}) Exception: {ex.Message}");
+                    Trace.TraceError($"Open Channel ({ledRenderBus.Name}) Exception: {ex.Message}");
                 }
             }
         }
@@ -165,7 +159,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var renderBus in collections)
             {
-                renderBus.SetPowerOnColor(0, color, isShow, colorFormat);
+                //renderBus.SetPowerOnColor(0, color, isShow, colorFormat);
             }
         }
 
@@ -179,7 +173,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var renderBus in collections)
             {
-                renderBus.AddColorFrame(0, color, renderBus.LedCount, colorFormat);
+                //renderBus.AddColorFrame(0, color, renderBus.LedCount, colorFormat);
             }
         }
 
@@ -193,7 +187,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var renderBus in collections)
             {
-                renderBus.AddColorFrame(0, colors, renderBus.LedCount, colorFormat);
+                //renderBus.AddColorFrame(0, colors, renderBus.LedCount, colorFormat);
             }
         }
 
@@ -207,7 +201,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var renderBus in collections)
             {
-                renderBus.AddColorFrame(0, colors, renderBus.LedCount, colorFormat);
+                //renderBus.AddColorFrame(0, colors, renderBus.LedCount, colorFormat);
             }
         }
 
@@ -227,7 +221,7 @@ namespace SpaceCG.Extensions
                     if (uids.Contains(kv.Key))
                     {
                         var ledStrip = kv.Value;
-                        ledStrip.AddColorFrame(color, ledStrip.LedCount, colorFormat);
+                        ledStrip.AddColorFrame(color, 0, ledStrip.LedCount, colorFormat);
                     }
                 }
             }
@@ -248,7 +242,7 @@ namespace SpaceCG.Extensions
                     if (uids.Contains(kv.Key))
                     {
                         var ledStrip = kv.Value;
-                        ledStrip.AddColorFrame(colors, ledStrip.LedCount, colorFormat);
+                        ledStrip.AddColorFrame(colors, 0, ledStrip.LedCount, colorFormat);
                     }
                 }
             }
@@ -263,7 +257,7 @@ namespace SpaceCG.Extensions
                     if (uids.Contains(kv.Key))
                     {
                         var ledStrip = kv.Value;
-                        ledStrip.AddColorFrame(colors, ledStrip.LedCount, colorFormat);
+                        ledStrip.AddColorFrame(colors, 0, ledStrip.LedCount, colorFormat);
                     }
                 }
             }

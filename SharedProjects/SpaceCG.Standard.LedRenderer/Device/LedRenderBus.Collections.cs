@@ -22,10 +22,12 @@ namespace SpaceCG.Device
                 return BusCollectionsReadOnly;
             }
         }
+
         internal static Timer FpsTimer;
         private static volatile int checkTick = 0;
         private static readonly List<LedRenderBus> BusCollections;
         private static IReadOnlyList<LedRenderBus> BusCollectionsReadOnly;
+
         static LedRenderBus()
         {
             BusCollections = new List<LedRenderBus>(32);
@@ -47,7 +49,7 @@ namespace SpaceCG.Device
             if (checkTick > 3)
             {
                 checkTick = 0;
-                BusCollections.CheckConnection();
+                BusCollections.CheckChannelConnection();
             }
         }
         #endregion

@@ -151,6 +151,14 @@ namespace SpaceCG.IO
         }
 
         /// <inheritdoc/>
+        public int ReadByte()
+        {
+            if (_serialPort == null || !_serialPort.IsOpen) return -1;
+
+            return _serialPort.ReadByte();
+        }
+
+        /// <inheritdoc/>
         public int Read(byte[] buffer, int offset, int count)
         {
             if (_serialPort == null || !_serialPort.IsOpen) return 0;
@@ -197,7 +205,7 @@ namespace SpaceCG.IO
         {
             if (PortNameRegexForWindows.IsMatch(searchPattern)) return searchPattern;
 
-            var ports = Extensions.GetSerialDevices();
+            var ports = SystemExtensions.GetSerialDevices();
             foreach (var port in ports)
             {
                 if (string.IsNullOrWhiteSpace(port.FriendlyName)) continue;

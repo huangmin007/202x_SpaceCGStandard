@@ -10,7 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)Device\ColorFormat.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)Device\FramePoolModel.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Device\FrameRenderModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Device\LedRenderBus.Collections.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\ColorFormatExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Extensions\FrameExtensions.cs" />

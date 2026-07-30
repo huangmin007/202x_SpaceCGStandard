@@ -117,6 +117,13 @@ namespace SpaceCG.IO
         }
 
         /// <inheritdoc/>
+        public int ReadByte()
+        {
+            if (_tcpClient == null || !IsConnected) return -1;
+            return _tcpClient.GetStream().ReadByte();
+        }
+
+        /// <inheritdoc/>
         public int Read(byte[] buffer, int offset, int count)
         {
             if (_tcpClient == null || !IsConnected) return 0;

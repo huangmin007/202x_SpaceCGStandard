@@ -457,6 +457,35 @@ namespace SpaceCG.Device
             }
         }
 
+        public void OpenChannel()
+        {
+            foreach (var ledRenderBus in LedRenderBus.Collections)
+            {
+                try
+                {
+                    ledRenderBus.OpenChannel();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError($"OpenChannel ({ledRenderBus.Name}) Exception: {ex.Message}");
+                }
+            }
+        }
+        public void CloseChannel()
+        {
+            foreach (var ledRenderBus in LedRenderBus.Collections)
+            {
+                try
+                {
+                    ledRenderBus.CloseChannel();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError($"CloseChannel ({ledRenderBus.Name}) Exception: {ex.Message}");
+                }
+            }
+        }
+
         /// <summary> 启动渲染  </summary>
         public void StartRender()
         {
