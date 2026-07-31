@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SpaceCG.Device;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace SpaceCG.Drawing
 {
@@ -28,7 +29,7 @@ namespace SpaceCG.Drawing
         private int _interval = 40;
 
         /// <inheritdoc/>
-        public System.Drawing.Rectangle Rectangle
+        public Rectangle Rectangle
         {
             get => _rectangle;
             set
@@ -38,7 +39,7 @@ namespace SpaceCG.Drawing
                 _rectangle = value;
             }
         }
-        private System.Drawing.Rectangle _rectangle = new System.Drawing.Rectangle(0, 0, 600, 32);
+        private Rectangle _rectangle = new Rectangle(0, 0, 600, 32);
 
         /// <inheritdoc/>
         public double Fps { get; private set; } = 0.0;
@@ -83,10 +84,53 @@ namespace SpaceCG.Drawing
         /// <param name="visualElement"></param>
         /// <param name="rectangle"></param>
         /// <param name="interval"></param>
-        public DrawingWpfElement(FrameworkElement visualElement, System.Drawing.Rectangle rectangle, int interval) : this(visualElement)
+        public DrawingWpfElement(FrameworkElement visualElement, Rectangle rectangle, int interval) : this(visualElement)
         {
             this.Interval = interval;
             this.Rectangle = rectangle;
+        }
+
+        /// <inheritdoc/>
+        public void StartDrawing()
+        {
+            if (_dispatcherTimer.IsEnabled) return;
+
+            Fps = 0;
+            FrameTimes.Clear();
+
+            if (renderTargetBitmap == null)
+            {
+                drawingVisual = new DrawingVisual();
+                using (DrawingContext dc = drawingVisual.RenderOpen())
+                {
+                    dc.DrawRectangle(Brushes.Black, null, new Rect(0, 0, Rectangle.Width, Rectangle.Height));
+                }
+                drawingEventArgs = new DrawingEventArgs();
+                renderTargetBitmap = new RenderTargetBitmap(Rectangle.Width, Rectangle.Height, 96, 96, PixelFormats.Pbgra32);
+            }
+
+            _dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, Interval);
+            _dispatcherTimer.Start();
+        }
+
+        /// <inheritdoc/>
+        public void StartDrawing(Rectangle rectangle, int interval)
+        {
+            if (_dispatcherTimer.IsEnabled) return;
+
+            this.Interval = interval;
+            this.Rectangle = rectangle;
+
+            StartDrawing();
+        }
+
+        /// <inheritdoc/>
+        public void StopDrawing()
+        {
+            _dispatcherTimer.Stop();
+
+            FrameTimes.Clear();
+            Fps = 0;
         }
 
         private unsafe void OnDispatcherTimerTick(object sender, EventArgs e)
@@ -111,7 +155,7 @@ namespace SpaceCG.Drawing
                 int stride = (renderTargetBitmap.PixelWidth * renderTargetBitmap.Format.BitsPerPixel + 7) / 8;
                 int bufferSize = stride * renderTargetBitmap.PixelHeight;
 
-                if(_pixelsBuffer == null || _pixelsBuffer.Length != bufferSize)
+                if (_pixelsBuffer == null || _pixelsBuffer.Length != bufferSize)
                     _pixelsBuffer = new byte[bufferSize];
 
                 fixed (byte* buffer = _pixelsBuffer)
@@ -131,7 +175,7 @@ namespace SpaceCG.Drawing
                     NewDrawingFrame.Invoke(this, drawingEventArgs);
                 }
             }
-            
+
             var now = DateTime.Now;
             while (FrameTimes.Count > 0 && now - FrameTimes.Peek() > WindowTimes)
             {
@@ -140,46 +184,6 @@ namespace SpaceCG.Drawing
             Fps = FrameTimes.Count;
         }
 
-
-        /// <inheritdoc/>
-        public void StartDrawing()
-        {
-            if (_dispatcherTimer.IsEnabled) return;
-
-            Fps = 0;
-            FrameTimes.Clear();
-
-            drawingVisual = new DrawingVisual();
-            using (DrawingContext dc = drawingVisual.RenderOpen())
-            {
-                dc.DrawRectangle(Brushes.Black, null, new Rect(0, 0, Rectangle.Width, Rectangle.Height));
-            }
-            drawingEventArgs = new DrawingEventArgs();
-            renderTargetBitmap = new RenderTargetBitmap(Rectangle.Width, Rectangle.Height, 96, 96, PixelFormats.Pbgra32);
-
-            _dispatcherTimer.Interval = new TimeSpan(0, 0, 0, 0, Interval);
-            _dispatcherTimer.Start();
-        }
-
-        /// <inheritdoc/>
-        public void StartDrawing(System.Drawing.Rectangle rectangle, int interval)
-        {
-            if (_dispatcherTimer.IsEnabled) return;
-
-            this.Interval = interval;
-            this.Rectangle = rectangle;
-
-            StartDrawing();
-        }
-
-        /// <inheritdoc/>
-        public void StopDrawing()
-        {
-            _dispatcherTimer.Stop();
-
-            FrameTimes.Clear();
-            Fps = 0;
-        }
 
         /// <inheritdoc/>
         public void Dispose()

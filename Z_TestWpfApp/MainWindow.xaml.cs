@@ -70,6 +70,7 @@ namespace Z_TestWpfApp
 
                 case Key.D2:
                     ledRenderControl.RenderSceneId(2);
+#if false
                     if (rpcClient == null) break;
                     var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
                     Trace.TraceInformation($"Response::{result}");
@@ -85,6 +86,7 @@ namespace Z_TestWpfApp
                     }
                     
                     Trace.WriteLine($"ReturnValue::{result.ReturnValue}");
+#endif
                     break;
 
                 case Key.D9:
@@ -150,7 +152,6 @@ namespace Z_TestWpfApp
             var config = XElementExtensions.LoadConfig($"Resources/Config.xml");
             ledRenderControl = new LedRenderControl(Canvas_Leds);
             ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
-            ledRenderControl.OpenChannel();
             ledRenderControl.StartRender();
             ledRenderControl.RenderSceneId(1);
 #endif

@@ -1,7 +1,9 @@
 ﻿using System;
-using System.Drawing;
 using System.IO;
 using System.Windows.Media.Imaging;
+using Bitmap = System.Drawing.Bitmap;
+using ImageFormat = System.Drawing.Imaging.ImageFormat;
+using BitmapSource = System.Windows.Media.Imaging.BitmapSource;
 
 namespace SpaceCG.Extensions
 {
@@ -12,7 +14,7 @@ namespace SpaceCG.Extensions
     public static partial class DrawingExtensions
     {        
         /// <summary>
-        /// 将 <see cref="System.Drawing.Bitmap"/> 转换为 <see cref="System.Windows.Media.Imaging.BitmapSource"/>
+        /// 将 <see cref="Bitmap"/> 转换为 <see cref="BitmapSource"/>
         /// </summary>
         /// <param name="bitmap"></param>
         /// <returns></returns>
@@ -22,7 +24,7 @@ namespace SpaceCG.Extensions
 
             using (var memoryStream = new MemoryStream())
             {
-                bitmap.Save(memoryStream, System.Drawing.Imaging.ImageFormat.Bmp);
+                bitmap.Save(memoryStream, ImageFormat.Bmp);
                 memoryStream.Position = 0;
 
                 var bitmapImage = new BitmapImage();

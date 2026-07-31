@@ -17,7 +17,7 @@ namespace SpaceCG.Device
     /// <para>  [0-2] 帧头 (0xDD 0x55 0xEE)</para>
     /// <para>  [3-4] 组地址 (ushort, Big-Endian)，值范围：0~1024； </para>
     /// <para>  [5-6] 设备地址 (ushort, Big-Endian)，值范围：0~4096；当值为 0 时，表示总线上的所有设备 </para>
-    /// <para>  [7]   端口号，值范围：0~30；当值为 0 时，表示当前设备上的所有端口号 </para>
+    /// <para>  [7]   端口号，值范围：0~6；当值为 0 时，表示当前设备上的所有端口号 </para>
     /// <para>  [8]   功能码 (0x98/0x99=颜色帧, 0x9B=上电显示, 0x9C=关闭上电显示...)</para>
     /// <para>  [9]   灯带类型</para>
     /// <para>  [10-11] 保留字节 (ushort, Big-Endian)；IC 起始位置(1~768/1024)，1 表示从第一颗灯珠开始点亮。</para>
@@ -52,6 +52,12 @@ namespace SpaceCG.Device
 
         /// <summary> 渲染队列最大容量 </summary>
         protected internal const int MaxRenderingFrameCount = 3;
+
+        /// <summary>
+        /// 默认数据帧(无响应的帧)发送后等待的时间，单位：毫秒
+        /// </summary>
+        protected internal const int DefaultTimeout = 10;
+
 
 #if false
         protected internal const int OffsetGroup = 3;
@@ -154,8 +160,8 @@ namespace SpaceCG.Device
         public int Fps { get; internal set; } = 0;
 
         /// <summary>
-        /// 渲染一帧数据后，需要等待的时间，单位：毫秒，默认为 0 毫秒
-        /// <para>有些帧数据写入后需要等待设备处理，可以此参数让其线程等待几毫秒，来避免设备处理帧异常的问题</para>
+        /// 渲染一帧数据后(无响应信号的数据帧)，需要等待的时间。单位：毫秒，默认为 10 毫秒
+        /// <para>有些帧数据写入后，没有响应数据，需要等待设备处理，可以使用此参数让其线程等待几毫秒，来避免设备处理帧出现异常的问题</para>
         /// </summary>
         public int Timeout
         {
@@ -167,7 +173,7 @@ namespace SpaceCG.Device
                 _timeout = value;
             }
         }
-        private int _timeout = 0;
+        private int _timeout = DefaultTimeout;
         /// <summary>
         /// 获取或设置是否允许渲染当前设备或灯带的数据帧。
         /// </summary>

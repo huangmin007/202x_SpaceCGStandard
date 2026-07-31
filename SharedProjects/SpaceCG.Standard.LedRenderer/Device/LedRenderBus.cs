@@ -23,10 +23,6 @@ namespace SpaceCG.Device
     public sealed partial class LedRenderBus : FrameRenderModel, IDisposable
     {
         /// <summary>
-        /// 默认数据帧发送后等待的时间，单位：毫秒
-        /// </summary>
-        internal const int DefaultTimeout = 10;
-        /// <summary>
         /// 默认设备响应超时时间，单位：毫秒
         /// </summary>
         internal const int DefaultResponseTimeout = 300;
@@ -122,7 +118,7 @@ namespace SpaceCG.Device
             {"HERR", "指令头错误" },
             {"GERR", "组地址错误，超出最大范围值 1024" },
             {"AERR", "设备地址错误，超出最大范围值 4096" },
-            {"PERR", "端口地址错误，超出最大范围值 30" },
+            {"PERR", "端口地址错误，超出最大范围值 6" },
             {"CERR", "功能码错误" },
             {"IERR", "LED 灯带类型错误" },
             {"LERR", "数据长度错误" },
@@ -165,7 +161,6 @@ namespace SpaceCG.Device
             BusCollections.Add(this);
 
             BusId = BusCollections.Count;
-            Timeout = DefaultTimeout;
             RenderingRepeatInterval = 0;
         }
 
@@ -540,7 +535,7 @@ namespace SpaceCG.Device
         /// <param name="address"></param>
         /// <param name="timeout"></param>
         /// <exception cref="ArgumentException"></exception>
-        public void SetDeviceTimeout(ushort address, ushort group = 0, ushort timeout = 5)
+        public void SetDeviceTimeout(ushort address, ushort group, ushort timeout = 5)
         {
             if (timeout < 5 || timeout > 1000) throw new ArgumentException("超时时间范围必须在 5-1000 之间");
 
@@ -685,62 +680,59 @@ namespace SpaceCG.Device
             const string SaveInsEnd = nameof(SaveInsEnd);
             const string SaveInsErr = nameof(SaveInsErr);
 
-            var count = 0;
             var message = string.Empty;
-            var responseTimeout = ResponseTimeout;
-            _responseStopwatch.Restart();
 
             // 0x99 显示颜色数据
             // 0x98 从指定的 IC 显示颜色数据
+            // RecvEnd -> DisplayEnd
             if (funCode == 0x98 || funCode == 0x99)
             {
-                //RecvEnd DisplayEnd
-                while (!message.Contains(DisplayEnd))
-                {
-                    if (_responseStopwatch.ElapsedMilliseconds > responseTimeout)
-                    {
-                        message = nameof(ResponseTimeout);
-                        break;
-                    }
-
-                    if (Channel.Available <= 0)
-                    {
-                        Thread.Sleep(1);
-                        //Thread.Sleep(0);
-                        //Thread.Yield();
-                        continue;
-                    }
-
-                    var bytesRead = Channel.Read(_responseBuffer, count, Channel.Available);
-                    count += bytesRead;
-                    message = Encoding.UTF8.GetString(_responseBuffer, 0, count);
-                }
+                message = ReadResponseUntil(msg => msg.Contains(DisplayEnd));                
             }
+            // 设置上电显示的颜色 (0x9B); 关闭上电显示功能 (9C) 
+            // RecvEnd -> SaveInsEnd||SaveInsErr 
             else if (funCode == 0x9B || funCode == 0x9C)
             {
-                //RecvEnd SaveInsEnd/SaveInsErr 
-                while (!message.Contains(SaveInsEnd) && !message.Contains(SaveInsErr))
-                {
-                    if (_responseStopwatch.ElapsedMilliseconds > responseTimeout)
-                    {
-                        message = nameof(ResponseTimeout);
-                        break;
-                    }
-
-                    if (Channel.Available <= 0)
-                    {
-                        Thread.Sleep(1);
-                        continue;
-                    }
-
-                    var bytesRead = Channel.Read(_responseBuffer, count, Channel.Available);
-                    count += bytesRead;
-                    message = Encoding.UTF8.GetString(_responseBuffer, 0, count);
-                }
+                message = ReadResponseUntil(msg => msg.Contains(SaveInsEnd) || msg.Contains(SaveInsErr));
+            }
+            // 修改控制器串口通信超时时间 (8E)；修改通信超时时间后立即生效，无需重启
+            // RecvEnd
+            else if (funCode == 0x8E)   
+            {
+                message = ReadResponseUntil(m => m.Contains(RecvEnd));                
             }
 
             Channel.ClearReadBuffer();
             //Debug.WriteLine($"RenderBus {Name} Write Frame {frame.Length} bytes, Respose Use Time:{_resposeStopwatch.ElapsedMilliseconds} ms");
+
+            return message;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private string ReadResponseUntil(Func<string, bool> condition)
+        {
+            var count = 0;
+            var message = string.Empty;
+            var responseTimeout = ResponseTimeout;
+
+            _responseStopwatch.Restart();
+
+            while (!condition(message))
+            {
+                if (_responseStopwatch.ElapsedMilliseconds > responseTimeout)
+                    return nameof(ResponseTimeout);
+
+                if (Channel.Available <= 0)
+                {
+                    //Thread.Sleep(1);
+                    //Thread.Sleep(0);
+                    Thread.Yield();
+                    continue;
+                }
+
+                var bytesRead = Channel.Read(_responseBuffer, count, Channel.Available);
+                count += bytesRead;
+                message = Encoding.UTF8.GetString(_responseBuffer, 0, count);
+            }
 
             return message;
         }
@@ -835,7 +827,10 @@ namespace SpaceCG.Device
                                 //Trace.WriteLine($"RenderBus {busName} Respose Message: {message}");
                             }
                         }
-                        if (renderBus.Timeout > 0) Thread.Sleep(renderBus.Timeout);
+                        else
+                        {
+                            if (renderBus.Timeout > 0) Thread.Sleep(renderBus.Timeout);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -875,8 +870,10 @@ namespace SpaceCG.Device
                                 //Trace.WriteLine($"RenderBus {busName}(Address:{ledStrip.Address} Port:{ledStrip.Port}) Device Respose Message: {message}");
                             }
                         }
-
-                        if (ledStrip.Timeout > 0) Thread.Sleep(ledStrip.Timeout);
+                        else
+                        {
+                            if (ledStrip.Timeout > 0) Thread.Sleep(ledStrip.Timeout);
+                        }
                     }
                     catch (Exception ex)
                     {

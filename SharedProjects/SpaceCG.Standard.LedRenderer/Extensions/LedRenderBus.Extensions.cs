@@ -10,8 +10,7 @@ namespace SpaceCG.Extensions
     /// <see cref="LedRenderBus"/> 集合扩展方法
     /// </summary>
     public static partial class LedRenderBusExtensions
-    {
-        
+    {        
         /// <summary>
         /// 释放 <see cref="LedRenderBus"/> 集合资源
         /// </summary>
@@ -92,6 +91,43 @@ namespace SpaceCG.Extensions
                    select ledStrip;
         }
         #endregion
+
+        /// <summary>
+        /// 打开 <see cref="LedRenderBus"/> 集合资源中的所有 <see cref="LedRenderBus"/> 对象的通信通道
+        /// </summary>
+        /// <param name="collections"></param>
+        public static void OpenChannel(this IEnumerable<LedRenderBus> collections)
+        {
+            foreach (var renderBus in collections)
+            {
+                try
+                {
+                    renderBus.OpenChannel();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError($"OpenChannel ({renderBus.Name}) Exception: {ex.Message}");
+                }
+            }
+        }
+        /// <summary>
+        /// 关闭 <see cref="LedRenderBus"/> 集合资源中的所有 <see cref="LedRenderBus"/> 对象的通信通道
+        /// </summary>
+        /// <param name="collections"></param>
+        public static void CloseChannel(this IEnumerable<LedRenderBus> collections)
+        {
+            foreach (var renderBus in collections)
+            {
+                try
+                {
+                    renderBus.CloseChannel();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError($"CloseChannel ({renderBus.Name}) Exception: {ex.Message}");
+                }
+            }
+        }
 
         #region 渲染控制
         /// <summary>

@@ -1,7 +1,7 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.IO
 {
@@ -169,9 +169,9 @@ namespace SpaceCG.IO
             }
 
             if (offset <= 0)
-                this._udpClient.Send(buffer, count);
+                _udpClient.Send(buffer, count);
             else
-                this._udpClient.Send(buffer.Skip(offset).ToArray<byte>(), count);
+                _udpClient.Send(buffer.Skip(offset).ToArray<byte>(), count);
         }
 
         /// <inheritdoc/>

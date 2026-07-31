@@ -8,7 +8,7 @@ namespace SpaceCG.Extensions
     /// <summary>
     /// 数据帧扩展方法
     /// </summary>
-    internal static partial class FrameExtensions
+    public static partial class FrameExtensions
     {
         /// <summary>
         /// 判断颜色数据帧是否有效

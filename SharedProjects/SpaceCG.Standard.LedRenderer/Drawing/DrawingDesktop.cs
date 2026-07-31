@@ -4,6 +4,16 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using SpaceCG.Device;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
+//using Bitmap = System.Drawing.Bitmap;
+//using Graphics = System.Drawing.Graphics;
+//using Drawing2D = System.Drawing.Drawing2D;
+//using Rectangle = System.Drawing.Rectangle;
+//using PixelFormat = System.Drawing.Imaging.PixelFormat;
+//using ImageLockMode = System.Drawing.Imaging.ImageLockMode;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Drawing
 {
@@ -26,7 +36,7 @@ namespace SpaceCG.Drawing
         private int _interval = 40;
 
         /// <inheritdoc/>
-        public System.Drawing.Rectangle Rectangle
+        public Rectangle Rectangle
         {
             get => _rectangle;
             set
@@ -36,7 +46,7 @@ namespace SpaceCG.Drawing
                 _rectangle = value;
             }
         }
-        private System.Drawing.Rectangle _rectangle = new System.Drawing.Rectangle(0, 0, 600, 32);
+        private Rectangle _rectangle = new Rectangle(0, 0, 600, 32);
 
         /// <inheritdoc/>
         /// <exception cref="NotImplementedException">桌面绘图对象不支持此属性</exception>
@@ -66,7 +76,7 @@ namespace SpaceCG.Drawing
         /// </summary>
         /// <param name="rectangle"></param>
         /// <param name="interval"></param>
-        public DrawingDesktop(System.Drawing.Rectangle rectangle, int interval): this()
+        public DrawingDesktop(Rectangle rectangle, int interval): this()
         {
             this.Interval = interval;
             this.Rectangle = rectangle;
@@ -82,7 +92,7 @@ namespace SpaceCG.Drawing
         }
 
         /// <inheritdoc/>
-        public void StartDrawing(System.Drawing.Rectangle rectangle, int interval)
+        public void StartDrawing(Rectangle rectangle, int interval)
         {
             if (_isCapturing) return;
 
@@ -125,33 +135,33 @@ namespace SpaceCG.Drawing
             Stopwatch stopwatch = new Stopwatch();
 
             var eventArgs = new DrawingEventArgs();
-            var bitmap = new System.Drawing.Bitmap(rectangle.Width, rectangle.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-            var graphics = System.Drawing.Graphics.FromImage(bitmap);
-            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighSpeed;
-            graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
-            graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
-            graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+            var bitmap = new Bitmap(rectangle.Width, rectangle.Height, PixelFormat.Format24bppRgb);
+            var graphics = Graphics.FromImage(bitmap);
+            graphics.SmoothingMode = SmoothingMode.HighSpeed;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighSpeed;
+            graphics.CompositingQuality = CompositingQuality.HighSpeed;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
 
             while (drawing._isCapturing)
             {
                 stopwatch.Restart();
                 FrameTimes.Enqueue(DateTime.Now);
 #if false
-                using (System.Drawing.Bitmap bitmap = new System.Drawing.Bitmap(rectangle.Width, rectangle.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb))
+                using (Bitmap bitmap = new Bitmap(rectangle.Width, rectangle.Height, PixelFormat.Format24bppRgb))
                 {
-                    using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bitmap))
+                    using (Graphics graphics = Graphics.FromImage(bitmap))
                     {
-                        graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
-                        graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
-                        graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
-                        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighSpeed;
+                        graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
+                        graphics.PixelOffsetMode = PixelOffsetMode.HighSpeed;
+                        graphics.CompositingQuality = CompositingQuality.HighSpeed;
+                        graphics.SmoothingMode = SmoothingMode.HighSpeed;
 
                         graphics.CopyFromScreen(rectangle.X, rectangle.Y, 0, 0, rectangle.Size);
                     }
 
                     if (drawing.NewDrawingFrame != null)
                     {
-                        var bmpd = bitmap.LockBits(rectangle, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                        var bmpd = bitmap.LockBits(rectangle, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
                         try
                         {
                             var eventArgs = new DrawingEventArgs(bmpd.Scan0, bmpd.Stride, bmpd.Width, bmpd.Height, ColorFormat.BGR);
@@ -173,7 +183,7 @@ namespace SpaceCG.Drawing
                 graphics.CopyFromScreen(rectangle.X, rectangle.Y, 0, 0, rectangle.Size);
                 if (drawing.NewDrawingFrame != null)
                 {
-                    var bmpd = bitmap.LockBits(rectangle, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                    var bmpd = bitmap.LockBits(rectangle, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
                     try
                     {
                         //var eventArgs = new DrawingEventArgs(bmpd.Scan0, bmpd.Stride, bmpd.Width, bmpd.Height, ColorFormat.BGR);

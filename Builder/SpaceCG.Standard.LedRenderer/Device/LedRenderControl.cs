@@ -72,7 +72,11 @@ namespace SpaceCG.Device
 
             _canvas.PreviewMouseLeftButtonDown += Canvas_PreviewMouseLeftButtonDown;
         }
-        private void Window_Closing(object sender, CancelEventArgs e) { LedRenderBus.Collections.Dispose(); }
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            this.drawingDisplay.StopDrawing();
+            LedRenderBus.Collections.Dispose();
+        }
         /// <summary>
         /// 【调试】数灯珠
         /// </summary>
@@ -258,6 +262,8 @@ namespace SpaceCG.Device
             {
                 RenderSceneId(index);
             }
+
+            this.drawingDisplay.StartDrawing();
         }
         /// <summary>
         /// 绘图显示新帧事件
@@ -270,6 +276,7 @@ namespace SpaceCG.Device
             {
                 ledRenderBus.RenderPixels(frame.Pixels, frame.Width, frame.Height, frame.Stride, frame.PixelFormat);
             }
+            //Trace.WriteLine($"{DateTime.Now:hh:mm:ss.fff} Drawing ... {frame.ElapsedMilliseconds}");
 
             FpsBuilder.Clear();
             FpsBuilder.AppendLine($"Drawing FPS:{drawingDisplay.Fps} ");
@@ -288,6 +295,7 @@ namespace SpaceCG.Device
             {
                 _textBlock_info.Text = infoContent;
             });
+
         }
 
         /// <summary>
@@ -457,68 +465,15 @@ namespace SpaceCG.Device
             }
         }
 
-        public void OpenChannel()
-        {
-            foreach (var ledRenderBus in LedRenderBus.Collections)
-            {
-                try
-                {
-                    ledRenderBus.OpenChannel();
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError($"OpenChannel ({ledRenderBus.Name}) Exception: {ex.Message}");
-                }
-            }
-        }
-        public void CloseChannel()
-        {
-            foreach (var ledRenderBus in LedRenderBus.Collections)
-            {
-                try
-                {
-                    ledRenderBus.CloseChannel();
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError($"CloseChannel ({ledRenderBus.Name}) Exception: {ex.Message}");
-                }
-            }
-        }
-
         /// <summary> 启动渲染  </summary>
         public void StartRender()
         {
-            foreach (var ledRenderBus in LedRenderBus.Collections)
-            {
-                try
-                {
-                    ledRenderBus.StartRender();
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError($"StartRender ({ledRenderBus.Name}) Exception: {ex.Message}");
-                }
-            }
-
-            this.drawingDisplay.StartDrawing();
+            LedRenderBus.Collections.OpenChannel();
+            LedRenderBus.Collections.StartRender();
         }
+        
         /// <summary> 停止渲染  </summary>
-        public void StopRender()
-        {
-            this.drawingDisplay.StopDrawing();
-            foreach (var ledRenderBus in LedRenderBus.Collections)
-            {
-                try
-                {
-                    ledRenderBus.StopRender();
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError($"StopRender ({ledRenderBus.Name}) Exception: {ex.Message}");
-                }
-            }
-        }
+        public void StopRender() => LedRenderBus.Collections.StopRender();
         
         /// <summary>  取消延时渲染任务  </summary>
         private void CancelRenderTask()
