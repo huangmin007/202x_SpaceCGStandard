@@ -50,6 +50,7 @@ namespace SpaceCG.Extensions
             }
         }
 
+
         /// <summary>
         /// 在一个一维数组中查找指定元素的位置（扩展方法版本）。
         /// </summary>
@@ -70,6 +71,5 @@ namespace SpaceCG.Extensions
             }
             return -1;
         }
-
     }
 }

@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using SpaceCG.Extensions;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Device
 {
@@ -112,6 +112,7 @@ namespace SpaceCG.Device
         /// 渲染帧队列，存放待渲染管线消费的数据帧。
         /// </summary>
         /// <remarks>使用 <see cref="ConcurrentQueue{T}"/> 保证线程安全的入队/出队操作。</remarks>
+        //private readonly Queue<byte[]> _renderingFrames = new Queue<byte[]>(16);
         private readonly ConcurrentQueue<byte[]> _renderingFrames = new ConcurrentQueue<byte[]>();
         
         /// <summary>
@@ -137,16 +138,16 @@ namespace SpaceCG.Device
         /// <para>设置为 0 或负数时禁用去重优化，每帧都渲染。</para>
         /// <para>子类可在初始化时按需调整此值。</para>
         /// </remarks>
-        public int RenderingRepeatInterval { get; protected set; } = 10;
+        public int RenderingRepeatInterval { get; protected set; } = 8;
         /// <summary>
-        /// 获取当前渲染队列中待处理的帧数量。
+        /// 获取当前渲染队列中待处理渲染的帧数量。
         /// </summary>
         /// <remarks>
         /// <para>该值为 <see cref="_renderingFrames"/> 队列的实时快照，包含所有待渲染帧（含颜色帧和非颜色帧）。</para>
         /// <para>返回值范围：0 ~ 无上限（受 <see cref="EnqueueFrame"/> 的溢出策略控制，颜色帧通常不超过 <see cref="MaxRenderingFrameCount"/> = 3）。</para>
         /// <para><b>线程安全：</b><see cref="ConcurrentQueue{T}.Count"/> 为快照值，在并发入队/出队时可能已过期，仅作近似参考。</para>
         /// </remarks>
-        public int RenderingFrameCount => _renderingFrames.Count;
+        public int PendingFrameCount => _renderingFrames.Count;
         /// <summary> 
         /// 当前渲染帧率（帧/秒）。 
         /// </summary>
@@ -171,13 +172,28 @@ namespace SpaceCG.Device
         /// 获取或设置是否允许渲染当前设备或灯带的数据帧。
         /// </summary>
         /// <remarks>
-        /// <para>设置为 <c>false</c> 时，渲染管线将跳过此设备或灯带，不发送任何数据。</para>
+        /// <para>设置为 <c>false</c> 时，渲染管线将跳过此设备或灯带，不发送任何数据帧。</para>
         /// <para>可用于实现渲染的暂停/恢复控制，或按条件禁用特定灯带。</para>
         /// <para>默认值：<c>true</c>。</para>
         /// </remarks>
         public bool IsRenderEnabled { get; set; } = true;
         #endregion
 
+        #region 其它属性
+        /// <summary> 获取或设置一个用于存储有关此元素的自定义信息的任意对象值。 </summary>
+        public object Tag { get; set; }
+        /// <summary> 备注信息，用于标识总线的用途或其他信息 </summary>
+        public string Comment { get; set; } = string.Empty;
+        #endregion
+
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="port"></param>
+        /// <param name="ledType"></param>
+        /// <param name="ledColorFormat"></param>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
         public FrameRenderModel(ushort address, byte port, LedType ledType, ColorFormat ledColorFormat)
         {
             if (address > 4096) throw new ArgumentOutOfRangeException(nameof(address), address, "地址值必须在 0 ~ 4096 范围内");
@@ -191,52 +207,6 @@ namespace SpaceCG.Device
 
             this.CurrentMaxLedCount = ColorFormat.GetChannelCount() == 3 ? MaxRGBLedCount : MaxWRGBLedCount;
         }
-
-        #region 设置上电显示颜色
-#if false
-        /// <summary>
-        /// 设置上电显示颜色
-        /// </summary>
-        /// <param name="color">填充的颜色数据</param>
-        /// <param name="isShow">开启/关闭上电显示颜色</param>
-        /// <param name="colorFormat"> <paramref name="color"/> 的颜色格式，默认为 ARGB</param>
-        public void SetPowerOnColor(uint color, bool isShow = true, ColorFormat colorFormat = ColorFormat.ARGB)
-        {
-            var ledCount = LedCount;
-            if (ledCount <= 0) throw new InvalidOperationException("LedCount must be greater than 0");
-
-            byte[] frame = CreateEmptyColorFrame(1, ledCount);
-
-            // 设置上电显示的颜色（9B）
-            // 关闭上电显示功能（9C）
-            frame[8] = (byte)(isShow ? 0x9B : 0x9C);    // 功能码
-
-            if (isShow)
-            {
-                // 通道索引表
-                var inputIndices = colorFormat.GetChannelIndices();
-                var outputIndices = ColorFormat.GetChannelIndices();
-
-                // 颜色的通道数量
-                int inputChannelCount = inputIndices.Count;
-                int outputChannelCount = outputIndices.Count;
-
-                if (inputChannelCount != 4)
-                    throw new ArgumentException("输入颜色值 (uint类型) 的通道数量必须为 4 ", nameof(colorFormat));
-
-                int index = -1, outputOffset = 0;
-                for (var j = 0; j < outputChannelCount; j++)
-                {
-                    outputOffset = j + FrameHeaderLength;
-                    index = inputIndices.IndexOf(outputIndices[j]);
-                    frame[outputOffset] = (byte)((color >> (24 - index * 8)) & 0xFF);
-                }
-            }
-
-            EnqueueFrame(frame);
-        }
-#endif
-        #endregion
 
         #region CreateEmptyFrame/AddFrame 系列方法
         /// <summary>
@@ -559,6 +529,7 @@ namespace SpaceCG.Device
 
             _renderingFrames.Enqueue(frame);
 
+            // 正常渲染时，保留非颜色帧（如指令帧）
             if (IsRenderEnabled)
             {
                 var isColorFrame = (frame[8] == 0x98 || frame[8] == 0x99);
@@ -567,6 +538,8 @@ namespace SpaceCG.Device
 
             while (_renderingFrames.Count > MaxRenderingFrameCount)
             {
+                // 正常渲染时，保留非颜色帧（如指令帧）
+                // 暂停渲染时，所有帧都可以丢弃
                 if (IsRenderEnabled && _renderingFrames.TryPeek(out var _frame))
                 {
                     var isColorFrame = (_frame[8] == 0x98 || _frame[8] == 0x99);
@@ -589,7 +562,6 @@ namespace SpaceCG.Device
         internal bool TryDequeueFrame(out byte[] frame)
         {
             frame = null;
-            if (!IsRenderEnabled) return false;
             if (_renderingFrames.IsEmpty) return false;
             if (!_renderingFrames.TryDequeue(out var _frame)) return false;
 
@@ -606,10 +578,11 @@ namespace SpaceCG.Device
                         _frame = null;
                         return false;
                     }
-                    //Trace.WriteLine($"{DateTime.Now:hh:mm:ss.fff} 渲染相同的帧 {Address}_{Port}  {_renderingRepeatCount}");
+
                     frame = _frame;
                     _renderingCount++;
                     _lastRenderingFrame = _frame;
+                    //Trace.WriteLine($"{DateTime.Now:hh:mm:ss.fff} 渲染相同的帧 {Address}_{Port}  {_renderingRepeatCount}");
                     return true;
                 }
 
@@ -618,7 +591,6 @@ namespace SpaceCG.Device
                 _renderingRepeatCount = 0;
                 _lastRenderingFrame = _frame;
                 //Trace.WriteLine($"{DateTime.Now:hh:mm:ss.fff} 渲染相同的帧222 {Address}_{Port}  {_renderingRepeatCount}");
-
                 return true;
             }
         }
@@ -641,7 +613,7 @@ namespace SpaceCG.Device
         /// <remarks>
         /// <para>通常在灯带配置变更或清空渲染队列时调用。受 <c>_renderingLock</c> 保护。</para>
         /// </remarks>
-        internal void ResetRenderingState()
+        protected internal void ResetRenderingState()
         {
             lock (_renderingLock)
             {
@@ -655,4 +627,5 @@ namespace SpaceCG.Device
         #endregion
 
     }
+
 }

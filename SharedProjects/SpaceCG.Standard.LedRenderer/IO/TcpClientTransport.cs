@@ -18,7 +18,7 @@ namespace SpaceCG.IO
         private TcpClient _tcpClient;
 
         /// <inheritdoc/>
-        public TransportType Type => TransportType.TCP;
+        public ChannelType Type => ChannelType.TCP;
 
         /// <inheritdoc/>
         public string Name => $"{Type}_{_hostname}_{_port}";
@@ -114,13 +114,6 @@ namespace SpaceCG.IO
             _tcpClient.Close();
             _tcpClient.Dispose();
             _tcpClient = null;
-        }
-
-        /// <inheritdoc/>
-        public int ReadByte()
-        {
-            if (_tcpClient == null || !IsConnected) return -1;
-            return _tcpClient.GetStream().ReadByte();
         }
 
         /// <inheritdoc/>

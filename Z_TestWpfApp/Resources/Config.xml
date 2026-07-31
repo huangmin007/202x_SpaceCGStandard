@@ -18,17 +18,17 @@
 
 	<!-- 灯带设备配置 -->
 	<LedDevices>
-		<LedRenderBus Type="SERIAL" Params="CH343,460800" Interval="40" Comment="">
+		<LedRenderBus Type="SERIAL" Params="CH343,460800" Interval="40" Comment="">			
 			<LedStripObject Address="1" Port="1" Count="100" Comment="右1" />
 			
 			<LedStripObject Address="1" Port="2" ColorFormat="GRB" Count="165" Comment="右2" />
 			<LedStripObject Address="1" Port="3" ColorFormat="GRB" Count="110" Comment="右3" />
 			<LedStripObject Address="1" Port="4" ColorFormat="GRB" Count="165" Comment="右4" />
 			<LedStripObject Address="1" Port="5" ColorFormat="GRB" Count="272" Comment="右5" />
-			<LedStripObject Address="1" Port="6" ColorFormat="GRB" Count="100" Comment="右6" />
-			
+			<LedStripObject Address="1" Port="6" ColorFormat="GRB" Count="100" Comment="右6" />			
 		</LedRenderBus>
-<!--
+
+		<!--
 		<LedRenderBus Type="SERIAL" Params="CH B,921600" Interval="40" Comment="">
 			<LedStripObject Address="2" Port="1" ColorFormat="GRB" Count="103" FillCount="15" RepeatCount="17" Comment="右7" />
 			<LedStripObject Address="2" Port="2" ColorFormat="GRB" Count="232" Comment="右8" />
@@ -46,9 +46,9 @@
 
 		<Scene Id="0" Name="流动白色柔光" RFID="0" >
 			<Scene.Dictionary>
-				<Item Key="浅白色_常亮" Value="#FFDDDDDD" />
-				<Item Key="浅白色流水_正向" Value="[[#00DDDDDD,#FFDDDDDD]],[15],1.5,1" />
-				<Item Key="浅白色流水_反向" Value="[[#FFDDDDDD,#00DDDDDD]],[15],1.5,-1" />
+				<Item Key="浅白色_常亮" Value="#FF666666" />
+				<Item Key="浅白色流水_正向" Value="[[#00666666,#FF666666]],[15],1.5,1" />
+				<Item Key="浅白色流水_反向" Value="[[#FF666666,#00666666]],[15],1.5,-1" />
 			</Scene.Dictionary>
 
 			<LedStripObject Address="1" Port="1" Action="FlowLinearBrush" Params="{浅白色流水_正向}" Comment="" />
@@ -76,8 +76,6 @@
 			<LedStripObject Address="1" Port="3" Action="GroupBlackAndFlowLinearBrush" Params="{浅蓝色流水_正向_右3}" Comment="右3" />
 			<LedStripObject Address="1" Port="4" Action="FlowLinearBrush" Params="{浅蓝色流水_正向}" Comment="" />
 			<LedStripObject Address="1" Port="5" Action="FlowLinearBrush" Params="{浅蓝色流水_反向}" Comment="" />
-			
-
 		</Scene>
 
 		<Scene Id="2" Name="绿色与可持续材料(浅绿色)" RFID="0453875215" >
@@ -87,7 +85,7 @@
 				<Item Key="浅绿色流水_反向" Value="[[#FF00DD66,#1100DD66]],[15],1.5,-1" />
 			</Scene.Dictionary>
 
-			<LedStripObject Address="1" Port="1" FillCount="1" RepeatCount="85"  Action="ColorBrush" Params="{浅绿色_常亮}" Comment="" />
+			<LedStripObject Address="1" Port="1" FillCount="1" RepeatCount="85" Action="ColorBrush" Params="{浅绿色_常亮}" Comment="" />
 			
 		</Scene>
 
@@ -102,7 +100,7 @@
 			<LedStripObject Address="1" Port="3" Action="FlowLinearBrush" Params="{浅黄色流水_正向}" Comment="右3" />
 			<LedStripObject Address="1" Port="4" Action="FlowLinearBrush" Params="{浅黄色流水_正向}" Comment="右4" />
 			<LedStripObject Address="1" Port="6" Action="FlowLinearBrush" Params="{浅黄色流水_反向}" Comment="右6" />
-</Scene>
+		</Scene>
 
 		<Scene Id="4" Name="天然来源创新提取物(浅粉色)" RFID="0453875214" >
 			<Scene.Dictionary>
@@ -111,7 +109,7 @@
 				<Item Key="浅粉色流水_反向" Value="[[#FFEE66CC,#11EE66CC]],[15],1.5,-1" />
 				<Item Key="浅粉色流水_正向_左9" Value="19,400,[[#11EE66CC,#FFEE66CC]],[15],1.5,1" />
 			</Scene.Dictionary>
-</Scene>
+		</Scene>
 
 		<Scene Id="5" Name="纳米与仿生材料(浅青色)" RFID="0453875217" >
 			<Scene.Dictionary>

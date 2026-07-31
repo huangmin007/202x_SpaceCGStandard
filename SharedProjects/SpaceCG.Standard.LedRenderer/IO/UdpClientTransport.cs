@@ -20,7 +20,7 @@ namespace SpaceCG.IO
         private bool _isConnected = false;
 
         /// <inheritdoc/>
-        public TransportType Type => TransportType.UDP;
+        public ChannelType Type => ChannelType.UDP;
 
         /// <inheritdoc/>
         public string Name => $"{Type}_{_hostname}_{_port}";
@@ -109,12 +109,6 @@ namespace SpaceCG.IO
 
             _isConnected = false;
             _udpClient.Close();
-        }
-
-        /// <inheritdoc/>
-        public int ReadByte()
-        {
-            throw new NotImplementedException();
         }
 
         /// <inheritdoc/>

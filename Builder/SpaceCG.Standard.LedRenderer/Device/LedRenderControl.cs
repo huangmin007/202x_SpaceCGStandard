@@ -185,7 +185,7 @@ namespace SpaceCG.Device
             const int DefaultHeight = 10;
             foreach (var busElement in ledDevices.Elements("LedRenderBus"))
             {
-                if (!Enum.TryParse<TransportType>(busElement.Attribute(nameof(ITransportChannel.Type))?.Value, true, out var type)) continue;
+                if (!Enum.TryParse<ChannelType>(busElement.Attribute(nameof(ITransportChannel.Type))?.Value, true, out var type)) continue;
 
                 var ledStripElements = busElement.Elements(nameof(LedStripObject));
                 if (!ledStripElements.Any()) continue;
@@ -200,7 +200,7 @@ namespace SpaceCG.Device
                         {
                             // 如果配置中设置了灯珠数量，则按设置数量，否则按默认数量
                             var ledCount = int.TryParse(ledStripElement.Attribute("Count")?.Value, out int _count) ? _count : DefaultCount;
-                            ledStripElement.SetAttributeValue("LedPoints", $"0,{y + 2}, ... ,{ledCount},{y + 2}");
+                            ledStripElement.SetAttributeValue("LedPoints", $"0,{y + 2}, ... ,{ledCount - 1},{y + 2}");
                         }
                         y += 20;
 #endif
@@ -275,7 +275,7 @@ namespace SpaceCG.Device
             FpsBuilder.AppendLine($"Drawing FPS:{drawingDisplay.Fps} ");
             foreach (var ledRenderBus in LedRenderBus.Collections)
             {
-                FpsBuilder.Append($"{ledRenderBus.Name} FPS:{ledRenderBus.Fps} ");
+                FpsBuilder.Append($"{ledRenderBus.Name} FPS:{ledRenderBus.LoopFps}/{ledRenderBus.Fps} ");
                 foreach (var strip in ledRenderBus.LedStrips.Values)
                 {
                     FpsBuilder.Append($"{strip.Address}_{strip.Port}:{strip.Fps} ");
@@ -596,53 +596,18 @@ namespace SpaceCG.Device
                     if (string.IsNullOrWhiteSpace(actionValue)) continue;
                     if (!StringExtensions.TryParseParameters(ledStripElement.Attribute("Params")?.Value, out var paramArray)) continue;
 
+                    var ledStripObject = LedRenderBus.Collections.GetLedStrip(address, port);
+                    if (ledStripObject == null) continue;
+
                     // 优化渲染参数
-                    foreach (var ledStripObject in LedRenderBus.Collections.GetLedStrips())
-                    {
-                        if (ledStripObject.Address == address && ledStripObject.Port == port)
-                        {
-                            ledStripObject.IsRenderEnabled = true;
-                            var element = ledStripObject.Tag as XElement;
-
-                            if (ledStripElement.TryGetValue("Timeout", out int timeout))
-                            {
-                                ledStripObject.Timeout = timeout;
-                            }
-                            else
-                            {
-                                if (element != null && element.TryGetValue("Timeout", out int _timeout))
-                                {
-                                    ledStripObject.Timeout = _timeout;
-                                }
-                            }
-
-                            if (ledStripElement.TryGetValue("FillCount", out ushort fillCount))
-                            {
-                                ledStripObject.FillCount = fillCount;
-                            }
-                            else
-                            {
-                                if (element != null && element.TryGetValue("FillCount", out ushort _fillCount))
-                                {
-                                    ledStripObject.FillCount = _fillCount;
-                                }
-                            }
-
-                            if (ledStripElement.TryGetValue("RepeatCount", out ushort repeatCount))
-                            {
-                                ledStripObject.RepeatCount = repeatCount;
-                            }
-                            else
-                            {
-                                if (element != null && element.TryGetValue("RepeatCount", out ushort _repeatCount))
-                                {
-                                    ledStripObject.RepeatCount = _repeatCount;
-                                }
-                            }
-                            break;
-                        }
-                    }
-
+                    var element = ledStripObject.Tag as XElement;
+                    var timeout = ledStripElement.Attribute("Timeout") != null ? ledStripElement.Attribute("Timeout").Value : (element?.Attribute("Timeout") != null ? element.Attribute("timeout ").Value : "0");
+                    var fillCount = ledStripElement.Attribute("FillCount") != null ? ledStripElement.Attribute("FillCount").Value : (element?.Attribute("FillCount") != null ? element.Attribute("FillCount").Value : "0");
+                    var repeatCount = ledStripElement.Attribute("RepeatCount") != null ? ledStripElement.Attribute("RepeatCount").Value : (element?.Attribute("RepeatCount") != null ? element.Attribute("RepeatCount").Value : "1");
+                    if (timeout.TryConvertTo(out int _timeout)) ledStripObject.Timeout = _timeout;
+                    if (fillCount.TryConvertTo(out int _fillCount)) ledStripObject.FillCount = _fillCount;
+                    if (repeatCount.TryConvertTo(out int _repeatCount)) ledStripObject.RepeatCount = _repeatCount;
+                    
                     if (InstanceExtensions.TryInvokeMethod("SpaceCG.Extensions.BrushExtensions", actionValue, paramArray, out object result) && result is Brush newBrush)
                     {
 #if true

@@ -5,7 +5,7 @@ namespace SpaceCG.IO
     /// <summary>
     /// 传输通道类型枚举。
     /// </summary>
-    public enum TransportType
+    public enum ChannelType
     {
         /// <summary>  串口通信（RS-232/RS-485 等）  </summary>
         SERIAL,
@@ -27,7 +27,7 @@ namespace SpaceCG.IO
         /// <summary>
         /// 获取传输通道类型（串口 / TCP / UDP）
         /// </summary>
-        TransportType Type { get; }
+        ChannelType Type { get; }
 
         /// <summary>
         /// 获取传输通道的标识名称。
@@ -81,12 +81,6 @@ namespace SpaceCG.IO
         /// 丢弃发送缓冲区中的所有数据。
         /// </summary>
         void ClearWriteBuffer();
-
-        /// <summary>
-        /// 从传输通道同步读取一个字节。
-        /// </summary>
-        /// <returns></returns>
-        int ReadByte();
 
         /// <summary>
         /// 从传输通道同步读取数据。

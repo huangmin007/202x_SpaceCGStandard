@@ -6,6 +6,7 @@ using SpaceCG.Device;
 
 namespace SpaceCG.Extensions
 {
+
     /// <summary>
     /// 颜色格式的扩展方法
     /// </summary>
@@ -59,7 +60,6 @@ namespace SpaceCG.Extensions
         /// <returns>通道索引表，数组元素为 <see cref="ColorChannel"/> 枚举值</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static IReadOnlyList<byte> GetChannelIndices(this ColorFormat format) => ColorChannelIndices[format];
-        
 
         /// <summary>
         /// 转换颜色数据的格式（分配新数组返回结果）
@@ -136,7 +136,7 @@ namespace SpaceCG.Extensions
 
             // 计算输出的像素数量
             int pixelCount = inputColors.Count / inputChannelCount;
-            
+
             int i = 0, j = 0, index = -1;
             int _inputOffset = 0, _outputOffset = 0;
 
@@ -274,7 +274,7 @@ namespace SpaceCG.Extensions
                 throw new ArgumentException($"指定的输出区域 {outputRectangle} 超出了图像输入边界 {inputRectangle}");
 
             // 输出像素排列的通道索引表
-            var outputIndices = ColorChannelIndices[outputFormat];            
+            var outputIndices = ColorChannelIndices[outputFormat];
             var outputChannelCount = outputIndices.Count;
             byte[] results = new byte[outputRectangle.Width * outputRectangle.Height * outputChannelCount];
 

@@ -20,7 +20,7 @@ namespace SpaceCG.IO
         public object Tag { get; set; }
         
         /// <inheritdoc/>
-        public TransportType Type => TransportType.SERIAL;
+        public ChannelType Type => ChannelType.SERIAL;
         /// <inheritdoc/>
         public string Name => $"{Type}_{_serialPort.PortName}_{_serialPort.BaudRate}";
 
@@ -107,7 +107,7 @@ namespace SpaceCG.IO
             _serialPort.StopBits = stopBits;
 
             _serialPort.NewLine = "\r\n";
-            _serialPort.ReadBufferSize = 4096 * 8;
+            _serialPort.ReadBufferSize = 4096 * 16;
             _serialPort.WriteBufferSize = 2048 * 64;
         }
 
@@ -148,14 +148,6 @@ namespace SpaceCG.IO
 
             if (_serialPort.IsOpen)
                 _serialPort.Close();                
-        }
-
-        /// <inheritdoc/>
-        public int ReadByte()
-        {
-            if (_serialPort == null || !_serialPort.IsOpen) return -1;
-
-            return _serialPort.ReadByte();
         }
 
         /// <inheritdoc/>

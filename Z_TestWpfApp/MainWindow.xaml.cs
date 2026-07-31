@@ -60,6 +60,9 @@ namespace Z_TestWpfApp
             long ms = 0;
             switch (e.Key)
             {
+                case Key.D0:
+                    ledRenderControl.RenderSceneId(0);
+                    break;
                 case Key.D1:
                     ledRenderControl.RenderSceneId(1);
                     //await rpcClient.InvokeActionAsync("Demo", "test", new object[] {1,2 });
@@ -85,9 +88,6 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D9:
-                    break;
-
-                case Key.D0:
                     break;
 
                 case Key.D:
@@ -132,7 +132,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.V:
-                    _ledRenderBus.AddColorFrame(0xFF00FF00, 1, 10);
+                    _ledRenderBus.AddColorFrame(0x0001, 0x01, 0xFF00FF00, 1, 10);
                     break;
             }
         }
@@ -141,17 +141,20 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            //_ledRenderBus = new LedRenderBus(SpaceCG.IO.TransportType.SERIAL, "CH343,460800");
-            //var ledStrip = new LedStripObject(0x0001, 0x01);
-            //ledStrip.AddPoints(new Point(0, 0), new Point(99, 0));
-            //_ledRenderBus.AddLedStrip(ledStrip);
-
+#if false
+            _ledRenderBus = new LedRenderBus(SpaceCG.IO.ChannelType.SERIAL, "CH343,460800");
+            var ledStrip = new LedStripObject(0x0001, 0x01);
+            ledStrip.AddPoints(new Point(0, 0), new Point(99, 0));
+            _ledRenderBus.AddLedStrip(ledStrip);
+#else
             var config = XElementExtensions.LoadConfig($"Resources/Config.xml");
             ledRenderControl = new LedRenderControl(Canvas_Leds);
             ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
-            ledRenderControl.StartRender();
             ledRenderControl.OpenChannel();
+            ledRenderControl.StartRender();
             ledRenderControl.RenderSceneId(1);
+#endif
+
         }
 
         private string F2(ICollection<byte> b)

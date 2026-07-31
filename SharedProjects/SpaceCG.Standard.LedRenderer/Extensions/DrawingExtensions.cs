@@ -2,7 +2,8 @@
 using System.Linq;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
-using System.Drawing;
+using Point = System.Drawing.Point;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace SpaceCG.Extensions
 {
