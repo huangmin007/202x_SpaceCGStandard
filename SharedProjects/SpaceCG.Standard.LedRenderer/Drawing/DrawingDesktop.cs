@@ -145,7 +145,7 @@ namespace SpaceCG.Drawing
             while (drawing._isCapturing)
             {
                 stopwatch.Restart();
-                FrameTimes.Enqueue(DateTime.Now);
+                FrameTimes.Enqueue(DateTime.UtcNow);
 #if false
                 using (Bitmap bitmap = new Bitmap(rectangle.Width, rectangle.Height, PixelFormat.Format24bppRgb))
                 {
@@ -207,8 +207,8 @@ namespace SpaceCG.Drawing
                     }
                 }
 #endif
-                var now = DateTime.Now;
-                while (FrameTimes.Count > 0 && now - FrameTimes.Peek() > WindowTimes)
+                var utcNow = DateTime.UtcNow;
+                while (FrameTimes.Count > 0 && utcNow - FrameTimes.Peek() > WindowTimes)
                 {
                     FrameTimes.Dequeue();
                 }

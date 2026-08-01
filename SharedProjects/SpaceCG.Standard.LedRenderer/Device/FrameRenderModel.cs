@@ -1,4 +1,6 @@
-﻿using System;
+﻿#define UseQueue    // 使用非安全队列
+
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using SpaceCG.Extensions;
@@ -29,7 +31,7 @@ namespace SpaceCG.Device
     /// <para>  RGB 最小帧长: 16(帧头) + 2(帧尾) + 3(RGB最小数据) = 21 字节；最大长度：16(帧头) + 2(帧尾) + 3072(1024*3 RGB最大数据) = 3099 字节 </para>
     /// <para>  WRGB 最小帧长: 16(帧头) + 2(帧尾) + 4(WRGB最小数据) = 22 字节；最大长度：16(帧头) + 2(帧尾) + 3072(768*4 WRGB最大数据) = 3099 字节 </para>
     /// <para><b>线程安全：</b></para>
-    /// <para>  渲染状态（<c>_renderingCount</c>、<c>_lastRenderingFrame</c>、<c>_renderingRepeatCount</c>）通过 <c>_renderingLock</c> 同步。</para>
+    /// <para>  渲染状态（<c>_renderingCount</c>、<c>_lastRenderingFrame</c>、<c>_renderingRepeatCount</c>）通过 <c>_renderingStateLock</c> 同步。</para>
     /// <para>  渲染队列使用 <see cref="ConcurrentQueue{T}"/> 保证线程安全。</para>
     /// <para>  灯带属性（Group、Address、Port 等）在初始化后不变，无额外同步。</para>
     /// </remarks>
@@ -52,10 +54,10 @@ namespace SpaceCG.Device
 
         /// <summary> 渲染队列最大容量 </summary>
         protected internal const int MaxRenderingFrameCount = 3;
+        /// <summary> 空闲帧池最大容量 </summary>
+        protected internal const int MaxAvailableFrameCount = 8;
 
-        /// <summary>
-        /// 默认数据帧(无响应的帧)发送后等待的时间，单位：毫秒
-        /// </summary>
+        /// <summary> 默认数据帧(无响应的帧)发送后等待的时间，单位：毫秒  </summary>
         protected internal const int DefaultTimeout = 10;
 
 
@@ -111,31 +113,45 @@ namespace SpaceCG.Device
 
         #region 渲染相关属性
         /// <summary>
+        /// 空闲数据帧池 — 可供取用的帧缓冲区（对象池）
+        /// </summary>
+#if UseQueue
+        private readonly Queue<byte[]> _availableFrames = new Queue<byte[]>(16);
+        private readonly object _availableFramesLock = new object();
+#else
+        private readonly ConcurrentQueue<byte[]> _availableFrames = new ConcurrentQueue<byte[]>();
+#endif
+
+        /// <summary>
         /// 渲染状态同步锁，保护 <see cref="_lastRenderingFrame"/>、<see cref="_renderingRepeatCount"/>、<see cref="_renderingCount"/> 的并发访问。
         /// </summary>
-        private readonly object _renderingLock = new object();
+        private readonly object _renderingStateLock = new object();
         /// <summary>
         /// 渲染帧队列，存放待渲染管线消费的数据帧。
         /// </summary>
         /// <remarks>使用 <see cref="ConcurrentQueue{T}"/> 保证线程安全的入队/出队操作。</remarks>
-        //private readonly Queue<byte[]> _renderingFrames = new Queue<byte[]>(16);
+#if UseQueue
+        private readonly Queue<byte[]> _renderingFrames = new Queue<byte[]>(8);
+        private readonly object _renderingFramesLock = new object();
+#else
         private readonly ConcurrentQueue<byte[]> _renderingFrames = new ConcurrentQueue<byte[]>();
-        
+#endif
+
         /// <summary>
-        /// 自上次 <see cref="ResetRenderingState"/> 调用以来已渲染的帧累计数量，用于计算 FPS。
+        /// 自上次 <see cref="ResetRenderingState"/> 调用以来已渲染的帧累计数量，可用于计算 FPS。
         /// </summary>
-        /// <remarks>受 <c>_renderingLock</c> 保护。</remarks>
+        /// <remarks>受 <c>_renderingStateLock</c> 保护。</remarks>
         private int _renderingCount = 0;
         /// <summary>
         /// 连续相同数据帧的累计计数。当帧内容与 <see cref="_lastRenderingFrame"/> 相同时递增，
         /// 达到 <see cref="RenderingRepeatInterval"/> 的整数倍时才实际渲染一次，其余跳过以降低无效渲染开销。
         /// </summary>
-        /// <remarks>受 <c>_renderingLock</c> 保护。</remarks>
+        /// <remarks>受 <c>_renderingStateLock</c> 保护。</remarks>
         private int _renderingRepeatCount = 0;
         /// <summary>
         /// 上一次实际渲染的数据帧引用，用于与当前帧做内容比较以检测连续相同帧。
         /// </summary>
-        /// <remarks>受 <c>_renderingLock</c> 保护。初始值为 <see cref="Array.Empty{T}"/>，确保首帧必然渲染。</remarks>
+        /// <remarks>受 <c>_renderingStateLock</c> 保护。初始值为 <see cref="Array.Empty{T}"/>，确保首帧必然渲染。</remarks>
         private byte[] _lastRenderingFrame = Array.Empty<byte>();
         /// <summary>
         /// 连续相同帧的渲染间隔。当连续相同帧累计次数为该值的整数倍时，才实际渲染一次。
@@ -153,7 +169,11 @@ namespace SpaceCG.Device
         /// <para>返回值范围：0 ~ 无上限（受 <see cref="EnqueueFrame"/> 的溢出策略控制，颜色帧通常不超过 <see cref="MaxRenderingFrameCount"/> = 3）。</para>
         /// <para><b>线程安全：</b><see cref="ConcurrentQueue{T}.Count"/> 为快照值，在并发入队/出队时可能已过期，仅作近似参考。</para>
         /// </remarks>
+#if UseQueue
+        public int PendingFrameCount { get { lock (_renderingFramesLock) { return _renderingFrames.Count; } } }
+#else
         public int PendingFrameCount => _renderingFrames.Count;
+#endif
         /// <summary> 
         /// 当前渲染帧率（帧/秒）。 
         /// </summary>
@@ -183,7 +203,7 @@ namespace SpaceCG.Device
         /// <para>默认值：<c>true</c>。</para>
         /// </remarks>
         public bool IsRenderEnabled { get; set; } = true;
-        #endregion
+#endregion
 
         #region 其它属性
         /// <summary> 获取或设置一个用于存储有关此元素的自定义信息的任意对象值。 </summary>
@@ -214,109 +234,7 @@ namespace SpaceCG.Device
             this.CurrentMaxLedCount = ColorFormat.GetChannelCount() == 3 ? MaxRGBLedCount : MaxWRGBLedCount;
         }
 
-        #region CreateEmptyFrame/AddFrame 系列方法
-        /// <summary>
-        /// 添加一个通用数据帧到渲染队列（不限定帧类型，如上电显示指令等非颜色帧）。仅校验帧头/帧尾格式、端口号和设备地址。
-        /// </summary>
-        /// <param name="frame">待入队的完整数据帧。</param>
-        /// <exception cref="ArgumentException">帧格式错误或地址/端口不匹配。</exception>
-        /// <remarks>与 <see cref="AddColorFrame(byte[])"/> 不同，本方法不校验功能码和灯带类型，也不修正 Group/Reserved/Repeat 字段。</remarks>
-        public void AddFrame(byte[] frame)
-        {
-            if (frame == null || frame.Length < RGBFrameBaseLength ||
-                frame[0] != 0xDD || frame[1] != 0x55 || frame[2] != 0xEE ||
-                frame[frame.Length - 2] != 0xAA || frame[frame.Length - 1] != 0xBB)
-                throw new ArgumentException("数据帧格式错误", nameof(frame));
-
-            if (Port != frame[7]) throw new ArgumentException("数据帧的端口号不匹配");
-            if (Address != ((frame[5] << 8) | frame[6])) throw new ArgumentException("数据帧的设备地址不匹配");
-
-            EnqueueFrame(frame);
-        }
-        #endregion
-
-        #region CreateColorFrame/AddColorFrame 系列方法        
-        /// <summary>
-        /// 创建一个颜色数据帧，并填充帧头、帧尾及协议字段（除颜色数据外）。
-        /// </summary>
-        /// <param name="fromPosition">点亮灯珠 IC 的起始位置，可取值范围：[0, <see cref="LedCount"/>]。 小于 1 时功能码为 0x99，大于 1 时功能码为 0x98 且写入 [10-11] 字节。</param>
-        /// <param name="fillCount">填充的灯珠数量（颜色数据中的像素数），会被钳制到 [1, <see cref="LedCount"/>] 范围。</param>
-        /// <param name="repeatCount">颜色数据的扩展/重复次数，会被钳制到 [1, <see cref="LedCount"/>] 范围。</param>
-        /// <returns>已填充协议头尾字段的帧缓冲区，颜色数据区域为全零。</returns>
-        /// <exception cref="InvalidOperationException"><see cref="LedCount"/> 未初始化（≤0）。</exception>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        protected internal byte[] CreateEmptyColorFrame(int fromPosition, int fillCount, int repeatCount)
-        {
-            var ledCount = LedCount;
-            if (ledCount <= 0 || ledCount > CurrentMaxLedCount)
-                throw new InvalidOperationException($"灯珠数量必须在 0 ~ {CurrentMaxLedCount} 之间");
-            if (fromPosition > ledCount)
-                throw new ArgumentOutOfRangeException(nameof(fromPosition), fromPosition, $"IC 显示索引偏移位置必须在 0 ~ {ledCount} 之间");
-
-            if (fromPosition < 0) fromPosition = 0;
-
-            if (fillCount <= 0) fillCount = 1;
-            if (fillCount > ledCount) fillCount = ledCount;
-
-            if (repeatCount <= 0) repeatCount = 1;
-            if (repeatCount > ledCount) repeatCount = ledCount;
-
-            // 实际需要点亮的灯珠数量
-            int targetFillCount = ledCount - fromPosition;
-            // 优化计算，如果 填充*重复次数 的总灯珠数量 大于实际需要点亮的数量，则优化重复次数和填充数量
-            int repeatFillCount = fillCount * repeatCount;
-            if (repeatFillCount > targetFillCount && repeatCount > 1)
-            {
-                repeatCount = (int)Math.Ceiling(targetFillCount / (double)fillCount);
-            }
-
-            // 颜色数据占用的字节长度
-            var colorSize = fillCount * ColorFormat.GetChannelCount();
-            // 当前帧的字节总长度
-            var frameSize = colorSize + FrameHeaderLength + FrameFooterLength;
-
-            byte[] frame = new byte[frameSize];
-
-            frame[0] = 0xDD;
-            frame[1] = 0x55;
-            frame[2] = 0xEE;
-
-            frame[3] = (byte)(Group >> 8);                  // 组地址
-            frame[4] = (byte)(Group & 0xFF);
-
-            frame[5] = (byte)(Address >> 8);                // 设备地址
-            frame[6] = (byte)(Address & 0xFF);
-
-            frame[7] = Port;                                // 端口号
-
-            frame[8] = (byte)(fromPosition > 1 ? 0x98 : 0x99);    // 功能码
-            frame[9] = (byte)LedType;                       // 灯带类型
-
-            if (fromPosition > 1)
-            {
-                frame[10] = (byte)(fromPosition >> 8);      // IC 起始索引偏移
-                frame[11] = (byte)(fromPosition & 0xFF);
-            }
-            else
-            {
-                frame[10] = (byte)(Reserved >> 8);          // 保留字段
-                frame[11] = (byte)(Reserved & 0xFF);
-            }
-
-            frame[12] = (byte)(colorSize >> 8);             // 数据长度
-            frame[13] = (byte)(colorSize & 0xFF);
-
-            frame[14] = (byte)(repeatCount >> 8);           // 扩展次数
-            frame[15] = (byte)(repeatCount & 0xFF);
-
-            frame[frame.Length - 2] = 0xAA;
-            frame[frame.Length - 1] = 0xBB;
-
-            return frame;
-        }
-        /// <inheritdoc cref="CreateEmptyColorFrame(int, int, int)"/>
-        protected internal byte[] CreateEmptyColorFrame(int fillCount, int repeatCount) => CreateEmptyColorFrame(Reserved, fillCount, repeatCount);
-
+        #region AddColorFrame 系列方法 
         /// <summary>
         /// 添加待渲染的颜色数据帧。额外校验功能码(0x98/0x99)、灯带类型、颜色数据长度，并自动修正 Group、Reserved、Repeat 字段。
         /// </summary>
@@ -397,7 +315,7 @@ namespace SpaceCG.Device
                 throw new ArgumentException("输入颜色值 (uint类型) 的通道数量必须为 4 ", nameof(colorFormat));
 
             int index = 0, outputOffset = 0;
-            var frame = CreateEmptyColorFrame(start, 1, repeat);
+            var frame = RentFrame(start, 1, repeat);
 
             for (var j = 0; j < outputChannelCount; j++)
             {
@@ -430,7 +348,7 @@ namespace SpaceCG.Device
                 throw new ArgumentException($"颜色数据长度 {colors.Count} 与通道数 {inputChannelCount} 不匹配", nameof(colors));
 
             var renderCount = colors.Count / inputChannelCount;
-            var frame = CreateEmptyColorFrame(startPos, Math.Min(renderCount, ledCount), repeat);
+            var frame = RentFrame(startPos, Math.Min(renderCount, ledCount), repeat);
             var fillCount = (frame.Length - FrameHeaderLength - FrameFooterLength) / outputChannelCount;
 
             if (colorFormat == ColorFormat && colors is Array colorArray)
@@ -493,7 +411,7 @@ namespace SpaceCG.Device
                 throw new ArgumentException("输入颜色值 (uint类型) 的通道数量必须为 4 ", nameof(colorFormat));
 
             int i = 0, j = 0, index = -1, outputOffset = 0;
-            var frame = CreateEmptyColorFrame(start, Math.Min(colors.Count, ledCount), repeat);
+            var frame = RentFrame(start, Math.Min(colors.Count, ledCount), repeat);
             var fillCount = (frame.Length - FrameHeaderLength - FrameFooterLength) / outputChannelCount;
 
             // 预计算通道索引映射
@@ -518,6 +436,157 @@ namespace SpaceCG.Device
         }
         #endregion
 
+        #region 空闲帧池 系列方法
+        /// <summary>
+        /// 从空闲帧池中租借一个数据帧缓冲区，并填充帧头、帧尾及协议字段（除颜色数据外）。
+        /// </summary>
+        /// <param name="fromPosition">点亮灯珠 IC 的起始位置，可取值范围：[0, <see cref="LedCount"/>]。 小于 1 时功能码为 0x99，大于 1 时功能码为 0x98 且写入 [10-11] 字节。</param>
+        /// <param name="fillCount">填充的灯珠数量（颜色数据中的像素数），会被钳制到 [1, <see cref="LedCount"/>] 范围。</param>
+        /// <param name="repeatCount">颜色数据的扩展/重复次数，会被钳制到 [1, <see cref="LedCount"/>] 范围。</param>
+        /// <returns>已填充协议头尾字段的帧缓冲区，颜色数据区域为全零。</returns>
+        /// <exception cref="InvalidOperationException"><see cref="LedCount"/> 未初始化（≤0）。</exception>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        protected internal byte[] RentFrame(int fromPosition, int fillCount, int repeatCount)
+        {
+            var ledCount = LedCount;
+            if (ledCount <= 0 || ledCount > CurrentMaxLedCount)
+                throw new InvalidOperationException($"灯珠数量必须在 0 ~ {CurrentMaxLedCount} 之间");
+            if (fromPosition > ledCount)
+                throw new ArgumentOutOfRangeException(nameof(fromPosition), fromPosition, $"IC 显示索引偏移位置必须在 0 ~ {ledCount} 之间");
+
+            if (fromPosition < 0) fromPosition = 0;
+
+            if (fillCount <= 0) fillCount = 1;
+            if (fillCount > ledCount) fillCount = ledCount;
+
+            if (repeatCount <= 0) repeatCount = 1;
+            if (repeatCount > ledCount) repeatCount = ledCount;
+
+            // 实际需要点亮的灯珠数量
+            int targetFillCount = ledCount - fromPosition;
+            // 优化计算，如果 填充*重复次数 的总灯珠数量 大于实际需要点亮的数量，则优化重复次数和填充数量
+            int repeatFillCount = fillCount * repeatCount;
+            if (repeatFillCount > targetFillCount && repeatCount > 1)
+            {
+                repeatCount = (int)Math.Ceiling(targetFillCount / (double)fillCount);
+            }
+
+            // 颜色数据占用的字节长度
+            var colorSize = fillCount * ColorFormat.GetChannelCount();
+            // 当前帧的字节总长度
+            var frameSize = colorSize + FrameHeaderLength + FrameFooterLength;
+
+            byte[] frame = null;
+            // 一般情况下，10~30帧/秒，场景或效果不切换的情况下，帧长度会一直是一样长的；
+            // 这种情况，从空闲池中取比 new 的收益大，命中概率极高，不用重新分配内存 byte[]
+            // 即使长度不匹配，清空空闲池，在 new 重新入池，也能减少绝大部份一直 new byte[] 的情况
+            // 还一种更优的情况(.NET std2.0环境)，使用 ArraySegment<byte>，总长度满足的情况下就可以租借出去，但代码改动有点多，留未来考虑、升级(整体收益也差不多)
+#if UseQueue
+            lock (_availableFramesLock)
+            {
+                while (_availableFrames.Count > 0)
+                {
+                    frame = _availableFrames.Dequeue();
+                    if (frame == null) continue;
+                    if (frame.Length == frameSize) break;
+
+                    frame = null;
+                }
+            }
+#else
+            while (_availableFrames.TryDequeue(out frame))
+            {
+                if (frame.Length == frameSize) break;
+                frame = null;
+            }
+#endif
+            if (frame == null || frame.Length != frameSize)
+            {
+                frame = new byte[frameSize];
+            }
+
+            frame[0] = 0xDD;
+            frame[1] = 0x55;
+            frame[2] = 0xEE;
+
+            frame[3] = (byte)(Group >> 8);                  // 组地址
+            frame[4] = (byte)(Group & 0xFF);
+
+            frame[5] = (byte)(Address >> 8);                // 设备地址
+            frame[6] = (byte)(Address & 0xFF);
+
+            frame[7] = Port;                                // 端口号
+
+            frame[8] = (byte)(fromPosition > 1 ? 0x98 : 0x99);    // 功能码
+            frame[9] = (byte)LedType;                       // 灯带类型
+
+            if (fromPosition > 1)
+            {
+                frame[10] = (byte)(fromPosition >> 8);      // IC 起始索引偏移
+                frame[11] = (byte)(fromPosition & 0xFF);
+            }
+            else
+            {
+                frame[10] = (byte)(Reserved >> 8);          // 保留字段
+                frame[11] = (byte)(Reserved & 0xFF);
+            }
+
+            frame[12] = (byte)(colorSize >> 8);             // 数据长度
+            frame[13] = (byte)(colorSize & 0xFF);
+
+            frame[14] = (byte)(repeatCount >> 8);           // 扩展次数
+            frame[15] = (byte)(repeatCount & 0xFF);
+
+            frame[frame.Length - 2] = 0xAA;
+            frame[frame.Length - 1] = 0xBB;
+
+            return frame;
+        }
+        /// <inheritdoc cref="RentFrame(int, int, int)"/> 
+        protected internal byte[] RentFrame(int fillCount, int repeatCount) => RentFrame(Reserved, fillCount, repeatCount);
+        /// <summary>
+        /// 将使用完毕的数据帧归还到空闲帧池，供后续 <see cref="RentFrame"/> 复用。
+        /// 当池中帧数已达 <see cref="MaxAvailableFrameCount"/> 上限时丢弃该帧，由 GC 回收。
+        /// </summary>
+        /// <param name="frame">待归还的帧缓冲区。若为 <c>null</c> 或长度不足则忽略。</param>
+        private void ReturnFrame(byte[] frame)
+        {
+            if (frame == null || frame.Length < RGBFrameBaseLength) return;
+#if UseQueue
+            lock (_availableFramesLock)
+            {
+                if (_availableFrames.Count >= MaxAvailableFrameCount) return;
+                _availableFrames.Enqueue(frame);
+            }
+#else
+            if (_availableFrames.Count >= MaxAvailableFrameCount) return;
+            _availableFrames.Enqueue(frame);
+#endif
+        }
+        /// <summary>
+        /// 清空空闲帧池，丢弃所有缓存的帧缓冲区。
+        /// 通常在灯带参数变更（如 <see cref="LedCount"/>、<see cref="ColorFormat"/> 变化）后调用，
+        /// 以避免池中旧大小的帧被错误复用。
+        /// </summary>
+        protected void ClearAvailableFrames()
+        {
+#if UseQueue
+            lock (_availableFramesLock)
+            {
+                if (_availableFrames.Count > 0)
+                {
+                    _availableFrames.Clear();
+                }
+            }
+#else
+            while (!_availableFrames.IsEmpty)
+            {
+                _availableFrames.TryDequeue(out _); // 帧引用丢弃，GC 会回收
+            }
+#endif
+        }
+#endregion
+
         #region 待渲染的帧池 系列方法
         /// <summary>
         /// 将待渲染的数据帧加入渲染队列。当暂停渲染时，只保留最新的数据帧(不保护非颜色数据帧)。
@@ -533,6 +602,32 @@ namespace SpaceCG.Device
         {
             if (frame == null || frame.Length < RGBFrameBaseLength) return;
 
+#if UseQueue
+            lock (_renderingFramesLock)
+            {
+                _renderingFrames.Enqueue(frame);
+                // 正常渲染时，保留非颜色帧（如指令帧）
+                if (IsRenderEnabled)
+                {
+                    var isColorFrame = (frame[8] == 0x98 || frame[8] == 0x99);
+                    if (!isColorFrame) return;   // 如果当前帧不是颜色数据帧，则不需要检查溢出问题
+                }
+
+                while (_renderingFrames.Count > MaxRenderingFrameCount)
+                {
+                    // 正常渲染时，保留非颜色帧（如指令帧）
+                    // 暂停渲染时，所有帧都可以丢弃，避免不必要的空间增长
+                    if (IsRenderEnabled)
+                    {
+                        var _frame = _renderingFrames.Peek();
+                        var isColorFrame = (_frame[8] == 0x98 || _frame[8] == 0x99);
+                        if (!isColorFrame) break;  // 非颜色数据帧，下次在检查
+                    }
+
+                    ReturnFrame(_renderingFrames.Dequeue());
+                }
+            }
+#else
             _renderingFrames.Enqueue(frame);
 
             // 正常渲染时，保留非颜色帧（如指令帧）
@@ -552,8 +647,12 @@ namespace SpaceCG.Device
                     if (!isColorFrame) break;  // 非颜色数据帧，下次在检查
                 }
 
-                _renderingFrames.TryDequeue(out _); 
+                if (_renderingFrames.TryDequeue(out var __frame))
+                {
+                    ReturnFrame(__frame);
+                }
             }
+#endif
         }
         /// <summary>
         /// 从渲染队列中取出下一个待渲染的数据帧。
@@ -568,36 +667,63 @@ namespace SpaceCG.Device
         internal bool TryDequeueFrame(out byte[] frame)
         {
             frame = null;
-            if (_renderingFrames.IsEmpty) return false;
-            if (!_renderingFrames.TryDequeue(out var _frame)) return false;
-
-            lock (_renderingLock)
+            byte[] currentFrame = null;
+#if UseQueue
+            lock (_renderingFramesLock)
             {
-                var repeatInterval = RenderingRepeatInterval;
+                if (_renderingFrames.Count <= 0) return false;
+                currentFrame = _renderingFrames.Dequeue();
+            }
+#else
+            if (_renderingFrames.IsEmpty) return false;
+            if (!_renderingFrames.TryDequeue(out currentFrame)) return false;
+#endif
+            // 防御性，如果存在帧无效，则返回
+            if (currentFrame == null || currentFrame.Length < RGBFrameBaseLength) return false;
 
-                // 渲染的数据帧相同，则减少渲染次数
-                if (repeatInterval > 0 && _lastRenderingFrame.FastSequenceEqual(_frame))
+            // 记录 准备渲染的当前帧，是否与已经渲染的上一帧相同
+            byte[] lastFrame;
+            int repeatInterval;
+            lock (_renderingStateLock)
+            {
+                lastFrame = _lastRenderingFrame;
+                repeatInterval = RenderingRepeatInterval;
+
+                _lastRenderingFrame = Array.Empty<byte>();
+            }
+            // 在锁外执行帧内容比较（FastSequenceEqual 内部调用 memcmp）
+            var isColorFrame = (currentFrame[8] == 0x98 || currentFrame[8] == 0x99);
+            var isSameFrame = repeatInterval > 0 && isColorFrame && lastFrame.FastSequenceEqual(currentFrame);
+
+            try
+            {
+                lock (_renderingStateLock)
                 {
-                    _renderingRepeatCount++;
-                    if (_renderingRepeatCount % repeatInterval != 0)
+                    if (isSameFrame)
                     {
-                        _frame = null;
-                        return false;
+                        _renderingRepeatCount++;
+                        if (_renderingRepeatCount % repeatInterval != 0)
+                        {
+                            // 帧相同，且未达到重复渲染间隔，跳过渲染当前帧
+                            _lastRenderingFrame = currentFrame;
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        _renderingRepeatCount = 0;
                     }
 
-                    frame = _frame;
+                    // 正常渲染
+                    frame = currentFrame;
                     _renderingCount++;
-                    _lastRenderingFrame = _frame;
-                    //Trace.WriteLine($"{DateTime.Now:hh:mm:ss.fff} 渲染相同的帧 {Address}_{Port}  {_renderingRepeatCount}");
+                    _lastRenderingFrame = currentFrame;
                     return true;
                 }
-
-                frame = _frame;
-                _renderingCount++;
-                _renderingRepeatCount = 0;
-                _lastRenderingFrame = _frame;
-                //Trace.WriteLine($"{DateTime.Now:hh:mm:ss.fff} 渲染相同的帧222 {Address}_{Port}  {_renderingRepeatCount}");
-                return true;
+            }
+            finally
+            {                
+                ReturnFrame(lastFrame);     // 归还上一帧到空闲池
             }
         }
         /// <summary>
@@ -608,27 +734,40 @@ namespace SpaceCG.Device
         {
             ResetRenderingState();
 
+#if UseQueue
+            lock (_renderingFramesLock)
+            {
+                if (_renderingFrames.Count > 0)
+                {
+                    _renderingFrames.Clear();
+                }
+            }
+#else
             while (!_renderingFrames.IsEmpty)
             {
                 _renderingFrames.TryDequeue(out _);
             }
+#endif
         }
         /// <summary>
         /// 重置渲染状态：清零渲染计数器、重复帧计数器和上一帧引用。
         /// </summary>
         /// <remarks>
-        /// <para>通常在灯带配置变更或清空渲染队列时调用。受 <c>_renderingLock</c> 保护。</para>
+        /// <para>通常在灯带配置变更或清空渲染队列时调用。受 <c>_renderingStateLock</c> 保护。</para>
         /// </remarks>
         protected internal void ResetRenderingState()
         {
-            lock (_renderingLock)
+            byte[] lastFrame;
+            lock (_renderingStateLock)
             {
                 Fps = _renderingCount;
+                lastFrame = _lastRenderingFrame;
 
                 _renderingCount = 0;
                 _renderingRepeatCount = 0;
                 _lastRenderingFrame = Array.Empty<byte>();
             }
+            ReturnFrame(lastFrame);
         }
         #endregion
 

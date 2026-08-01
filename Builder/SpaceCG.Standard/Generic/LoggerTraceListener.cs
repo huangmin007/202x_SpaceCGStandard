@@ -492,18 +492,19 @@ namespace SpaceCG.Generic
             EnsureWriter();
             if (_writer == null) return;
 
-            var startTime = DateTime.Now;
+            var startTime = DateTime.Now;   // 记录开始时间(本地时间)
             _writer.WriteLine($"\r\n[Header] {startTime:yyyy-MM-dd HH:mm:ss.fff}");
 
             WriteProcessInfo();
             CheckFileSizeLimit();
             CleanupOldBackupFiles();
 
-            var lastCheckSize = DateTime.Now;
-            var lastCheckDays = DateTime.Now;
+            // 线程内定期维护：每小时检查过期备份，使用 UTC 时间
+            var lastCheckSize = DateTime.UtcNow;
+            var lastCheckDays = DateTime.UtcNow;
 
             int flushCounter = 0;
-            var lastWriteTime = DateTime.Now;            
+            var lastWriteTime = DateTime.UtcNow;            
             var isConsole = _isConsoleProgram; // 缓存到局部变量，消费线程生命周期内不变
 
             TimeSpan DayCheckTime = TimeSpan.FromHours(1);
@@ -512,21 +513,21 @@ namespace SpaceCG.Generic
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                var now = DateTime.Now;
+                var utcNow = DateTime.UtcNow;
 
                 try
                 {
                     // 定期维护：每小时检查过期备份
-                    if (now - lastCheckDays > DayCheckTime)
+                    if (utcNow - lastCheckDays > DayCheckTime)
                     {
                         CleanupOldBackupFiles();
-                        lastCheckDays = now;
+                        lastCheckDays = utcNow;
                     }
                     // 定期维护：每分钟检查文件大小限制
-                    if (now - lastCheckSize > SizeCheckTime)
+                    if (utcNow - lastCheckSize > SizeCheckTime)
                     {
                         CheckFileSizeLimit();
-                        lastCheckSize = now;
+                        lastCheckSize = utcNow;
                     }
 
                     // 文件轮转后 writer 被置 null，需要重新创建
@@ -551,7 +552,7 @@ namespace SpaceCG.Generic
                     // 队列为空：空闲一段时间后执行一次 Flush，避免数据长时间留在缓冲区
                     if (_messageQueue.IsEmpty)
                     {
-                        if (DateTime.Now - lastWriteTime > IdleFlushInterval)
+                        if (utcNow - lastWriteTime > IdleFlushInterval)
                         {
                             _writer.Flush();
                             flushCounter = 0;
@@ -565,7 +566,7 @@ namespace SpaceCG.Generic
                     // 取出并写入消息
                     if (_messageQueue.TryDequeue(out var entry))
                     {
-                        lastWriteTime = DateTime.Now;
+                        lastWriteTime = DateTime.UtcNow;
 
                         if (isConsole)
                         {

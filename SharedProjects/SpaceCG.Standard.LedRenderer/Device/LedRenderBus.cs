@@ -115,19 +115,19 @@ namespace SpaceCG.Device
         /// </summary>
         public static readonly IReadOnlyDictionary<string, string> FrameExceptionMessages = new Dictionary<string, string>()
         {
-            {"HERR", "指令头错误" },
-            {"GERR", "组地址错误，超出最大范围值 1024" },
-            {"AERR", "设备地址错误，超出最大范围值 4096" },
-            {"PERR", "端口地址错误，超出最大范围值 6" },
-            {"CERR", "功能码错误" },
-            {"IERR", "LED 灯带类型错误" },
-            {"LERR", "数据长度错误" },
-            {"RERR", "扩展次数错误，取范围值在 1~1024" },
-            {"TERR", "指令尾部错误" },
-            {"DERR", "数据长度与颜色数据字节数不符" },
-            {"Timeout", "数据帧接收不完整或接收超时" },
-            {"SaveInsErr", "设置上电 显示(0x9B)/关闭(0x9C) 颜色保存失败" },
-            {"ResponseTimeout", "自定义，设备响应超时" },
+            { "HERR", "指令头错误" },
+            { "GERR", "组地址错误，超出最大范围值 1024" },
+            { "AERR", "设备地址错误，超出最大范围值 4096" },
+            { "PERR", "端口地址错误，超出最大范围值 6" },
+            { "CERR", "功能码错误" },
+            { "IERR", "LED 灯带类型错误" },
+            { "LERR", "数据长度错误" },
+            { "RERR", "扩展次数错误，取范围值在 1~1024" },
+            { "TERR", "指令尾部错误" },
+            { "DERR", "数据长度与颜色数据字节数不符" },
+            { "Timeout", "数据帧接收不完整或接收超时" },
+            { "SaveInsErr", "设置上电 显示(0x9B)/关闭(0x9C) 颜色保存失败" },
+            { nameof(ResponseTimeout), "自定义，设备响应超时" },
         };
         #endregion
 
@@ -424,7 +424,7 @@ namespace SpaceCG.Device
 
                     var ledPoints = ledStrip.LedPoints;
                     var frameOffset = FrameHeaderLength;
-                    var frame = ledStrip.CreateEmptyColorFrame(ledCount, ledStrip.RepeatCount);
+                    var frame = ledStrip.RentFrame(ledCount, ledStrip.RepeatCount);
 
                     for (int i = 0; i < ledCount; i++)
                     {
@@ -557,7 +557,7 @@ namespace SpaceCG.Device
             if (renderModel == null) 
                 throw new ArgumentException($"未找到地址为 {address} 端口为 {port} 的设备", nameof(address)); ;
 
-            byte[] frame = renderModel.CreateEmptyColorFrame(1, renderModel.LedCount);
+            byte[] frame = renderModel.RentFrame(1, renderModel.LedCount);
 
             // 设置上电显示的颜色（9B）
             // 关闭上电显示功能（9C）
@@ -719,18 +719,20 @@ namespace SpaceCG.Device
             while (!condition(message))
             {
                 if (_responseStopwatch.ElapsedMilliseconds > responseTimeout)
+                {
                     return nameof(ResponseTimeout);
-
+                }
+#if true
                 if (Channel.Available <= 0)
                 {
                     //Thread.Sleep(1);
-                    //Thread.Sleep(0);
-                    Thread.Yield();
+                    Thread.Sleep(0);
+                    //Thread.Yield();
                     continue;
                 }
-
+#endif
                 var bytesRead = Channel.Read(_responseBuffer, count, Channel.Available);
-                count += bytesRead;
+                if (bytesRead > 0) count += bytesRead;
                 message = Encoding.UTF8.GetString(_responseBuffer, 0, count);
             }
 
@@ -782,7 +784,6 @@ namespace SpaceCG.Device
                     }
 
                     Thread.Sleep(500);
-                    continue;
                 }
                 #endregion
 
@@ -812,7 +813,7 @@ namespace SpaceCG.Device
                         hasWrittenFrame = true;
                         var message = renderBus.WriteFrame(frame);
 
-                        if (!string.IsNullOrWhiteSpace(message))
+                        if (!string.IsNullOrEmpty(message))
                         {
                             message = message.Trim().Replace("\r\n", " ");
                             if (FrameExceptionMessages.ContainsKey(message))
@@ -840,7 +841,7 @@ namespace SpaceCG.Device
                 }
                 #endregion
 
-                #region 各灯带上的帧队列数据
+                #region 灯带上的帧队列数据
                 foreach (var ledStrip in ledStrips)
                 {
                     if (cancellationToken.IsCancellationRequested || renderBus.Channel == null) break;
@@ -853,7 +854,7 @@ namespace SpaceCG.Device
                         hasWrittenFrame = true;
                         var message = renderBus.WriteFrame(frame);
 
-                        if (!string.IsNullOrWhiteSpace(message))
+                        if (!string.IsNullOrEmpty(message))
                         {
                             message = message.Trim().Replace("\r\n", " ");                            
                             if (FrameExceptionMessages.ContainsKey(message))
@@ -885,7 +886,7 @@ namespace SpaceCG.Device
 
                 // 计算帧频
                 var elapsed = stopwatch.ElapsedMilliseconds;
-                if (elapsed >= 1000)
+                if (elapsed > 985) // 1000 - 15.625
                 {
                     foreach (var ledStrip in ledStrips)
                     {

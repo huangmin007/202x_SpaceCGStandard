@@ -46,9 +46,9 @@
 
 		<Scene Id="0" Name="流动白色柔光" RFID="0" >
 			<Scene.Dictionary>
-				<Item Key="浅白色_常亮" Value="#FF666666" />
-				<Item Key="浅白色流水_正向" Value="[[#00666666,#FF666666]],[15],1.5,1" />
-				<Item Key="浅白色流水_反向" Value="[[#FF666666,#00666666]],[15],1.5,-1" />
+				<Item Key="浅白色_常亮" Value="#FF333300" />
+				<Item Key="浅白色流水_正向" Value="[[#00333300,#FF333300]],[15],1.5,1" />
+				<Item Key="浅白色流水_反向" Value="[[#FF333300,#00333300]],[15],1.5,-1" />
 			</Scene.Dictionary>
 
 			<LedStripObject Address="1" Port="1" Action="FlowLinearBrush" Params="{浅白色流水_正向}" Comment="" />
@@ -63,11 +63,11 @@
 
 		<Scene Id="1" Name="生物活性材料(浅蓝色)" RFID="0453874754" >
 			<Scene.Dictionary>
-				<Item Key="浅蓝色_常亮" Value="#FF0066DD" />
-				<Item Key="浅蓝色流水_正向" Value="[[#000066DD,#FF0066DD]],[15],1.5,1" />
-				<Item Key="浅蓝色流水_反向" Value="[[#FF0066DD,#000066DD]],[15],1.5,-1" />
-				<Item Key="浅蓝色流水_正向_右3" Value="170,40,[[#000066DD,#FF0066DD]],[15],1.5,1" />
-				<Item Key="浅蓝色流水_正向_右9" Value="21,400,[[#000066DD,#FF0066DD]],[15],1.5,1" />
+				<Item Key="浅蓝色_常亮" Value="#FF004499" />
+				<Item Key="浅蓝色流水_正向" Value="[[#00004499,#FF004499]],[15],1.5,1" />
+				<Item Key="浅蓝色流水_反向" Value="[[#FF004499,#00004499]],[15],1.5,-1" />
+				<Item Key="浅蓝色流水_正向_右3" Value="170,40,[[#00004499,#FF004499]],[15],1.5,1" />
+				<Item Key="浅蓝色流水_正向_右9" Value="21,400,[[#00004499,#FF004499]],[15],1.5,1" />
 			</Scene.Dictionary>
 
 			<LedStripObject Address="1" Port="1" Action="FlowLinearBrush" Params="{浅蓝色流水_正向}" Comment="" />

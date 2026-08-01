@@ -139,7 +139,7 @@ namespace SpaceCG.Drawing
             if (visualElement == null) return;
 
             _stopwatch.Restart();
-            FrameTimes.Enqueue(DateTime.Now);
+            FrameTimes.Enqueue(DateTime.UtcNow);
 
             //var renderTargetBitmap = new RenderTargetBitmap(Rectangle.Width, Rectangle.Height, 96, 96, PixelFormats.Pbgra32);
             // 确保元素已测量和排列
@@ -176,8 +176,8 @@ namespace SpaceCG.Drawing
                 }
             }
 
-            var now = DateTime.Now;
-            while (FrameTimes.Count > 0 && now - FrameTimes.Peek() > WindowTimes)
+            var utcNow = DateTime.UtcNow;
+            while (FrameTimes.Count > 0 && utcNow - FrameTimes.Peek() > WindowTimes)
             {
                 FrameTimes.Dequeue();
             }
