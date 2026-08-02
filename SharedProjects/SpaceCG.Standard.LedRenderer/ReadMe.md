@@ -34,7 +34,7 @@
 - .NET Framework 4.8
 - System.Drawing
 - System.IO.Ports
-- 项目内共享的 `SpaceCG.Standard` 基础库（提供 `ArrayPool`、`Trace`、`Extensions` 等）
+- 项目内共享的 `SpaceCG.Standard` 基础库（提供 `Trace`、`Extensions` 等）
 
 ### 最小示例
 
@@ -59,8 +59,8 @@ renderBus.AddLedStrip(ledStrip);
 renderBus.OpenChannel();
 renderBus.StartRender();
 
-// 5. 渲染纯色
-renderBus.AddColorFrame(0x0001, 0x01, 255, 0, 0, start: 0, repeat: 1); // 红色
+// 5. 渲染纯色（使用灯带级 AddColorFrame）
+ledStrip.AddColorFrame(0xFFFF0000, 0, 1, 10, ColorFormat.ARGB); // 红色
 
 // 6. 停止与清理
 renderBus.StopRender();
@@ -80,6 +80,7 @@ renderBus.Dispose();
 | **传输通道（ITransportChannel）** | 底层通信抽象，支持串口（SerialPort）、TCP、UDP |
 | **数据帧（Frame）** | 遵循协议格式的字节数组，携带灯珠颜色数据 |
 | **实时绘制（IDrawingDisplay）** | 从屏幕/桌面/WPF元素捕获像素数据，供灯带渲染使用 |
+| **空闲帧池（Frame Pool）** | 通过 `RentFrame`/`ReturnFrame` 复用 `byte[]` 缓冲区，减少 GC 分配 |
 
 ---
 
@@ -97,7 +98,7 @@ renderBus.Dispose();
 │                    LedRenderBus                         │
 │  ┌─────────────────────────────────────────────────┐    │
 │  │  渲染线程 (RenderingBusThread)                    │    │
-│  │  1. 消费总线级帧队列                              │    │
+│  │  1. 消费总线级帧队列 (TryDequeueFrame)            │    │
 │  │  2. 遍历各 LedStripObject 消费灯带级帧队列         │    │
 │  │  3. WriteFrame → ITransportChannel.Write()       │    │
 │  │  4. 读取设备响应 & 异常处理                        │    │
@@ -106,6 +107,8 @@ renderBus.Dispose();
 │  │LedStrip 1│  │LedStrip 2│  │LedStrip N│   ...        │
 │  │FrameQueue│  │FrameQueue│  │FrameQueue│              │
 │  │LedPoints │  │LedPoints │  │LedPoints │              │
+│  │IsRender  │  │IsRender  │  │IsRender  │              │
+│  │Enabled   │  │Enabled   │  │Enabled   │              │
 │  └──────────┘  └──────────┘  └──────────┘              │
 │                         │                               │
 │                 ITransportChannel                       │
@@ -113,15 +116,28 @@ renderBus.Dispose();
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 帧数据流
+### 帧数据流（含帧池管理）
 
 ```
-RenderPixels()/AddColorFrame()
-  → LedStripObject.CreateEmptyColorFrame()   // 创建帧 + 填充协议头尾
-  → LedStripObject.EnqueueFrame()            // 入队 + 溢出清理
-  → RenderingBusThread 消费循环               // TryDequeueFrame() + 重复帧去重
-  → WriteFrame()                              // 写入传输通道
-  → 设备响应处理                               // 超时/异常检测
+AddColorFrame() / RenderPixels()
+  → CreateColorFrame() → CreateEmptyColorFrame() → RentFrame(frameSize)
+      │                  ↑ 从空闲池租借或 new[]
+      │                  └ 填充协议头尾字段
+      │
+  → EnqueueFrame(frame)
+      │  ↑ 入队 + 溢出清理（颜色帧 > MaxRenderingFrameCount 时出队归还池）
+      │
+  → RenderingBusThread 消费循环
+      │  ↑ TryDequeueFrame() → memcmp 在锁外执行 → 重复帧去重
+      │  │   ├─ 渲染：frame 作为输出参数
+      │  │   └─ 跳过：currentFrame 保留为新的 _lastRenderingFrame
+      │  └─ finally: ReturnFrame(lastFrame) 归还旧帧到空闲池
+      │
+  → WriteFrame(frame) → ITransportChannel.Write()
+      │
+  → 设备响应处理（超时/异常检测）
+      │
+  → 每秒结算：ResetRenderingState() → ReturnFrame(lastFrame)
 ```
 
 ### 帧去重优化
@@ -129,7 +145,22 @@ RenderPixels()/AddColorFrame()
 渲染线程通过 `TryDequeueFrame()` 检测连续相同帧，由 `RenderingRepeatInterval` 控制去重力度：
 
 - **LedRenderBus**：`RenderingRepeatInterval = 0`（总线级不去重，因为总线帧通常是命令帧或广播帧）
-- **LedStripObject**：`RenderingRepeatInterval = 8`（灯带级：连续 8 帧相同才渲染 1 次）
+- **LedStripObject**：`RenderingRepeatInterval = 12`（灯带级：连续 12 帧相同才渲染 1 次）
+
+> **性能设计**：帧内容比较（P/Invoke `memcmp`）在 `_renderingStateLock` 锁外执行，避免阻塞生产者线程的 `EnqueueFrame` 操作。
+
+### 线程安全模型
+
+| 资源 | 同步机制 | 说明 |
+|------|----------|------|
+| `_renderingFrames`（渲染队列） | `_renderingFramesLock` / `ConcurrentQueue<T>` | 入队/出队互斥 |
+| `_availableFrames`（空闲帧池） | `_availableFramesLock` / `ConcurrentQueue<T>` | 租借/归还互斥 |
+| `_renderingState`（渲染状态） | `_renderingStateLock` | 保护 FPS 计数、重复帧计数、上一帧引用 |
+| `_ledStrips`（灯带集合） | `ConcurrentDictionary<TKey, TValue>` | 线程安全字典 |
+| `BusCollections`（静态集合） | 无锁（`List<T>`） | 非线程安全，应在主线程操作 |
+| 帧内容比较 (`memcmp`) | 无锁（锁外执行） | 避免阻塞生产者入队 |
+
+> **锁分离设计**：三把独立锁分别保护渲染队列、空闲帧池、渲染状态，互不阻塞。
 
 ---
 
@@ -144,7 +175,7 @@ RenderPixels()/AddColorFrame()
 | `R = 0x00` | 红色通道 |
 | `G = 0x01` | 绿色通道 |
 | `B = 0x02` | 蓝色通道 |
-| `A = 0x03` | Alpha 通道 |
+| `A = 0x03` | Alpha 通道 / W 通道 |
 
 #### ColorFormat（颜色/像素格式）
 
@@ -158,7 +189,7 @@ RenderPixels()/AddColorFrame()
 | `RBG` | R,B,G,R,B,G,... | |
 | `GRB` | G,R,B,G,R,B,... | WS2812B 常用 |
 | `GBR` | G,B,R,G,B,R,... | |
-| `BRG` | B,R,G,B,R,G,... | |
+| `BRG` | B,R,G,R,B,R,G,... | |
 | `BGR` | B,G,R,B,G,R,... | GDI+ 24bpp 位图格式 |
 
 **四通道（32位）：**
@@ -215,18 +246,23 @@ RenderPixels()/AddColorFrame()
 | [7] | 1 | 端口号 | 0~6 | 0=所有端口 |
 | [8] | 1 | 功能码 | 0x98/0x99/... | 0x99=颜色帧(从头)，0x98=颜色帧(指定偏移)，0x9B=上电显示，0x9C=关闭上电显示，0x95=设置波特率，0x8E=设置超时 |
 | [9] | 1 | 灯带类型 | 见 LedType 枚举 | |
-| [10-11] | 2 | 保留/IC起始 | 0~1024 | 功能码 0x99 时为保留字段；0x98 时为 IC 起始位置(1-based) |
+| [10-11] | 2 | 保留/IC起始 | 0~1024 | 功能码 0x99 时为保留字段（`Reserved`）；0x98 时为 IC 起始位置(1-based) |
 | [12-13] | 2 | 颜色数据长度 | 3~3072 | ushort, Big-Endian；须满足 `dataLength + 18 == frame.Length` |
-| [14-15] | 2 | 扩展/重复次数 | 1~1024 | ushort, Big-Endian；颜色数据重复点亮次数 |
+| [14-15] | 2 | 扩展/重复次数 | 0~1024 | ushort, Big-Endian；颜色数据重复点亮次数 |
 | [16..^2] | N | 颜色数据 | | 按 ColorFormat 排列的像素字节 |
 | [^2-^1] | 2 | 帧尾 | 0xAA 0xBB | 固定帧尾 |
 
 **帧长度约束：**
 
-| 类型 | 最小帧长 | 最大帧长 |
-|------|----------|----------|
-| RGB (3通道) | 21 字节 | 3090 字节 |
-| WRGB (4通道) | 22 字节 | 3090 字节 |
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| `FrameHeaderLength` | 16 | 帧头字节数 |
+| `FrameFooterLength` | 2 | 帧尾字节数 |
+| `RGBFrameBaseLength` | 21 | RGB 最小帧长 (16+2+3) |
+| `WRGBFrameBaseLength` | 22 | WRGB 最小帧长 (16+2+4) |
+| `FrameMaxLength` | 3090 | 最大帧长 (16+2+3072) |
+| `MaxRGBLedCount` | 1024 | RGB 最大灯珠数 |
+| `MaxWRGBLedCount` | 768 | WRGB 最大灯珠数 |
 
 **设备响应消息：**
 
@@ -245,6 +281,8 @@ RenderPixels()/AddColorFrame()
 | `TERR` | 指令尾部错误 |
 | `DERR` | 数据长度与颜色数据字节数不符 |
 | `Timeout` | 接收不完整或超时 |
+| `ResponseTimeout` | 自定义，设备响应超时 |
+| `SaveInsErr` | 设置上电显示/关闭颜色保存失败 |
 | `RecvEnd` + `DisplayEnd` | 正常接收并显示完成 |
 
 ---
@@ -253,7 +291,7 @@ RenderPixels()/AddColorFrame()
 
 `namespace SpaceCG.Device`
 
-管理帧队列和重复帧去重的抽象基类，`LedRenderBus` 和 `LedStripObject` 均继承自它。
+管理帧队列、重复帧去重以及空闲帧池复用能力的抽象基类，`LedRenderBus` 和 `LedStripObject` 均继承自它。
 
 #### 常量
 
@@ -263,46 +301,75 @@ RenderPixels()/AddColorFrame()
 | `MaxWRGBLedCount` | 768 | WRGB 最大灯珠数 |
 | `FrameHeaderLength` | 16 | 帧头字节数 |
 | `FrameFooterLength` | 2 | 帧尾字节数 |
-| `MaxRenderingFrameCount` | 3 | 渲染队列最大容量（超出时丢弃最旧颜色帧） |
+| `RGBFrameBaseLength` | 21 | RGB 最小帧长 |
+| `WRGBFrameBaseLength` | 22 | WRGB 最小帧长 |
+| `FrameMaxLength` | 3090 | 最大帧长 |
+| `MaxRenderingFrameCount` | 3 | 渲染队列最大容量（超出时丢弃最旧颜色帧，归还到空闲池） |
+| `MaxAvailableFrameCount` | 8 | 空闲帧池最大容量 |
+| `DefaultTimeout` | 10 | 无响应帧默认等待时间（ms） |
+| `DefaultResponseTimeout` | 300 | 默认设备响应超时（ms） |
 
 #### 属性
 
-| 属性 | 类型 | 说明 |
-|------|------|------|
-| `Group` | `ushort` | 组地址，0~1024 |
-| `Address` | `ushort` | 设备地址，0~4096（只读） |
-| `Port` | `byte` | 端口号，0~6（只读） |
-| `Reserved` | `ushort` | 保留数据 |
-| `LedType` | `LedType` | 灯带芯片类型（只读） |
-| `ColorFormat` | `ColorFormat` | 颜色格式（只读） |
-| `LedCount` | `int` | 灯珠数量 |
-| `CurrentMaxLedCount` | `ushort` | 当前颜色格式支持的最大灯珠数（protected） |
-| `RenderingRepeatInterval` | `int` | 连续相同帧渲染间隔（0=禁用去重） |
-| `PendingFrameCount` | `int` | 渲染队列中待处理的帧数量（近似值） |
-| `Fps` | `int` | 当前渲染帧率（帧/秒） |
-| `Timeout` | `int` | 帧发送后(无响应的帧)等待时间（0~1000 ms） |
-| `IsRenderEnabled` | `bool` | 是否允许渲染（默认 true） |
-| `Tag` | `object` | 自定义数据 |
-| `Comment` | `string` | 备注信息 |
+| 属性 | 类型 | 访问性 | 说明 |
+|------|------|--------|------|
+| `Group` | `ushort` | get/set | 组地址，0~1024 |
+| `Address` | `ushort` | get; private set | 设备地址，0~4096 |
+| `Port` | `byte` | get; private set | 端口号，0~6 |
+| `Reserved` | `ushort` | get/set | 保留数据（功能码 0x99 时写入帧 [10-11] 字节） |
+| `LedType` | `LedType` | get; private set | 灯带芯片类型 |
+| `ColorFormat` | `ColorFormat` | get; private set | 颜色格式 |
+| `LedCount` | `int` | get; protected set | 灯珠数量（总线=最长灯带，灯带=实际物理灯珠） |
+| `CurrentMaxLedCount` | `ushort` | get; private set | 当前颜色格式支持的最大灯珠数（1024/768） |
+| `RenderingRepeatInterval` | `int` | get; protected set | 连续相同帧渲染间隔（0=禁用去重，默认 8） |
+| `PendingFrameCount` | `int` | get | 渲染队列中待处理的帧数量 |
+| `Fps` | `int` | get; internal set | 当前渲染帧率（帧/秒） |
+| `Timeout` | `int` | get/set | 帧发送后线程等待时间（0~1000 ms），默认 10ms |
+| `Tag` | `object` | get/set | 自定义数据 |
+| `Comment` | `string` | get/set | 备注信息 |
 
 #### 方法
 
+**创建帧（protected internal）：**
+
 | 方法 | 说明 |
 |------|------|
-| `AddFrame(byte[] frame)` | 添加通用数据帧（如上电显示指令） |
-| `AddColorFrame(byte[] frame)` | 添加颜色数据帧（校验功能码和灯带类型） |
-| `AddColorFrame(byte r, byte g, byte b, int start, int repeat)` | 添加纯色帧（RGB 分量） |
-| `AddColorFrame(uint color, int start, int repeat, ColorFormat)` | 添加纯色帧（uint 颜色值，需四通道格式） |
-| `AddColorFrame(IReadOnlyList<byte> colors, int start, int repeat, ColorFormat)` | 添加颜色帧（字节数组） |
-| `AddColorFrame(IReadOnlyList<uint> colors, int start, int repeat, ColorFormat)` | 添加颜色帧（uint 数组） |
-| `CreateEmptyColorFrame(int fromPosition, int fillCount, int repeatCount)` | 创建空颜色帧（填充协议头尾，颜色区全零） |
-| `ClearRenderingFrames()` | 清空渲染队列并重置状态 |
-| `ResetRenderingState()` | 重置渲染计数器和重复帧状态 |
+| `CreateEmptyColorFrame(int fillCount, int repeatCount)` | 从空闲池租借帧并填充协议头尾（功能码=0x99，IC起始=Reserved） |
+| `CreateEmptyColorFrame(int fromPosition, int fillCount, int repeatCount)` | 同上，指定 IC 起始位置（fromPosition>1 时功能码=0x98） |
+| `CreateColorFrame(uint color, int fromPosition, int fillCount, int repeatCount, ColorFormat)` | 创建单色帧（uint→4通道输入映射到3/4通道输出） |
+| `CreateColorFrame(IReadOnlyList<byte> colors, int fromPosition, int repeatCount, ColorFormat)` | 创建多色帧（字节数组，同格式走 `Array.Copy` 快速路径） |
+| `CreateColorFrame(IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat)` | 创建多色帧（uint 数组，4通道→3/4通道映射） |
+
+**帧池管理（protected/public）：**
+
+| 方法 | 说明 |
+|------|------|
+| `RentFrame(int frameSize)` | 从空闲帧池租借指定大小的缓冲区，池中无匹配时 `new byte[]` |
+| `ReturnFrame(byte[] frame)`（private） | 归还帧到空闲池，池满时丢弃由 GC 回收 |
+| `ClearAvailableFrames()` | 清空空闲帧池（通常在灯带参数变更后调用） |
+
+**入队/出队：**
+
+| 方法 | 说明 |
+|------|------|
+| `AddFrame(byte[] frame)` | 添加通用数据帧（如上电显示指令），不做溢出清理 |
+| `AddColorFrame(byte[] frame)` | 添加颜色数据帧（校验功能码、灯带类型、地址、端口、颜色数据长度，修正 repeat 字段） |
+| `EnqueueFrame(byte[] frame)` | 入队到渲染队列，颜色帧超出 `MaxRenderingFrameCount` 时归还溢出帧到空闲池 |
+| `TryDequeueFrame(out byte[] frame)` | 出队并执行重复帧去重，返回 true 表示需要渲染 |
+
+**队列/状态管理：**
+
+| 方法 | 说明 |
+|------|------|
+| `ClearRenderingFrames()` | 清空渲染队列并重置状态（队列帧直接丢弃不归还） |
+| `ResetRenderingState()` | 结算 FPS，清零计数器，归还旧帧到空闲池（`ReturnFrame` 在锁外执行） |
 
 #### 线程安全
 
-- 渲染队列使用 `ConcurrentQueue<byte[]>`，线程安全
+- 渲染队列使用 `_renderingFramesLock`（Queue 模式）或 `ConcurrentQueue<byte[]>`（ConcurrentQueue 模式）
+- 空闲帧池使用 `_availableFramesLock`（Queue 模式）或 `ConcurrentQueue<byte[]>`（ConcurrentQueue 模式）
 - 渲染状态（`_renderingCount`、`_lastRenderingFrame`、`_renderingRepeatCount`）通过 `_renderingStateLock` 保护
+- 帧内容比较（`FastSequenceEqual`/memcmp）在锁外执行，避免阻塞生产者
 - 属性在初始化后不变，无额外同步开销
 
 ---
@@ -317,10 +384,11 @@ RenderPixels()/AddColorFrame()
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `UID` | `uint` | 唯一标识，计算方式：`(Port << 16) | Address` |
-| `FillCount` | `int` | 渲染填充数量，0=填充所有灯珠；配合 `RepeatCount` 实现渲染优化 |
-| `RepeatCount` | `int` | 数据重复次数，默认 1；配合 `FillCount` 实现渲染优化 |
-| `LedPoints` | `IReadOnlyList<Point>` | 灯珠坐标列表，顺序即为物理信号顺序 |
+| `UID` | `uint` | 唯一标识，计算方式：`(Port << 16) \| Address` |
+| `FillCount` | `int` | 渲染填充数量，≤0 时等同于 `LedCount`；配合 `RepeatCount` 实现渲染优化 |
+| `RepeatCount` | `int` | 数据重复次数，最小为 1；配合 `FillCount` 实现渲染优化 |
+| `LedPoints` | `IReadOnlyList<Point>` | 灯珠坐标列表，顺序即为物理信号顺序（返回 `_ledPoints` 的实时只读视图） |
+| `IsRenderEnabled` | `bool` | 是否允许渲染当前灯带的颜色数据帧（默认 true），不影响指令帧 |
 
 #### 事件
 
@@ -330,6 +398,8 @@ RenderPixels()/AddColorFrame()
 
 #### 方法
 
+**灯珠坐标管理：**
+
 | 方法 | 说明 |
 |------|------|
 | `AddPoint(Point point)` | 在末尾添加一颗灯珠 |
@@ -338,11 +408,19 @@ RenderPixels()/AddColorFrame()
 | `AddPoints(int index, IEnumerable<Point> points)` | 在指定索引处插入一组灯珠 |
 | `AddPoints(Point start, Point end)` | 添加从 start 到 end 的直线点集（Bresenham 算法） |
 | `RemovePoint(int index)` | 移除指定索引的灯珠 |
-| `RemovePoint(Point point)` | 移除指定坐标的灯珠 |
+| `RemovePoint(Point point)` | 移除指定坐标的灯珠（第一个匹配项） |
 | `RemovePoints(int index, int count)` | 移除指定范围的灯珠 |
 | `RemovePoints(IEnumerable<Point> points)` | 移除指定坐标集合的灯珠 |
 | `ClearPoints()` | 移除所有灯珠 |
 | `ContainsPoint(Point point)` | 判断是否包含指定坐标的灯珠 |
+
+**添加颜色帧（灯带级，入队到当前灯带的渲染队列）：**
+
+| 方法 | 说明 |
+|------|------|
+| `AddColorFrame(uint color, int fromPosition, int fillCount, int repeatCount, ColorFormat)` | 单色渲染（4通道 uint → 3/4通道输出） |
+| `AddColorFrame(IReadOnlyList<byte> colors, int fromPosition, int repeatCount, ColorFormat)` | 字节数组渲染 |
+| `AddColorFrame(IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat)` | uint 数组渲染（4通道 → 3/4通道） |
 
 #### 渲染优化参数说明
 
@@ -363,13 +441,16 @@ ledStrip.RepeatCount = 30;  // 硬件自动重复 30 次，覆盖全部灯珠
 ```csharp
 // XML 格式示例：
 // <LedStripObject Address="1" Port="1" LedType="WS2812B" ColorFormat="GRB"
-//                 LedPoints="0,0,1,0,2,0,3,0" Group="0" FillCount="0" RepeatCount="1" />
+//                 LedPoints="0,0,1,0,2,0,3,0" Group="0" FillCount="0" RepeatCount="1"
+//                 RenderingRepeatInterval="12" />
 
 if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 {
     renderBus.AddLedStrip(ledStrip);
 }
 ```
+
+> 可选属性：`Comment`、`Group`、`Reserved`、`Timeout`、`FillCount`、`RepeatCount`、`RenderingRepeatInterval`。
 
 ---
 
@@ -393,13 +474,13 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 | `LedStrips` | `IReadOnlyDictionary<uint, LedStripObject>` | 总线上登记的灯带集合（按 UID 索引） |
 | `LoopFps` | `int` | 渲染线程循环频率（次/秒），区别于 `Fps`（实际渲染帧率） |
 | `ResponseTimeout` | `int` | 设备响应超时时间（10~1000 ms），默认 300ms |
-| `Timeout` | `int` | 帧发送后(无响应的帧)等待时间，默认 10ms |
+| `Timeout` | `int` | 帧发送后(无响应的帧)等待时间，默认 10ms（继承自基类） |
 
 #### 静态属性
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `Collections` | `IReadOnlyList<LedRenderBus>` | 所有渲染总线实例的全局集合 |
+| `Collections` | `IReadOnlyList<LedRenderBus>` | 所有渲染总线实例的全局集合（基于 `List<T>`，非线程安全） |
 | `FrameExceptionMessages` | `IReadOnlyDictionary<string, string>` | 设备响应错误码 → 中文描述的映射字典 |
 
 #### 方法
@@ -415,45 +496,48 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 
 | 方法 | 说明 |
 |------|------|
-| `AddLedStrip(LedStripObject)` | 添加灯带到总线 |
+| `AddLedStrip(LedStripObject)` | 添加灯带到总线（校验 UID 唯一性，订阅 `LedPointsChanged` 事件） |
 | `RemoveLedStrip(uint uid)` | 按 UID 移除灯带 |
 | `RemoveLedStrip(LedStripObject)` | 移除指定灯带 |
-| `ClearLedStrips()` | 清空所有灯带 |
+| `ClearLedStrips()` | 清空所有灯带（取消事件订阅） |
+| `GetLedStrip(uint uid)` | 按 UID 查找灯带 |
+| `GetLedStrip(ushort address, byte port)` | 按地址和端口查找灯带 |
 
 **渲染控制：**
 
 | 方法 | 说明 |
 |------|------|
-| `StartRender()` | 启动渲染线程 |
-| `StopRender()` | 停止渲染线程 |
-| `PauseRender(ushort address)` | 暂停指定设备的渲染（address=0 暂停所有） |
-| `ResumeRender(ushort address)` | 恢复指定设备的渲染 |
-| `ClearRender(ushort address, bool clear)` | 清空指定设备的渲染队列；clear=true 时发送黑色帧关闭灯带 |
+| `StartRender()` | 启动渲染线程（LongRunning Task） |
+| `StopRender()` | 停止渲染线程，等待最多 1 秒后强制释放 |
+| `PauseRender(ushort address)` | 暂停指定设备的颜色帧渲染（设置 `IsRenderEnabled=false`） |
+| `ResumeRender(ushort address)` | 恢复指定设备的颜色帧渲染（设置 `IsRenderEnabled=true`） |
+| `ClearRender(ushort address, bool clear)` | 清空渲染队列；clear=true 时发送黑色帧关闭灯带 |
 
 **二维渲染（按灯珠坐标取像素颜色）：**
 
 | 方法 | 说明 |
 |------|------|
-| `RenderBitmap(Bitmap bitmap)` | 渲染 GDI+ 位图（自动 LockBits） |
+| `RenderBitmap(Bitmap bitmap)` | 渲染 GDI+ 位图（自动 LockBits → `RenderPixels`） |
 | `RenderPixels(IntPtr pixels, int width, int height, int stride, ColorFormat)` | 渲染像素数据（IntPtr） |
 | `RenderPixels(byte* pixels, int width, int height, int stride, ColorFormat)` | 渲染像素数据（unsafe 指针） |
 
-**一维渲染（直接指定颜色值）：**
+**一维渲染（直接指定颜色值，入队到总线渲染队列）：**
 
 | 方法 | 说明 |
 |------|------|
-| `AddColorFrame(ushort address, byte port, byte r, byte g, byte b, int start, int repeat)` | 纯色渲染 |
-| `AddColorFrame(ushort address, byte port, uint color, int start, int repeat, ColorFormat)` | uint 颜色值渲染 |
-| `AddColorFrame(ushort address, byte port, IReadOnlyList<byte> colors, int start, int repeat, ColorFormat)` | 字节数组渲染 |
-| `AddColorFrame(ushort address, byte port, IReadOnlyList<uint> colors, int start, int repeat, ColorFormat)` | uint 数组渲染 |
+| `AddColorFrame(ushort address, byte port, uint color, int fromPosition, int fillCount, int repeatCount, ColorFormat)` | 单色渲染 |
+| `AddColorFrame(ushort address, byte port, IReadOnlyList<byte> colors, int fromPosition, int repeatCount, ColorFormat)` | 字节数组渲染 |
+| `AddColorFrame(ushort address, byte port, IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat)` | uint 数组渲染 |
+
+> **总线级 vs 灯带级 AddColorFrame 的区别**：总线级方法委托给匹配的渲染模型（`GetRenderModel`）创建帧，然后入队到**总线自身**的渲染队列；灯带级方法创建帧后入队到**该灯带**的渲染队列。渲染线程先消费总线队列再消费各灯带队列。
 
 **设备配置：**
 
 | 方法 | 说明 |
 |------|------|
-| `SetDeviceBaudRate(ushort address, ushort group, int baudRate)` | 设置设备波特率（需重启生效） |
-| `SetDeviceTimeout(ushort address, ushort group, ushort timeout)` | 设置设备通信超时时间 |
-| `SetPowerOnColor(ushort address, byte port, uint color, bool isShow, ColorFormat)` | 设置/关闭上电显示颜色 |
+| `SetDeviceBaudRate(ushort group, ushort address, int baudRate)` | 设置设备波特率（功能码 0x95，需重启生效） |
+| `SetDeviceTimeout(ushort group, ushort address, ushort timeout)` | 设置设备通信超时时间（功能码 0x8E，5~1000ms） |
+| `SetPowerOnColor(ushort address, byte port, uint color, bool isShow, ColorFormat)` | 设置/关闭上电显示颜色（功能码 0x9B/0x9C） |
 
 **静态工厂方法：**
 
@@ -477,6 +561,15 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
     renderBus.StartRender();
 }
 ```
+
+#### Dispose 释放顺序
+
+1. 从全局集合 `BusCollections` 移除
+2. 禁用所有灯带的 `IsRenderEnabled`
+3. 调用 `ClearRender(0, true)` 广播黑色帧关闭灯带，并等待 `PendingFrameCount` 清零
+4. `StopRender()` 停止渲染线程
+5. `ClearLedStrips()` 清空灯带
+6. 关闭并释放传输通道
 
 ---
 
@@ -602,13 +695,14 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 | 方法 | 说明 |
 |------|------|
 | `IsValidColorFrame(this byte[])` | 验证是否为有效颜色帧（帧头尾、地址范围、长度一致性） |
-| `GetGroup(this byte[])` | 获取组地址 |
-| `GetAddress(this byte[])` | 获取设备地址 |
-| `GetPort(this byte[])` | 获取端口号 |
-| `GetFuncCode(this byte[])` | 获取功能码 |
+| `GetGroup(this byte[])` / `SetGroup(this byte[], ushort)` | 获取/设置组地址 |
+| `GetAddress(this byte[])` / `SetAddress(this byte[], ushort)` | 获取/设置设备地址 |
+| `GetPort(this byte[])` / `SetPort(this byte[], byte)` | 获取/设置端口号 |
+| `GetFunCode(this byte[])` | 获取功能码 |
 | `GetLedType(this byte[])` | 获取灯带类型 |
-| `GetDataLength(this byte[])` | 获取颜色数据长度 |
-| `GetRepeatCount(this byte[])` | 获取扩展次数 |
+| `GetReserved(this byte[])` / `SetReserved(this byte[], ushort)` | 获取/设置保留字段 |
+| `GetDataLength(this byte[])` / `SetDataLength(this byte[], ushort)` | 获取/设置颜色数据长度 |
+| `GetRepeatCount(this byte[])` / `SetRepeatCount(this byte[], ushort)` | 获取/设置扩展次数 |
 
 #### ArrayExtensions
 
@@ -688,7 +782,7 @@ APA102/SK9822 (四线，数据线+时钟线)：可通过 SPI 高速传输，常�
 | SK9822   + 921600 + 1024 颗 RGB | ~33.33 ms | ~4.1 ms | ~37.4 ms | **~26.7 FPS** |
 | SK9822   + 921600 +  512 颗 RGB | ~16.67 ms | ~2.05 ms | ~18.7 ms | **~53.4 FPS** |
 
-> **帧去重影响**：当 `RenderingRepeatInterval=8` 生效时（连续相同帧），实际设备刷新率 = 总线帧率 / 8。
+> **帧去重影响**：当 `RenderingRepeatInterval=12` 生效时（连续相同帧），实际设备刷新率 = 总线帧率 / 12。
 > 
 > **首帧延迟**（冷启动）：发送时间 + 灯珠点亮时间，1024 颗 WS2812B 约 64ms。
 
@@ -797,20 +891,20 @@ renderBus.StartRender();
 ledStrip.FillCount = 1;
 ledStrip.RepeatCount = 30;
 
-// 颜色渐变循环
+// 颜色渐变循环（使用灯带级 AddColorFrame）
 var colors = new uint[] { 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00 }; // ARGB
 int colorIndex = 0;
 
 var timer = new System.Timers.Timer(1000);
 timer.Elapsed += (s, e) =>
 {
-    renderBus.AddColorFrame(0x0001, 0x01, colors[colorIndex], start: 0, repeat: 1, ColorFormat.ARGB);
+    ledStrip.AddColorFrame(colors[colorIndex], 0, 1, 1, ColorFormat.ARGB);
     colorIndex = (colorIndex + 1) % colors.Length;
 };
 timer.Start();
 
 // 暂停/恢复渲染
-renderBus.PauseRender(0);   // 暂停所有设备（队列仍消费，但不发送）
+renderBus.PauseRender(0);   // 暂停所有设备（队列仍消费，但不发送颜色帧）
 renderBus.ResumeRender(0);  // 恢复所有设备
 
 // 清理
@@ -832,7 +926,6 @@ var bus2 = new LedRenderBus(ChannelType.TCP, "192.168.1.100,8080");
 // 使用扩展方法批量操作
 var allBuses = LedRenderBus.Collections;
 
-allBuses.OpenChannel();        // 需自行实现扩展
 allBuses.StartRender();        // 批量启动
 allBuses.PauseRender();        // 批量暂停
 allBuses.ResumeRender();       // 批量恢复
@@ -875,8 +968,9 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 
 ### 7.1 IsRenderEnabled 语义
 
-- **当前行为**：`IsRenderEnabled=false` 时，渲染线程仍然从队列取出帧（防止队列堆积），但不发送到设备。
-- **注意**：如果需要在暂停期间保留队列数据，应在外部层控制帧的入队。
+- **当前行为**：`IsRenderEnabled` 仅存在于 `LedStripObject`，控制灯带级颜色帧渲染。设为 `false` 时，渲染线程仍然从队列取出帧（防止队列堆积），但不发送颜色帧到设备。
+- **注意**：`IsRenderEnabled` 不影响指令帧（如设备配置帧），指令帧始终发送。
+- 如果需要在暂停期间保留队列数据，应在外部层控制帧的入队。
 
 ### 7.2 UdpClientTransport.Write 偏移量处理
 
@@ -893,14 +987,16 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 - 灯珠坐标的增删操作（`AddPoint`、`RemovePoint` 等）非线程安全，应在初始化阶段完成。
 - 运行时修改灯珠坐标需自行加锁。
 
-### 7.5 内存分配
+### 7.5 帧池内存管理
 
-- `CreateEmptyColorFrame` 每次调用 `new byte[frameSize]` 分配新数组。对于 20-60 条灯带的场景，此分配量可接受（~2.8MB/s，GC 开销约 0.2-0.6%）。
-- 对于更极端的性能要求，可考虑实现 `ArrayPool<byte>` 帧池。
+- `CreateEmptyColorFrame` 通过 `RentFrame` 从空闲帧池租借 `byte[]`，稳定渲染场景下帧大小不变，池命中率极高。
+- `MaxAvailableFrameCount = 8`：池中最多缓存 8 个帧缓冲区，超出时归还的帧被丢弃由 GC 回收。
+- `ReturnFrame` 在 `try-finally` 块中执行（`TryDequeueFrame`），确保旧帧不会泄漏。
+- `ClearRenderingFrames()` 直接清空队列不归还帧（帧引用丢弃由 GC 回收），因为队列帧的上一帧可能仍在 `_lastRenderingFrame` 中。
 
 ### 7.6 无连接自动重连
 
-- 渲染线程在检测到通道断开后自动尝试重连（2 秒间隔），但不保证重连成功。
+- 渲染线程在检测到通道断开后自动尝试重连（3 秒间隔），但不保证重连成功。
 - 对于关键应用，建议在外部实现健康检查 + 告警机制。
 
 ### 7.7 异常帧断连
@@ -908,7 +1004,22 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 - 连续 8 帧异常时渲染线程主动断开连接，这是为了防止错误数据持续发送。
 - 阈值（8）目前硬编码，可根据需要修改为可配置参数。
 
+### 7.8 BusCollections 线程安全
+
+- `BusCollections`（`static List<LedRenderBus>`）非线程安全，建议仅在主线程初始化阶段添加/移除实例。
+- 多线程并发创建 `LedRenderBus` 实例时应外部加锁。
+
+### 7.9 Dispose 中的潜在死循环
+
+- `Dispose()` 中 `while (IsConnected && IsRendering && PendingFrameCount > 0) Thread.Sleep(1)` 可能在渲染线程已阻塞时永远无法退出。
+- 建议：调用 `StopRender()` 后再等待队列清空，或增加超时机制。
+
+### 7.10 条件编译
+
+- 项目使用 `#define UseQueue` 在文件顶部切换 `Queue<T> + lock` 与 `ConcurrentQueue<T>` 两种队列实现。
+- 默认启用 `UseQueue`（Queue + lock 模式），在 24~64 实例场景下 lock 竞争开销可接受。
+
 ---
 
-*项目地址：`SharedProjects/SpaceCG.Standard.LedRenderer`*
+*项目路径：`SharedProjects/SpaceCG.Standard.LedRenderer`*
 *目标框架：.NET Framework 4.8 | C# 7.3*

@@ -134,7 +134,16 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.V:
-                    _ledRenderBus.AddColorFrame(0x0001, 0x01, 0xFF00FF00, 1, 10);
+                    _ledRenderBus.AddColorFrame(0x0001, 0x01, 0xFF00FF00, 0, 1, 10);
+                    break;
+
+                case Key.B:
+                    LedRenderBus.Collections[0].PauseRender(0x0001);
+                    LedRenderBus.Collections[0].ClearRender(0x0001, true);
+
+                    break;
+                case Key.N:
+                    LedRenderBus.Collections.ResumeRender();
                     break;
             }
         }

@@ -55,6 +55,17 @@ namespace SpaceCG.Extensions
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort GetGroup(this byte[] frame) => (ushort)((frame[3] << 8) | frame[4]);
+        /// <summary>
+        /// 设置组地址
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="group"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SetGroup(this byte[] frame, ushort group)
+        {
+            frame[3] = (byte)(group >> 8);
+            frame[4] = (byte)(group & 0xFF);
+        }
 
         /// <summary>
         /// 获取设备地址
@@ -65,6 +76,18 @@ namespace SpaceCG.Extensions
         public static ushort GetAddress(this byte[] frame) => (ushort)((frame[5] << 8) | frame[6]);
 
         /// <summary>
+        /// 设置设备地址
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="address"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SetAddress(this byte[] frame, ushort address)
+        {
+            frame[5] = (byte)(address >> 8);
+            frame[6] = (byte)(address & 0xFF);
+        }
+
+        /// <summary>
         /// 获取端口地址
         /// </summary>
         /// <param name="frame"></param>
@@ -73,12 +96,23 @@ namespace SpaceCG.Extensions
         public static byte GetPort(this byte[] frame) => frame[7];
 
         /// <summary>
+        /// 设置端口地址
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="port"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SetPort(this byte[] frame, byte port)
+        {
+            frame[7] = port;
+        }
+
+        /// <summary>
         /// 获取功能码
         /// </summary>
         /// <param name="frame"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte GetFuncCode(this byte[] frame) => frame[8];
+        public static byte GetFunCode(this byte[] frame) => frame[8];
 
         /// <summary>
         /// 获取灯珠类型
@@ -89,12 +123,44 @@ namespace SpaceCG.Extensions
         public static byte GetLedType(this byte[] frame) => frame[9];
 
         /// <summary>
+        /// 获取保留字段
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ushort GetReserved(this byte[] frame) => (ushort)((frame[10] << 8) | frame[11]);
+
+        /// <summary>
+        /// 设置保留字段
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="reserved"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SetReserved(this byte[] frame, ushort reserved)
+        {
+            frame[10] = (byte)(reserved >> 8);
+            frame[11] = (byte)(reserved & 0xFF);
+        }
+
+        /// <summary>
         /// 获取数据长度(颜色数据)
         /// </summary>
         /// <param name="frame"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort GetDataLength(this byte[] frame) => (ushort)((frame[12] << 8) | frame[13]);
+
+        /// <summary>
+        /// 设置数据长度(颜色数据)
+        /// </summary>
+        /// <param name="frame"></param>
+        /// <param name="dataLength"></param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void SetDataLength(this byte[] frame, ushort dataLength)
+        {
+            frame[12] = (byte)(dataLength >> 8);
+            frame[13] = (byte)(dataLength & 0xFF);
+        }
 
         /// <summary>
         /// 获取扩展次数
@@ -105,12 +171,16 @@ namespace SpaceCG.Extensions
         public static ushort GetRepeatCount(this byte[] frame) => (ushort)((frame[14] << 8) | frame[15]);
 
         /// <summary>
-        /// 获取颜色数据
+        /// 设置扩展次数
         /// </summary>
         /// <param name="frame"></param>
-        /// <returns></returns>
+        /// <param name="repeatCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        //public static byte[] GetData(byte[] frame) => frame[16..^2];
-        public static IEnumerable<byte> GetFrameData(byte[] frame) => frame.Skip(16).Take(frame.Length - 18);
+        public static void SetRepeatCount(this byte[] frame, ushort repeatCount)
+        {
+            frame[14] = (byte)(repeatCount >> 8);
+            frame[15] = (byte)(repeatCount & 0xFF);
+        }
+
     }
 }

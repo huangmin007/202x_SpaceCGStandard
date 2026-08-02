@@ -19,13 +19,13 @@
 	<!-- 灯带设备配置 -->
 	<LedDevices>
 		<LedRenderBus Type="SERIAL" Params="CH343,460800" Interval="40" Comment="">			
-			<LedStripObject Address="1" Port="1" Count="100" Comment="右1" />
+			<LedStripObject Address="1" Port="1" Count="200" Comment="右1" />
 			
-			<LedStripObject Address="1" Port="2" ColorFormat="GRB" Count="165" Comment="右2" />
-			<LedStripObject Address="1" Port="3" ColorFormat="GRB" Count="110" Comment="右3" />
-			<LedStripObject Address="1" Port="4" ColorFormat="GRB" Count="165" Comment="右4" />
-			<LedStripObject Address="1" Port="5" ColorFormat="GRB" Count="272" Comment="右5" />
-			<LedStripObject Address="1" Port="6" ColorFormat="GRB" Count="100" Comment="右6" />			
+			<LedStripObject Address="1" Port="2" ColorFormat="GRB" Count="200" Comment="右2" />
+			<LedStripObject Address="1" Port="3" ColorFormat="GRB" Count="200" Comment="右3" />
+			<LedStripObject Address="1" Port="4" ColorFormat="GRB" Count="200" Comment="右4" />
+			<LedStripObject Address="1" Port="5" ColorFormat="GRB" Count="200" Comment="右5" />
+			<LedStripObject Address="1" Port="6" ColorFormat="GRB" Count="200" Comment="右6" />			
 		</LedRenderBus>
 
 		<!--
