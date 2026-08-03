@@ -384,7 +384,7 @@ AddColorFrame() / RenderPixels()
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `UID` | `uint` | 唯一标识，计算方式：`(Port << 16) \| Address` |
+| `UID` | `uint` | 唯一标识，计算方式：`(Port << 16) || Address` |
 | `FillCount` | `int` | 渲染填充数量，≤0 时等同于 `LedCount`；配合 `RepeatCount` 实现渲染优化 |
 | `RepeatCount` | `int` | 数据重复次数，最小为 1；配合 `FillCount` 实现渲染优化 |
 | `LedPoints` | `IReadOnlyList<Point>` | 灯珠坐标列表，顺序即为物理信号顺序（返回 `_ledPoints` 的实时只读视图） |
@@ -970,7 +970,7 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 
 - **当前行为**：`IsRenderEnabled` 仅存在于 `LedStripObject`，控制灯带级颜色帧渲染。设为 `false` 时，渲染线程仍然从队列取出帧（防止队列堆积），但不发送颜色帧到设备。
 - **注意**：`IsRenderEnabled` 不影响指令帧（如设备配置帧），指令帧始终发送。
-- 如果需要在暂停期间保留队列数据，应在外部层控制帧的入队。
+- 如果需要在暂停期间保留队列数据，应在外部层控制帧的入队，不建议保留过期数据。
 
 ### 7.2 UdpClientTransport.Write 偏移量处理
 
@@ -994,7 +994,7 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 - `ReturnFrame` 在 `try-finally` 块中执行（`TryDequeueFrame`），确保旧帧不会泄漏。
 - `ClearRenderingFrames()` 直接清空队列不归还帧（帧引用丢弃由 GC 回收），因为队列帧的上一帧可能仍在 `_lastRenderingFrame` 中。
 
-### 7.6 无连接自动重连
+### 7.6 连接状态检查-自动重连
 
 - 渲染线程在检测到通道断开后自动尝试重连（3 秒间隔），但不保证重连成功。
 - 对于关键应用，建议在外部实现健康检查 + 告警机制。

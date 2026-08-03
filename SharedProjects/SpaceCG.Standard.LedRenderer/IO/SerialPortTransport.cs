@@ -62,9 +62,13 @@ namespace SpaceCG.IO
             if (baudRate <= 0) throw new ArgumentException("波特率必须大于0");
 
             this._portName = portName;
+            var actualPortName = GetPortName(_portName);
 
             _serialPort = new SerialPort();
-            _serialPort.PortName = GetPortName(_portName);
+            if (!string.IsNullOrWhiteSpace(actualPortName))
+            {
+                _serialPort.PortName = actualPortName;
+            }
             _serialPort.BaudRate = baudRate;
             _serialPort.Parity = (Parity)Enum.Parse(typeof(Parity), parity.ToString());
             _serialPort.DataBits = dataBits;
@@ -98,9 +102,13 @@ namespace SpaceCG.IO
             if (arguments.Length >= 5 && Enum.TryParse(arguments[4], out stopBits)) { }
 
             this._portName = arguments[0];
+            var actualPortName = GetPortName(_portName);
 
             _serialPort = new SerialPort();
-            _serialPort.PortName = GetPortName(_portName);
+            if (!string.IsNullOrWhiteSpace(actualPortName))
+            {
+                _serialPort.PortName = actualPortName;
+            }
             _serialPort.BaudRate = baudRate;
             _serialPort.Parity = parity;
             _serialPort.DataBits = dataBits;
@@ -117,28 +125,17 @@ namespace SpaceCG.IO
             if (_serialPort == null) return;
             if (_serialPort.IsOpen) return;
 
-            try
-            {
-                if (!_serialPort.IsOpen)
-                {
-                    _serialPort.PortName = GetPortName(_portName);
+            if (SerialPort.GetPortNames().Length == 0)
+                throw new Exception("没有找到可用的串口设备");
 
-                    if (string.IsNullOrWhiteSpace(_serialPort.PortName))
-                    {
-                        Trace.TraceWarning($"跟据 {_portName} 获取串口失败");
-                        return;
-                    }
+            var portName = GetPortName(_portName);
+            if (string.IsNullOrWhiteSpace(portName))
+                throw new Exception($"跟据指定名称 {_portName} 获取串口失败");
 
-                    _serialPort.Open();
-                    _serialPort.DiscardInBuffer();
-                    _serialPort.DiscardOutBuffer();
-                }
-            }
-            catch (Exception ex)
-            {
-                Trace.TraceWarning($"({Name}) 建立连接失败：{ex.Message}");
-                throw ex;
-            }
+            _serialPort.PortName = portName;
+            _serialPort.Open();
+            _serialPort.DiscardInBuffer();
+            _serialPort.DiscardOutBuffer();
         }
 
         /// <inheritdoc/>
@@ -207,7 +204,7 @@ namespace SpaceCG.IO
                 }
             }
 
-            return searchPattern;
+            return string.Empty;
         }
 
     }

@@ -153,7 +153,7 @@ namespace Z_TestWpfApp
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
 #if false
-            _ledRenderBus = new LedRenderBus(SpaceCG.IO.ChannelType.SERIAL, "CH343,460800");
+            _ledRenderBus = new LedRenderBus(SpaceCG.IO.ChannelType.SERIAL, "CH343,921600");
             var ledStrip = new LedStripObject(0x0001, 0x01);
             ledStrip.AddPoints(new Point(0, 0), new Point(99, 0));
             _ledRenderBus.AddLedStrip(ledStrip);
@@ -162,9 +162,11 @@ namespace Z_TestWpfApp
             ledRenderControl = new LedRenderControl(Canvas_Leds);
             ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
             ledRenderControl.StartRender();
-            ledRenderControl.RenderSceneId(1);
-#endif
+            //ledRenderControl.RenderSceneId(1);
 
+            //LedRenderBus.Collections[0].SetDeviceBaudRate(0x0000, 0x0001, 921600);
+            //LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
+#endif
         }
 
         private string F2(ICollection<byte> b)

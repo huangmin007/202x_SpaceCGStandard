@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using Trace = SpaceCG.Diagnostics.Trace;
 
@@ -91,82 +92,37 @@ namespace SpaceCG.IO
             if (_udpClient == null) return;
             if (_isConnected) return;
 
-            try
+            if (_udpClient != null)
             {
-                _isConnected = true;
-                _udpClient.Connect(_hostname, _port);
+                _udpClient.Close();
             }
-            catch (Exception ex)
-            {
-                _isConnected = false;
-                Trace.TraceWarning($"UDP({Name}) 建立连接失败：{ex.Message}");
-            }
+
+            _udpClient.Connect(_hostname, _port);
+            _isConnected = true;
         }
+
         /// <inheritdoc/>
         public void Close()
         {
             if (_udpClient == null) return;
 
-            _isConnected = false;
             _udpClient.Close();
+            _isConnected = false;
         }
 
         /// <inheritdoc/>
         public int Read(byte[] buffer, int offset, int count)
         {
-            if (_udpClient == null) return 0;
-
-            if (buffer == null)
-            {
-                throw new ArgumentNullException("buffer");
-            }
-            if (offset < 0)
-            {
-                throw new ArgumentOutOfRangeException("offset", "Argument offset must be greater than or equal to 0.");
-            }
-            if (offset > buffer.Length)
-            {
-                throw new ArgumentOutOfRangeException("offset", "Argument offset cannot be greater than the length of buffer.");
-            }
-            if (count < 0)
-            {
-                throw new ArgumentOutOfRangeException("count", "Argument count must be greater than or equal to 0.");
-            }
-            if (count > buffer.Length - offset)
-            {
-                throw new ArgumentOutOfRangeException("count", "Argument count cannot be greater than the length of buffer minus offset.");
-            }
+            if (_udpClient == null || !_isConnected) return 0;
 
             //EndPoint ipEndPoint = new IPEndPoint(IPAddress.Any, 0);
             //return this._udpClient.Client.ReceiveFrom(buffer, offset, count, SocketFlags.None, ref ipEndPoint);
-
             return this._udpClient.Client.Receive(buffer, offset, count, SocketFlags.None);
         }
         /// <inheritdoc/>
         public void Write(byte[] buffer, int offset, int count)
         {
-            if (_udpClient == null) return;
-
-            if (buffer == null)
-            {
-                throw new ArgumentNullException("buffer");
-            }
-            if (offset < 0)
-            {
-                throw new ArgumentOutOfRangeException("offset", "Argument offset must be greater than or equal to 0.");
-            }
-            if (offset > buffer.Length)
-            {
-                throw new ArgumentOutOfRangeException("offset", "Argument offset cannot be greater than the length of buffer.");
-            }
-            if (count < 0)
-            {
-                throw new ArgumentOutOfRangeException("count", "Argument count must be greater than or equal to 0.");
-            }
-            if (count > buffer.Length - offset)
-            {
-                throw new ArgumentOutOfRangeException("count", "Argument count cannot be greater than the length of buffer minus offset.");
-            }
+            if (_udpClient == null || !_isConnected) return;
 
             if (offset <= 0)
                 _udpClient.Send(buffer, count);

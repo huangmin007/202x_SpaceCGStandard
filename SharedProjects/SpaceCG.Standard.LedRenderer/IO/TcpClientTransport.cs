@@ -79,7 +79,7 @@ namespace SpaceCG.IO
             this._port = port;
             this._hostname = arguments[0];
         }
-        
+
         /// <inheritdoc/>
         public void Open()
         {
@@ -92,18 +92,10 @@ namespace SpaceCG.IO
                 _tcpClient = null;
             }
 
-            try
-            {
-                _tcpClient = new TcpClient();
-                _tcpClient.SendBufferSize = 8192 * 64;
-                _tcpClient.ReceiveBufferSize = 8192 * 8;
-                _tcpClient.Connect(_hostname, _port);
-            }
-            catch(Exception ex)
-            {
-                Trace.TraceWarning($"({Name}) 建立连接失败：{ex.Message}");
-                Close();
-            }
+            _tcpClient = new TcpClient();
+            _tcpClient.SendBufferSize = 8192 * 64;
+            _tcpClient.ReceiveBufferSize = 8192 * 8;
+            _tcpClient.Connect(_hostname, _port);
         }
 
         /// <inheritdoc/>

@@ -27,7 +27,7 @@ namespace SpaceCG.Device
         public uint UID { get; private set; }
 
         /// <summary>
-        /// 【渲染优化参数】填充数量。≤0 时等同于 <see cref="FrameRenderModel.LedCount"/>（全部灯珠）。
+        /// 【渲染优化参数】灯珠填充数量。≤0 时等同于 <see cref="FrameRenderModel.LedCount"/>（全部灯珠）。
         /// </summary>
         /// <remarks>
         /// <para>配合 <see cref="RepeatCount"/> 使用可实现数据压缩渲染。</para>
@@ -74,7 +74,7 @@ namespace SpaceCG.Device
         /// </summary>
         /// <remarks>
         /// <para><b>重要：</b>坐标顺序必须与灯带实际布线方向一致，否则渲染画面会出现错位。</para>
-        /// <para>返回的是 <see cref="_ledPoints"/> 的实时只读视图，灯珠变更时无需重新获取。</para>
+        /// <para>返回的是 <see cref="IReadOnlyList{Point}"/> 的实时只读视图，灯珠变更时无需重新获取。</para>
         /// </remarks>
         public IReadOnlyList<Point> LedPoints
         {
@@ -273,8 +273,9 @@ namespace SpaceCG.Device
         /// <para>输入颜色值 (<see cref="uint"/>类型) 数组 <paramref name="color"/> 颜色通道 <paramref name="colorFormat"/> 必须是 <b>四通道</b> 类型</para>
         /// </summary>
         /// <param name="color">颜色值数据，需要指定颜色通道格式 <paramref name="colorFormat"/></param>
-        /// <param name="fromPosition">点亮灯珠 IC 的起始位置。值范围：[0, <see cref="LedCount"/>]。</param>
-        /// <param name="repeat">颜色数据重复次数。至少重复次数为 1 ，不能超过灯珠数量。</param>
+        /// <param name="fromPosition">点亮灯珠 IC 的起始位置，有效值范围：[1, <see cref="LedCount"/>]。</param>
+        /// <param name="fillCount">填充的灯珠数量（颜色数据中的像素数），会被钳制到 [1, <see cref="LedCount"/>] 范围。</param>
+        /// <param name="repeatCount">颜色数据的扩展/重复次数，会被钳制到 [1, <see cref="LedCount"/>] 范围。</param>
         /// <param name="colorFormat"><paramref name="color"/> 数据的颜色值格式</param>
         /// <exception cref="ArgumentException"></exception>
         public void AddColorFrame(uint color, int fromPosition, int fillCount, int repeatCount, ColorFormat colorFormat = ColorFormat.ARGB)
@@ -282,20 +283,20 @@ namespace SpaceCG.Device
             var frame = CreateColorFrame(color, fromPosition, fillCount, repeatCount, colorFormat);
             EnqueueFrame(frame);
         }
-        /// <inheritdoc cref="AddColorFrame(IReadOnlyList{uint}, int, int, ColorFormat)"/>
+        /// <summary>
+        /// 添加待渲染的颜色数据帧到 <b>当前对象的渲染队列</b>。
+        /// </summary>
+        /// <param name="colors">颜色数据集合，需要指定颜色通道格式 <paramref name="colorFormat"/></param>
+        /// <param name="fromPosition">点亮灯珠 IC 的起始位置。有效值范围：[1, <see cref="LedCount"/>]。</param>
+        /// <param name="repeatCount">颜色数据重复/扩展次数，会被钳制到 [1, <see cref="LedCount"/>] 范围。</param>
+        /// <param name="colorFormat"><paramref name="colors"/> 数据的颜色值格式，(<c>uint</c> 类型) 必须是 4 通道（如 ARGB、RGBA），(<c>byte</c> 类型) 可以是 3 通道或 4 通道。</param>
+        /// <exception cref="ArgumentException"></exception>
         public void AddColorFrame(IReadOnlyList<byte> colors, int fromPosition, int repeatCount, ColorFormat colorFormat = ColorFormat.RGB)
         {
             var frame = CreateColorFrame(colors, fromPosition, repeatCount, colorFormat);
             EnqueueFrame(frame);
         }
-        /// <summary>
-        /// 添加待渲染的颜色数据帧到 <b>当前对象的渲染队列</b>。
-        /// </summary>
-        /// <param name="colors">颜色值数组，需要指定颜色通道格式 <paramref name="colorFormat"/></param>
-        /// <param name="fromPosition">点亮灯珠 IC 的起始位置。值范围：[0, <see cref="LedCount"/>]。</param>
-        /// <param name="repeatCount">颜色数据重复次数。至少重复次数为 1 ，不能超过灯珠数量。</param>
-        /// <param name="colorFormat"><paramref name="colors"/> 数据的颜色值格式</param>
-        /// <exception cref="ArgumentException"></exception>
+        /// <inheritdoc cref="AddColorFrame(IReadOnlyList{byte}, int, int, ColorFormat)"/>
         public void AddColorFrame(IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat colorFormat = ColorFormat.ARGB)
         {
             var frame = CreateColorFrame(colors, fromPosition, repeatCount, colorFormat);

@@ -14,11 +14,11 @@
 
 	<WindowSettings ListenerPort="2000" TickInterval="300" RFIDParams="CH H,19200" />
 
-	<DrawingDisplay Rectangle="0,0,400,640" Interval="30" />
+	<DrawingDisplay Rectangle="0,0,400,600" Interval="30" />
 
 	<!-- 灯带设备配置 -->
 	<LedDevices>
-		<LedRenderBus Type="SERIAL" Params="CH343,460800" Interval="40" Comment="">			
+		<LedRenderBus Type="SERIAL" Params="CH343,921600" Comment="">			
 			<LedStripObject Address="1" Port="1" Count="200" Comment="右1" />
 			
 			<LedStripObject Address="1" Port="2" ColorFormat="GRB" Count="200" Comment="右2" />
@@ -29,7 +29,7 @@
 		</LedRenderBus>
 
 		<!--
-		<LedRenderBus Type="SERIAL" Params="CH B,921600" Interval="40" Comment="">
+		<LedRenderBus Type="SERIAL" Params="CH B,921600" Comment="">
 			<LedStripObject Address="2" Port="1" ColorFormat="GRB" Count="103" FillCount="15" RepeatCount="17" Comment="右7" />
 			<LedStripObject Address="2" Port="2" ColorFormat="GRB" Count="232" Comment="右8" />
 			<LedStripObject Address="2" Port="3" ColorFormat="GRB" Count="400" Comment="右9" />

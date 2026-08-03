@@ -37,7 +37,7 @@ namespace SpaceCG.Device
         private Canvas _canvas;
         private TextBlock _textBlock_info;
 
-        private DrawingWpfElement drawingDisplay;
+        private IDrawingDisplay drawingDisplay;
         private IEnumerable<XElement> sceneElements;
         private CancellationTokenSource cancelTokenSource;
 
@@ -295,7 +295,6 @@ namespace SpaceCG.Device
             {
                 _textBlock_info.Text = infoContent;
             });
-
         }
 
         /// <summary>
