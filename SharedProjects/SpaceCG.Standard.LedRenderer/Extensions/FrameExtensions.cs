@@ -35,14 +35,14 @@ namespace SpaceCG.Extensions
             if (port > 6) return false;
 
             // 功能码 0x98 & 0x99
-            if (frame[8] != 0x98 && frame[8] != 0x99) return false;
+            if (frame[8] != 0x98 && frame[8] != 0x99 && frame[8] != 0x9A) return false;
 
             // 数据长度 3~3072
             var dataLength = GetDataLength(frame);
             if (dataLength < 3 || dataLength > 3072 || dataLength + 18 != frame.Length) return false;
 
             // 扩展次数 1~1024
-            var repeatCount = GetRepeat(frame);
+            var repeatCount = GetRepeatCount(frame);
             if (repeatCount == 0 || repeatCount > 1024) return false;
 
             return true;
@@ -100,7 +100,7 @@ namespace SpaceCG.Extensions
         /// <param name="port"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetPort(this byte[] frame, byte port) => frame[7] = port;
-        
+
         /// <summary>
         /// 获取功能码
         /// </summary>
@@ -120,7 +120,7 @@ namespace SpaceCG.Extensions
         /// <param name="frame"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsColorFrame(this byte[] frame) => frame[8] == 0x98 || frame[8] == 0x99;
+        public static bool IsColorFrame(this byte[] frame) => frame[8] == 0x98 || frame[8] == 0x99 || frame[8] == 0x9A;
 
 
         /// <summary>
@@ -182,38 +182,26 @@ namespace SpaceCG.Extensions
         /// <param name="frame"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int GetRepeat(this byte[] frame) => (frame[14] << 8) | frame[15];
+        public static int GetRepeatCount(this byte[] frame) => (frame[14] << 8) | frame[15];
         /// <summary>
         /// 设置扩展次数
         /// </summary>
         /// <param name="frame"></param>
         /// <param name="repeatCount"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void SetRepeat(this byte[] frame, int repeatCount)
+        public static void SetRepeatCount(this byte[] frame, int repeatCount)
         {
             frame[14] = (byte)(repeatCount >> 8);
             frame[15] = (byte)(repeatCount & 0xFF);
         }
-        
+
         /// <summary>
-        /// 是否是广播帧
+        /// 是否是广播帧。广播帧的定义：group 地址不为 0，或设备地址为 0，即为广播帧。
         /// </summary>
         /// <param name="frame"></param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsBroadcastFrame(this byte[] frame)
-        {
-            var group = (frame[3] << 8) | frame[4];
-            if (group != 0) return true;
-
-            var port = frame[7];
-            if (port == 0) return true;
-
-            var address = (frame[5] << 8) | frame[6];
-            if (address == 0) return true;
-
-            return false;
-        }
+        public static bool IsBroadcastFrame(this byte[] frame) => ((frame[3] << 8) | frame[4]) != 0 || ((frame[5] << 8) | frame[6]) == 0;// || frame[7] == 0;
 
     }
 }

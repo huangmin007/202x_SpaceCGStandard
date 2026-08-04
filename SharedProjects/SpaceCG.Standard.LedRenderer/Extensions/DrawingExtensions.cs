@@ -75,7 +75,7 @@ namespace SpaceCG.Extensions
             var i = 0;
             var tokens = pointsString.Split(',');
             var results = new List<Point>(1024);
-            
+
             while (i < tokens.Length)
             {
                 if (tokens[i].StartsWith("..."))
@@ -91,7 +91,7 @@ namespace SpaceCG.Extensions
                     var y = int.Parse(tokens[i + 2]);
                     var end = new Point(x, y);
 
-                    var tempPoints = GetPoints(start, end);                    
+                    var tempPoints = GetPoints(start, end);
                     results.AddRange(tempPoints.Skip(1));      // 要去掉第一个 start 点，因为它已经在 results 里了
 
                     i += 3;
@@ -123,8 +123,6 @@ namespace SpaceCG.Extensions
         /// <returns>返回包含 <paramref name="start"/> 和 <paramref name="end"/> 的点集</returns>
         public static IEnumerable<Point> GetPoints(Point start, Point end)
         {
-            if(start == null || end == null) return Array.Empty<Point>();
-
             int dx = Math.Abs(end.X - start.X);
             int dy = Math.Abs(end.Y - start.Y);
             int sx = (start.X < end.X) ? 1 : -1;
@@ -170,7 +168,7 @@ namespace SpaceCG.Extensions
         /// <exception cref="ArgumentException"></exception>
         public static IEnumerable<Point> GetPoints(Rectangle rectangle, ScanAxis axis = ScanAxis.Horizontal, ScanOrder order = ScanOrder.Forward, int stepX = 1, int stepY = 1)
         {
-            if (rectangle == null || rectangle.IsEmpty) throw new ArgumentException("矩形不能为空");
+            if (rectangle.IsEmpty) throw new ArgumentException("矩形不能为空");
             if (stepX <= 0 || stepY <= 0) throw new ArgumentException("步长必须大于 0");
 
             List<Point> results = new List<Point>(512);

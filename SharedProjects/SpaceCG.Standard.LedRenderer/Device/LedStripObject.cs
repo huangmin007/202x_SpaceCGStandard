@@ -37,16 +37,16 @@ namespace SpaceCG.Device
         {
             get
             {
-                if (__fillCount <= 0) return LedCount;
-                if (__fillCount > LedCount) return LedCount;
-                return __fillCount;
+                if (_fillCount < 1) return LedCount;
+                if (_fillCount > LedCount) return LedCount;
+                return _fillCount;
             }
             set
             {
-                __fillCount = Math.Max(0, Math.Min(value, LedCount));
+                _fillCount = Math.Max(0, Math.Min(value, LedCount));
             }
         }
-        private int __fillCount = 0;
+        private int _fillCount = 0;
 
         /// <summary>
         /// 【渲染优化参数】数据重复/扩展次数，最小为 1。
@@ -58,16 +58,16 @@ namespace SpaceCG.Device
         {
             get
             {
-                if (__repeatCount < 1) return 1;
-                if (__repeatCount > LedCount) return LedCount;
-                return __repeatCount;
+                if (_repeatCount < 1) return 1;
+                if (_repeatCount > LedCount) return LedCount;
+                return _repeatCount;
             }
             set
             {
-                __repeatCount = Math.Max(1, Math.Min(value, LedCount));
+                _repeatCount = Math.Max(1, Math.Min(value, LedCount));
             }
         }
-        private int __repeatCount = 1;
+        private int _repeatCount = 1;
 
         /// <summary>
         /// 灯珠在位图上的坐标集合，列表顺序即物理信号顺序。
@@ -90,6 +90,8 @@ namespace SpaceCG.Device
         /// <see cref="List{T}.AsReadOnly"/> 返回对 <see cref="_ledPoints"/> 的实时视图，灯珠变更时无需重建此缓存。
         /// </summary>
         private IReadOnlyList<Point> _ledPointsReadOnly;
+        /// <inheritdoc cref="LedPoints"/> 
+        private readonly List<Point> _ledPoints = new List<Point>(512);
 
         /// <summary>
         /// 是否允许渲染当前灯带的颜色数据帧。默认 <c>true</c>。
@@ -107,9 +109,6 @@ namespace SpaceCG.Device
         /// <remarks>在 <see cref="AddPoint(Point)"/>、<see cref="RemovePoint(int)"/> 等方法中触发。</remarks>
         public event EventHandler<EventArgs> LedPointsChanged;
 
-        /// <inheritdoc cref="LedPoints"/> 
-        private readonly List<Point> _ledPoints = new List<Point>(512);
-
         /// <summary>
         /// 初始化 Led 灯带实例。
         /// </summary>
@@ -117,9 +116,13 @@ namespace SpaceCG.Device
         /// <param name="port">设备端口号，值范围：0 ~ 6。</param>
         /// <param name="ledType">灯带芯片类型，默认 <see cref="LedType.WS2812B"/>。</param>
         /// <param name="ledColorFormat">颜色格式，默认 <see cref="ColorFormat.GRB"/>。</param>
+        /// <exception cref="ArgumentOutOfRangeException">地址和端口号不能为 0。</exception>
         public LedStripObject(ushort address, byte port, LedType ledType = LedType.WS2812B, ColorFormat ledColorFormat = ColorFormat.GRB)
             : base(address, port, ledType, ledColorFormat)
         {
+            if (address == 0 || port == 0) 
+                throw new ArgumentOutOfRangeException($"{nameof(LedStripObject)} 灯带地址和端口号都不能为 0。");
+
             RenderingRepeatInterval = 12;
             UID = (uint)(Port << 16 | Address);
         }
@@ -280,8 +283,8 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentException"></exception>
         public void AddColorFrame(uint color, int fromPosition, int fillCount, int repeatCount, ColorFormat colorFormat = ColorFormat.ARGB)
         {
-            var frame = CreateColorFrame(color, fromPosition, fillCount, repeatCount, colorFormat);
-            EnqueueFrame(frame);
+            var frame = CreateFillColorFrame(color, fromPosition, fillCount, repeatCount, colorFormat);
+            AddColorFrame(frame);
         }
         /// <summary>
         /// 添加待渲染的颜色数据帧到 <b>当前对象的渲染队列</b>。
@@ -293,14 +296,14 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentException"></exception>
         public void AddColorFrame(IReadOnlyList<byte> colors, int fromPosition, int repeatCount, ColorFormat colorFormat = ColorFormat.RGB)
         {
-            var frame = CreateColorFrame(colors, fromPosition, repeatCount, colorFormat);
-            EnqueueFrame(frame);
+            var frame = CreateFillColorFrame(colors, fromPosition, repeatCount, colorFormat);
+            AddColorFrame(frame);
         }
         /// <inheritdoc cref="AddColorFrame(IReadOnlyList{byte}, int, int, ColorFormat)"/>
         public void AddColorFrame(IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat colorFormat = ColorFormat.ARGB)
         {
-            var frame = CreateColorFrame(colors, fromPosition, repeatCount, colorFormat);
-            EnqueueFrame(frame);
+            var frame = CreateFillColorFrame(colors, fromPosition, repeatCount, colorFormat);
+            AddColorFrame(frame);
         }
         #endregion
 
@@ -319,7 +322,7 @@ namespace SpaceCG.Device
         /// <returns>创建成功返回 <c>true</c>，否则返回 <c>false</c>。</returns>
         /// <remarks>
         /// <para>支持从属性 <c>LedPoints</c> 或子元素 <c>&lt;LedPoints&gt;</c> 解析坐标数据。</para>
-        /// <para>可选属性：Comment、Group、Reserved、Timeout、FillCount、RepeatCount、RenderingRepeatInterval。</para>
+        /// <para>可选属性：Comment、Group、Reserved、FillCount、RepeatCount、RepeatInterval/RenderingRepeatInterval。</para>
         /// </remarks>
         public static bool TryCreateInstance(XElement element, out LedStripObject ledStrip)
         {
@@ -340,7 +343,7 @@ namespace SpaceCG.Device
                 Trace.TraceWarning($"配置节点 {nameof(LedStripObject)} 的 {nameof(Address)} 属性值无效");
                 return false;
             }
-            
+
             var ledType = Enum.TryParse(element.Attribute(nameof(LedType))?.Value, true, out LedType _ledType) ? _ledType : LedType.WS2812B;
             var colorFormat = Enum.TryParse(element.Attribute(nameof(ColorFormat))?.Value, true, out ColorFormat _colorFormat) ? _colorFormat : ColorFormat.GRB;
 
@@ -350,16 +353,16 @@ namespace SpaceCG.Device
             string pointsString = element.Attribute(nameof(LedPoints))?.Value;
             if (!string.IsNullOrWhiteSpace(pointsString))
             {
-                if (DrawingExtensions.TryParsePoints(pointsString, out var _points))
+                if (DrawingExtensions.TryParsePoints(pointsString, out var points))
                 {
-                    ledStrip.AddPoints(_points);
+                    ledStrip.AddPoints(points);
                 }
             }
             foreach (var pointElement in element.Elements(nameof(LedPoints)))
             {
-                if (DrawingExtensions.TryParsePoints(pointElement.Value, out var _points))
+                if (DrawingExtensions.TryParsePoints(pointElement.Value, out var points))
                 {
-                    ledStrip.AddPoints(_points);
+                    ledStrip.AddPoints(points);
                 }
             }
 
@@ -371,9 +374,6 @@ namespace SpaceCG.Device
 
             var reservedAttr = element.Attribute(nameof(Reserved));
             if (reservedAttr != null && ushort.TryParse(reservedAttr.Value, out ushort reserved)) ledStrip.Reserved = reserved;
-            
-            var timeoutAttr = element.Attribute(nameof(Timeout));
-            if (timeoutAttr != null && int.TryParse(timeoutAttr.Value, out int timeout)) ledStrip.Timeout = timeout;
 
             var fillCountAttr = element.Attribute(nameof(FillCount));
             if (fillCountAttr != null && int.TryParse(fillCountAttr.Value, out int fillCount)) ledStrip.FillCount = fillCount;
@@ -381,8 +381,9 @@ namespace SpaceCG.Device
             var repeatCountAttr = element.Attribute(nameof(RepeatCount));
             if (repeatCountAttr != null && int.TryParse(repeatCountAttr.Value, out int repeatCount)) ledStrip.RepeatCount = repeatCount;
 
-            var renderRepeatIntervalAttr = element.Attribute(nameof(RenderingRepeatInterval));
-            if (renderRepeatIntervalAttr != null && int.TryParse(renderRepeatIntervalAttr.Value, out int renderingRepeatInterval))
+            // 兼容属性 RepeatInterval / RenderingRepeatInterval
+            var repeatIntervalAttr = element.Attribute("RepeatInterval") ?? element.Attribute(nameof(RenderingRepeatInterval));
+            if (repeatIntervalAttr != null && int.TryParse(repeatIntervalAttr.Value, out int renderingRepeatInterval))
                 ledStrip.RenderingRepeatInterval = renderingRepeatInterval;
 
             return true;

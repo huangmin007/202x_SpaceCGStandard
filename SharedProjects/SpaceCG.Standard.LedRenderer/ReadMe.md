@@ -137,17 +137,18 @@ AddColorFrame() / RenderPixels()
       │
   → 设备响应处理（超时/异常检测）
       │
-  → 每秒结算：ResetRenderingState() → ReturnFrame(lastFrame)
+  → 每秒结算/兜底去重：ResetRenderingState() → ReturnFrame(lastFrame)
 ```
 
 ### 帧去重优化
 
 渲染线程通过 `TryDequeueFrame()` 检测连续相同帧，由 `RenderingRepeatInterval` 控制去重力度：
 
+- **FrameRenderModel**：`RenderingRepeatInterval = 8`（基类默认值）
 - **LedRenderBus**：`RenderingRepeatInterval = 0`（总线级不去重，因为总线帧通常是命令帧或广播帧）
 - **LedStripObject**：`RenderingRepeatInterval = 12`（灯带级：连续 12 帧相同才渲染 1 次）
 
-> **性能设计**：帧内容比较（P/Invoke `memcmp`）在 `_renderingStateLock` 锁外执行，避免阻塞生产者线程的 `EnqueueFrame` 操作。
+> **性能设计**：颜色帧内容比较（P/Invoke `memcmp`）在 `_renderingStateLock` 锁外执行，避免阻塞生产者线程的 `EnqueueFrame` 操作。
 
 ### 线程安全模型
 
@@ -244,7 +245,7 @@ AddColorFrame() / RenderPixels()
 | [3-4] | 2 | 组地址 | 0~1024 | ushort, Big-Endian |
 | [5-6] | 2 | 设备地址 | 0~4096 | ushort, Big-Endian；0=广播 |
 | [7] | 1 | 端口号 | 0~6 | 0=所有端口 |
-| [8] | 1 | 功能码 | 0x98/0x99/... | 0x99=颜色帧(从头)，0x98=颜色帧(指定偏移)，0x9B=上电显示，0x9C=关闭上电显示，0x95=设置波特率，0x8E=设置超时 |
+| [8] | 1 | 功能码 | 0x98/0x99/0x9A/... | 0x99=颜色帧(从头)，0x98=颜色帧(指定偏移)，0x9A=颜色帧(等同0x99)，0x9B=上电显示，0x9C=关闭上电显示，0x95=设置波特率，0x8E=设置超时 |
 | [9] | 1 | 灯带类型 | 见 LedType 枚举 | |
 | [10-11] | 2 | 保留/IC起始 | 0~1024 | 功能码 0x99 时为保留字段（`Reserved`）；0x98 时为 IC 起始位置(1-based) |
 | [12-13] | 2 | 颜色数据长度 | 3~3072 | ushort, Big-Endian；须满足 `dataLength + 18 == frame.Length` |
@@ -306,8 +307,6 @@ AddColorFrame() / RenderPixels()
 | `FrameMaxLength` | 3090 | 最大帧长 |
 | `MaxRenderingFrameCount` | 3 | 渲染队列最大容量（超出时丢弃最旧颜色帧，归还到空闲池） |
 | `MaxAvailableFrameCount` | 8 | 空闲帧池最大容量 |
-| `DefaultTimeout` | 10 | 无响应帧默认等待时间（ms） |
-| `DefaultResponseTimeout` | 300 | 默认设备响应超时（ms） |
 
 #### 属性
 
@@ -321,10 +320,9 @@ AddColorFrame() / RenderPixels()
 | `ColorFormat` | `ColorFormat` | get; private set | 颜色格式 |
 | `LedCount` | `int` | get; protected set | 灯珠数量（总线=最长灯带，灯带=实际物理灯珠） |
 | `CurrentMaxLedCount` | `ushort` | get; private set | 当前颜色格式支持的最大灯珠数（1024/768） |
-| `RenderingRepeatInterval` | `int` | get; protected set | 连续相同帧渲染间隔（0=禁用去重，默认 8） |
+| `RenderingRepeatInterval` | `int` | get; protected set | 连续相同帧渲染间隔（0=禁用去重；总线默认 0，灯带默认 12） |
 | `PendingFrameCount` | `int` | get | 渲染队列中待处理的帧数量 |
 | `Fps` | `int` | get; internal set | 当前渲染帧率（帧/秒） |
-| `Timeout` | `int` | get/set | 帧发送后线程等待时间（0~1000 ms），默认 10ms |
 | `Tag` | `object` | get/set | 自定义数据 |
 | `Comment` | `string` | get/set | 备注信息 |
 
@@ -345,14 +343,13 @@ AddColorFrame() / RenderPixels()
 | 方法 | 说明 |
 |------|------|
 | `RentFrame(int frameSize)` | 从空闲帧池租借指定大小的缓冲区，池中无匹配时 `new byte[]` |
-| `ReturnFrame(byte[] frame)`（private） | 归还帧到空闲池，池满时丢弃由 GC 回收 |
+| `ReturnFrame(byte[] frame)`（protected） | 归还帧到空闲池，池满时丢弃由 GC 回收 |
 | `ClearAvailableFrames()` | 清空空闲帧池（通常在灯带参数变更后调用） |
 
 **入队/出队：**
 
 | 方法 | 说明 |
 |------|------|
-| `AddFrame(byte[] frame)` | 添加通用数据帧（如上电显示指令），不做溢出清理 |
 | `AddColorFrame(byte[] frame)` | 添加颜色数据帧（校验功能码、灯带类型、地址、端口、颜色数据长度，修正 repeat 字段） |
 | `EnqueueFrame(byte[] frame)` | 入队到渲染队列，颜色帧超出 `MaxRenderingFrameCount` 时归还溢出帧到空闲池 |
 | `TryDequeueFrame(out byte[] frame)` | 出队并执行重复帧去重，返回 true 表示需要渲染 |
@@ -384,7 +381,7 @@ AddColorFrame() / RenderPixels()
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `UID` | `uint` | 唯一标识，计算方式：`(Port << 16) || Address` |
+| `UID` | `uint` | 唯一标识，计算方式：`(Port &lt;&lt; 16) \| Address` |
 | `FillCount` | `int` | 渲染填充数量，≤0 时等同于 `LedCount`；配合 `RepeatCount` 实现渲染优化 |
 | `RepeatCount` | `int` | 数据重复次数，最小为 1；配合 `FillCount` 实现渲染优化 |
 | `LedPoints` | `IReadOnlyList<Point>` | 灯珠坐标列表，顺序即为物理信号顺序（返回 `_ledPoints` 的实时只读视图） |
@@ -450,7 +447,7 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 }
 ```
 
-> 可选属性：`Comment`、`Group`、`Reserved`、`Timeout`、`FillCount`、`RepeatCount`、`RenderingRepeatInterval`。
+> 可选属性：`Comment`、`Group`、`Reserved`、`FillCount`、`RepeatCount`、`RenderingRepeatInterval`。
 
 ---
 
@@ -459,6 +456,14 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 `namespace SpaceCG.Device` | 继承 `FrameRenderModel` | 实现 `IDisposable`
 
 管理传输通道 + 灯带集合 + 渲染线程 + 帧调度。
+
+#### 常量
+
+| 常量 | 值 | 说明 |
+|------|-----|------|
+| `DefaultInterFrameDelay` | 10 | 默认帧间延迟时间（ms），广播帧或是无响应帧发送后线程等待时间 |
+| `DefaultResponseTimeout` | 300 | 默认设备响应超时（ms） |
+| `DefaultResponsePollInterval` | 1 | 默认设备响应轮询间隔时间（ms） |
 
 #### 属性
 
@@ -471,16 +476,18 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 | `BusId` | `int` | 总线编号，按创建顺序自动分配 |
 | `TotalLedCount` | `int` | 总线上所有灯带的灯珠总数 |
 | `LedDevices` | `IEnumerable<ushort>` | 总线上非重复的设备地址集合 |
-| `LedStrips` | `IReadOnlyDictionary<uint, LedStripObject>` | 总线上登记的灯带集合（按 UID 索引） |
+| `LedStrips` | `IReadOnlyList<LedStripObject>` | 总线上登记的灯带集合（按添加顺序排列） |
 | `LoopFps` | `int` | 渲染线程循环频率（次/秒），区别于 `Fps`（实际渲染帧率） |
-| `ResponseTimeout` | `int` | 设备响应超时时间（10~1000 ms），默认 300ms |
-| `Timeout` | `int` | 帧发送后(无响应的帧)等待时间，默认 10ms（继承自基类） |
+| `ResponseTimeout` | `int` | 设备响应超时时间（16~1000 ms），默认 300ms |
+| `ResponsePollInterval` | `int` | 响应轮询间隔时间（0~16 ms），默认 1ms；通道无数据时等待间隔 |
+| `InterFrameDelay` | `int` | 帧间延迟时间（0~1000 ms），无响应帧发送后线程等待时间，默认 10ms |
 
 #### 静态属性
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | `Collections` | `IReadOnlyList<LedRenderBus>` | 所有渲染总线实例的全局集合（基于 `List<T>`，非线程安全） |
+| `FunCodeDescription` | `IReadOnlyDictionary<byte, string>` | 设备功能码（0x8B~0x9D）→ 中文描述的映射字典，共 16 个功能码 |
 | `FrameExceptionMessages` | `IReadOnlyDictionary<string, string>` | 设备响应错误码 → 中文描述的映射字典 |
 
 #### 方法
@@ -535,6 +542,7 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 
 | 方法 | 说明 |
 |------|------|
+| `AddFrame(byte[] frame)` | 添加通用数据帧（如指令帧、查询帧） |
 | `SetDeviceBaudRate(ushort group, ushort address, int baudRate)` | 设置设备波特率（功能码 0x95，需重启生效） |
 | `SetDeviceTimeout(ushort group, ushort address, ushort timeout)` | 设置设备通信超时时间（功能码 0x8E，5~1000ms） |
 | `SetPowerOnColor(ushort address, byte port, uint color, bool isShow, ColorFormat)` | 设置/关闭上电显示颜色（功能码 0x9B/0x9C） |
@@ -550,7 +558,7 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 ```csharp
 // XML 格式示例：
 // <LedRenderBus Type="SERIAL" Params="COM3,921600" LedType="WS2812B" ColorFormat="GRB"
-//               Timeout="10" ResponseTimeout="300" Comment="主灯带">
+//               InterFrameDelay="10" ResponseTimeout="300" ResponsePollInterval="1" Comment="主灯带">
 //   <LedStripObject Address="1" Port="1" LedPoints="0,0,1,0,2,0,3,0" />
 //   <LedStripObject Address="1" Port="2" LedPoints="0,1,1,1,2,1,3,1" />
 // </LedRenderBus>
@@ -694,29 +702,30 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 
 | 方法 | 说明 |
 |------|------|
-| `IsValidColorFrame(this byte[])` | 验证是否为有效颜色帧（帧头尾、地址范围、长度一致性） |
+| `IsValidColorFrame(this byte[])` | 验证是否为有效颜色帧（帧头尾、地址范围、长度一致性，功能码含 0x98/0x99/0x9A） |
+| `IsColorFrame(this byte[])` | 判断是否为颜色帧（功能码为 0x98/0x99/0x9A） |
 | `GetGroup(this byte[])` / `SetGroup(this byte[], ushort)` | 获取/设置组地址 |
 | `GetAddress(this byte[])` / `SetAddress(this byte[], ushort)` | 获取/设置设备地址 |
 | `GetPort(this byte[])` / `SetPort(this byte[], byte)` | 获取/设置端口号 |
-| `GetFunCode(this byte[])` | 获取功能码 |
-| `GetLedType(this byte[])` | 获取灯带类型 |
+| `GetFunCode(this byte[])` / `SetFunCode(this byte[], byte)` | 获取/设置功能码 |
+| `GetLedType(this byte[])` / `SetLedType(this byte[], LedType)` | 获取/设置灯带类型 |
 | `GetReserved(this byte[])` / `SetReserved(this byte[], ushort)` | 获取/设置保留字段 |
 | `GetDataLength(this byte[])` / `SetDataLength(this byte[], ushort)` | 获取/设置颜色数据长度 |
-| `GetRepeatCount(this byte[])` / `SetRepeatCount(this byte[], ushort)` | 获取/设置扩展次数 |
+| `GetRepeatCount(this byte[])` / `SetRepeatCount(this byte[], int)` | 获取/设置扩展次数 |
 
 #### ArrayExtensions
 
 | 方法 | 说明 |
 |------|------|
 | `FastSequenceEqual(this byte[], byte[])` | 快速字节数组相等比较（P/Invoke `memcmp`） |
-| `IndexOf(this IReadOnlyList<byte>, byte)` | 在一维数组中查找指定元素位置 |
+| `IndexOf(this byte[], byte)` | 在一维字节数组中查找指定元素位置 |
 
 #### LedRenderBusExtensions
 
 | 方法 | 说明 |
 |------|------|
 | `Dispose(this IEnumerable<LedRenderBus>)` | 批量释放总线集合 |
-| `GetLedDevices(this IEnumerable<LedRenderBus>)` | 获取所有设备地址集合 |
+| `GetDevices(this IEnumerable<LedRenderBus>)` | 获取所有设备地址集合 |
 | `GetLedStrip(this IEnumerable<LedRenderBus>, uint uid)` | 按 UID 查找灯带 |
 | `GetLedStrip(this IEnumerable<LedRenderBus>, int address, int port)` | 按地址和端口查找灯带 |
 | `GetLedStrips(this IEnumerable<LedRenderBus>)` | 获取所有灯带集合 |
@@ -945,11 +954,14 @@ allBuses.Dispose();
 ```xml
 <!-- led_config.xml -->
 <LedRenderBus Type="SERIAL" Params="COM3,921600" LedType="WS2812B" ColorFormat="GRB"
-              Timeout="10" ResponseTimeout="300" Comment="主灯带面板">
+              InterFrameDelay="10" ResponseTimeout="300" ResponsePollInterval="1" Comment="主灯带面板">
   <LedStripObject Address="1" Port="1" LedPoints="0,0,1,0,2,0,3,0,4,0,5,0,6,0,7,0"
                   Group="0" FillCount="0" RepeatCount="1" Comment="第1行" />
-  <LedStripObject Address="1" Port="2" LedPoints="0,1,1,1,2,1,3,1,4,1,5,1,6,1,7,1"
-                  Group="0" FillCount="0" RepeatCount="1" Comment="第2行" />
+  <LedStripObject Address="1" Port="2" Comment="第2行" >
+    <LedPoints>0,0,1,0,2,0,3,0,4,0,5,0,6,0,7,0</LedPoints>
+    <LedPoints>0,1,1,1,2,1,3,1,4,1,5,1,6,1,7,1</LedPoints>
+    <LedPoints>10,10, ... ,30,10</LedPoints>
+  </LedStripObject>
 </LedRenderBus>
 ```
 
@@ -979,8 +991,8 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 
 ### 7.3 WriteFrame 中的响应读取
 
-- 颜色帧（0x98/0x99）和设备配置帧（0x9B/0x9C）的响应读取循环使用 `Thread.Sleep(1)`，在高速场景下可能引入约 15ms 的调度延迟。
-- 已评估 `Thread.Sleep(0)`（仅让出当前时间片）和 `Thread.Yield()` 作为替代方案。
+- 颜色帧（0x98/0x99/0x9A）和设备配置帧（0x9B/0x9C）的响应读取循环使用 `ResponsePollInterval`（默认 1ms）控制轮询间隔。
+- 设为 0 时等同于 `Thread.Yield()`（仅让出当前时间片），可提高响应速度但会增加 CPU 占用。
 
 ### 7.4 LedStripObject 线程安全
 

@@ -283,7 +283,7 @@ namespace SpaceCG.Device
             foreach (var ledRenderBus in LedRenderBus.Collections)
             {
                 FpsBuilder.Append($"{ledRenderBus.Name} FPS:{ledRenderBus.LoopFps}/{ledRenderBus.Fps} ");
-                foreach (var strip in ledRenderBus.LedStrips.Values)
+                foreach (var strip in ledRenderBus.LedStrips)
                 {
                     FpsBuilder.Append($"{strip.Address}_{strip.Port}:{strip.Fps} ");
                 }
@@ -555,10 +555,8 @@ namespace SpaceCG.Device
 
                     // 优化渲染参数
                     var element = ledStripObject.Tag as XElement;
-                    var timeout = ledStripElement.Attribute("Timeout") != null ? ledStripElement.Attribute("Timeout").Value : (element?.Attribute("Timeout") != null ? element.Attribute("timeout ").Value : "0");
                     var fillCount = ledStripElement.Attribute("FillCount") != null ? ledStripElement.Attribute("FillCount").Value : (element?.Attribute("FillCount") != null ? element.Attribute("FillCount").Value : "0");
                     var repeatCount = ledStripElement.Attribute("RepeatCount") != null ? ledStripElement.Attribute("RepeatCount").Value : (element?.Attribute("RepeatCount") != null ? element.Attribute("RepeatCount").Value : "1");
-                    if (timeout.TryConvertTo(out int _timeout)) ledStripObject.Timeout = _timeout;
                     if (fillCount.TryConvertTo(out int _fillCount)) ledStripObject.FillCount = _fillCount;
                     if (repeatCount.TryConvertTo(out int _repeatCount)) ledStripObject.RepeatCount = _repeatCount;
                     

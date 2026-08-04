@@ -134,7 +134,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.V:
-                    _ledRenderBus.AddColorFrame(0x0001, 0x01, 0xFF00FF00, 0, 1, 10);
+                    _ledRenderBus.AddColorFrame(0x0001, 0x01, 0xFF003300, 0, 1, 10);
                     break;
 
                 case Key.B:
@@ -165,7 +165,7 @@ namespace Z_TestWpfApp
             //ledRenderControl.RenderSceneId(1);
 
             //LedRenderBus.Collections[0].SetDeviceBaudRate(0x0000, 0x0001, 921600);
-            //LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
+            LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
 #endif
         }
 

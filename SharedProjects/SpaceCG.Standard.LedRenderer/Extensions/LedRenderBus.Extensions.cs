@@ -58,7 +58,7 @@ namespace SpaceCG.Extensions
         public static IEnumerable<ushort> GetDevices(this IEnumerable<LedRenderBus> collections)
         {
             return (from renderBus in collections
-                    from ledStrip in renderBus.LedStrips.Values
+                    from ledStrip in renderBus.LedStrips
                     select ledStrip.Address).Distinct();
         }
         #endregion
@@ -75,7 +75,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var bus in collections)
             {
-                foreach (var strip in bus.LedStrips.Values)
+                foreach (var strip in bus.LedStrips)
                 {
                     if (strip.UID == uid)
                     {
@@ -97,7 +97,7 @@ namespace SpaceCG.Extensions
         {
             foreach (var bus in collections)
             {
-                foreach (var strip in bus.LedStrips.Values)
+                foreach (var strip in bus.LedStrips)
                 {
                     if (strip.Address == address && strip.Port == port)
                     {
@@ -116,7 +116,7 @@ namespace SpaceCG.Extensions
         public static IEnumerable<LedStripObject> GetLedStrips(this IEnumerable<LedRenderBus> collections)
         {
             return from renderBus in collections
-                   from ledStrip in renderBus.LedStrips.Values
+                   from ledStrip in renderBus.LedStrips
                    select ledStrip;
         }
         #endregion

@@ -14,7 +14,6 @@ using Trace = SpaceCG.Diagnostics.Trace;
 using Bitmap = System.Drawing.Bitmap;
 using Imaging = System.Drawing.Imaging;
 using Rectangle = System.Drawing.Rectangle;
-using System.Windows.Controls;
 
 namespace SpaceCG.Device
 {
@@ -30,9 +29,36 @@ namespace SpaceCG.Device
     /// </remarks>
     public sealed partial class LedRenderBus : FrameRenderModel, IDisposable
     {
+        #region Constants
+        /// <summary> 默认帧间延迟时间，单位：毫秒  </summary>
+        internal const int DefaultInterFrameDelay = 10;
+        /// <summary> 默认设备响应超时时间，单位：毫秒 </summary>
+        internal const int DefaultResponseTimeout = 300;
+        /// <summary> 默认设备响应轮询间隔时间，单位：毫秒 </summary>
+        internal const int DefaultResponsePollInterval = 1;
+        #endregion
+
+
         #region Public Property
         /// <summary>
-        /// 设备响应超时时间（ms），范围 [10, 1000]。默认 300 ms。
+        /// 帧间延迟时间（ms），即在发送无响应帧（如广播帧、无回包指令）后，渲染线程等待的时间。范围 [0, 1000]，默认 10 ms。
+        /// </summary>
+        /// <remarks>用于避免设备因连续写入而来不及处理帧数据。</remarks>
+        /// <exception cref="ArgumentOutOfRangeException">值不在 [0, 1000] 范围内。</exception>
+        public int InterFrameDelay
+        {
+            get { return _interFrameDelay; }
+            set
+            {
+                if (value < 0 || value > 1000)
+                    throw new ArgumentOutOfRangeException($"{nameof(InterFrameDelay)} 必须在 0-1000 之间.");
+                _interFrameDelay = value;
+            }
+        }
+        private int _interFrameDelay = DefaultInterFrameDelay;
+
+        /// <summary>
+        /// 设备响应超时时间（ms），范围 [16, 1000]。默认 300 ms。
         /// </summary>
         /// <exception cref="ArgumentOutOfRangeException">值不在合法范围内。</exception>
         public int ResponseTimeout
@@ -40,12 +66,31 @@ namespace SpaceCG.Device
             get => _responseTimeout;
             set
             {
-                if (value < 10 || value > 1000)
-                    throw new ArgumentOutOfRangeException($"ResposeTimeout 必须在 10-1000 毫秒之间.");
+                if (value < 16 || value > 1000)
+                    throw new ArgumentOutOfRangeException($"{nameof(ResponseTimeout)} 必须在 16-1000 毫秒之间.");
                 _responseTimeout = value;
             }
         }
         private int _responseTimeout = DefaultResponseTimeout;
+
+        /// <summary>
+        /// 响应轮询间隔时间（ms），即当通道无数据可读时等待的时间。范围 [0, 16]。默认 1 ms。
+        /// </summary>
+        /// <remarks>
+        /// <para>值越小，响应越及时，但 CPU 空转越频繁。推荐默认值 1ms。</para>
+        /// <para>设为 0 时等同于 <see cref="Thread.Yield"/>（仅让出当前时间片），可提高渲染帧率。</para>
+        /// </remarks>
+        public int ResponsePollInterval
+        {
+            get => _responsePollInterval;
+            set
+            {
+                if (value < 0 || value > 16)
+                    throw new ArgumentOutOfRangeException($"{nameof(ResponsePollInterval)} 必须在 0-16 毫秒之间.");
+                _responsePollInterval = value;
+            }
+        }
+        private int _responsePollInterval = DefaultResponsePollInterval;
 
         /// <summary> 渲染线程是否正在运行。 </summary>
         public bool IsRendering { get; private set; }
@@ -65,9 +110,23 @@ namespace SpaceCG.Device
         /// <summary> 总线上所有设备地址的集合。 </summary>
         public IEnumerable<ushort> LedDevices { get; private set; }
 
-        /// <summary> 渲染总线关联的 <see cref="LedStripObject"/> 对象的集合，以 UID 为键。 </summary>
-        public IReadOnlyDictionary<uint, LedStripObject> LedStrips => _ledStrips;
-        private readonly ConcurrentDictionary<uint, LedStripObject> _ledStrips = new ConcurrentDictionary<uint, LedStripObject>(2, 7);
+        /// <summary> 渲染总线关联的 <see cref="LedStripObject"/> 对象的集合。 </summary>
+        public IReadOnlyList<LedStripObject> LedStrips
+        {
+            get
+            {
+                if (_ledStripsReadOnly == null)
+                    _ledStripsReadOnly = _ledStrips.AsReadOnly();
+                return _ledStripsReadOnly;
+            }
+        }
+        /// <summary>
+        /// <see cref="LedStrips"/> 的缓存只读包装器。
+        /// <see cref="List{T}.AsReadOnly"/> 返回对 <see cref="_ledStrips"/> 的实时视图，灯珠变更时无需重建此缓存。
+        /// </summary>
+        private IReadOnlyList<LedStripObject> _ledStripsReadOnly;
+        /// <inheritdoc cref="LedStrips"/> 
+        private readonly List<LedStripObject> _ledStrips = new List<LedStripObject>(32);
         #endregion
 
 
@@ -81,14 +140,6 @@ namespace SpaceCG.Device
         /// <summary> 传输通道是否处于连接状态 </summary>
         public bool IsConnected => Channel != null && Channel.IsConnected;
         #endregion
-
-
-        private Task _renderingTask;
-        private CancellationTokenSource _cts;
-        /// <summary>响应数据读取缓冲区（1KB）。</summary>
-        private readonly byte[] _responseBuffer = new byte[1024];
-        /// <summary>响应超时计时器。</summary>
-        private readonly Stopwatch _responseStopwatch = new Stopwatch();
 
 
         #region Static & Collections 静态集合
@@ -108,6 +159,31 @@ namespace SpaceCG.Device
         private static IReadOnlyList<LedRenderBus> BusCollectionsReadOnly;
         private static readonly List<LedRenderBus> BusCollections = new List<LedRenderBus>(32);
 
+        /// <summary>
+        /// 设备功能码及其描述信息。
+        /// </summary>
+        public static readonly IReadOnlyDictionary<byte, string> FunCodeDescription = new Dictionary<byte, string>()
+        {
+            { 0x8B, "查询控制器的信息反馈设置状态（V2.0以上才支持）" },
+            { 0x8C, "修改控制器的信息反馈设置状态（V2.0以上才支持）" },
+            { 0x8D, "查询控制器串口通信超时时间（V1.7以上才支持）" },
+            { 0x8E, "修改控制器串口通信超时时间（V1.7以上才支持）" },
+            { 0x8F, "查询控制器唯一序列号" },
+            { 0x90, "通过控制器唯一序列号查询控制器设备地址" },
+            { 0x91, "通过控制器唯一序列号修改控制器设备地址" },
+            { 0x92, "查询总线上有没有与指令中组地址和设备地址匹配的控制器" },
+            { 0x93, "查询控制器组地址" },
+            { 0x94, "查询控制器设备地址" },
+            { 0x95, "修改控制器通信波特率" },
+            { 0x96, "修改控制器组地址" },
+            { 0x97, "修改控制器设备地址" },
+            { 0x98, "按IC索引修改显示数据（V2.0以上才支持）" },
+            { 0x99, "显示颜色数据" },
+            { 0x9A, "等同于显示颜色数据" },
+            { 0x9B, "设置上电显示的数据" },
+            { 0x9C, "关闭上电显示功能" },
+            { 0x9D, "读取上电显示的数据（V1.9以上才支持）" },
+        };
         /// <summary>
         ///设备异常响应消息码 → 中文说明映射表。
         /// </summary>
@@ -129,6 +205,13 @@ namespace SpaceCG.Device
         };
         #endregion
 
+
+        private Task _renderingTask;
+        private CancellationTokenSource _cts;
+        /// <summary>响应数据读取缓冲区（0.5KB）。</summary>
+        private readonly byte[] _responseBuffer = new byte[512];
+        /// <summary>响应超时计时器。</summary>
+        private readonly Stopwatch _responseStopwatch = new Stopwatch();
 
         /// <summary>
         /// 初始化渲染总线实例。总线级别禁用重复帧去重（<see cref="FrameRenderModel.RenderingRepeatInterval"/> = 0）。
@@ -158,8 +241,8 @@ namespace SpaceCG.Device
             else if (channelType == ChannelType.UDP)
                 Channel = new UdpClientTransport(arguments);
 
-            Channel.ReadTimeout = 300;
-            Channel.WriteTimeout = 300;
+            Channel.ReadTimeout = 500;
+            Channel.WriteTimeout = 500;
             RenderingRepeatInterval = 0;
 
             BusCollections.Add(this);
@@ -173,7 +256,7 @@ namespace SpaceCG.Device
         private FrameRenderModel GetRenderModel(ushort address, byte port)
         {
             if (address == 0 || port == 0) return this;
-            return LedStrips.Values.FirstOrDefault(x => x.Address == address && x.Port == port);
+            return LedStrips.FirstOrDefault(x => x.Address == address && x.Port == port);
         }
         #endregion
 
@@ -182,9 +265,9 @@ namespace SpaceCG.Device
         /// <summary> 灯珠变更时更新总线统计信息（最长灯带长度、总数、设备地址集合）。</summary>
         private void OnPointsChanged(object sender, EventArgs args)
         {
-            LedCount = _ledStrips.Values.Max(x => x.LedCount);
-            TotalLedCount = _ledStrips.Values.Sum(x => x.LedCount);
-            LedDevices = LedStrips.Values.Select(x => x.Address).Distinct().ToArray();
+            LedCount = _ledStrips.Max(x => x.LedCount);
+            TotalLedCount = _ledStrips.Sum(x => x.LedCount);
+            LedDevices = LedStrips.Select(x => x.Address).Distinct().ToArray();
         }
         /// <summary>
         /// 将灯带添加到总线
@@ -196,12 +279,10 @@ namespace SpaceCG.Device
         {
             if (ledStrip == null) 
                 throw new ArgumentNullException(nameof(ledStrip), "参数不能为空");
-            if (_ledStrips.ContainsKey(ledStrip.UID)) 
+            if (_ledStrips.Contains(ledStrip)) 
                 throw new ArgumentException($"LedStrip Address:{ledStrip.Address} Port:{ledStrip.Port} UID:{ledStrip.UID:X8} 已经存在于总线中", nameof(LedStripObject));
 
-            if (!_ledStrips.TryAdd(ledStrip.UID, ledStrip))
-                throw new ArgumentException($"添加 LedStrip 到总线失败");
-
+            _ledStrips.Add(ledStrip);
             OnPointsChanged(this, EventArgs.Empty);
             ledStrip.LedPointsChanged += OnPointsChanged;
         }
@@ -211,24 +292,29 @@ namespace SpaceCG.Device
         /// <param name="uid"></param>
         public void RemoveLedStrip(uint uid)
         {
-            if (_ledStrips.TryRemove(uid, out var ledStrip))
-            {
-                ledStrip.LedPointsChanged -= OnPointsChanged;
-                OnPointsChanged(this, EventArgs.Empty);
-            }
+            var ledStrip = GetLedStrip(uid);
+            if (ledStrip == null) return;
+
+            ledStrip.LedPointsChanged -= OnPointsChanged;
+            OnPointsChanged(this, EventArgs.Empty);
         }
         /// <summary>
         /// 从总线中移除指定的灯带
         /// </summary>
         /// <param name="ledStrip"></param>
         /// <returns></returns>
-        public void RemoveLedStrip(LedStripObject ledStrip) => RemoveLedStrip(ledStrip.UID);
+        public void RemoveLedStrip(LedStripObject ledStrip)
+        {
+            if (ledStrip == null)
+                throw new ArgumentNullException(nameof(ledStrip), "参数不能为空");
+            RemoveLedStrip(ledStrip.UID);
+        }
         /// <summary>
         /// 清空总线上所有灯带。
         /// </summary>
         public void ClearLedStrips()
         {
-            foreach (var ledStrip in _ledStrips.Values)
+            foreach (var ledStrip in LedStrips)
             {
                 ledStrip.LedPointsChanged -= OnPointsChanged;
             }
@@ -243,14 +329,14 @@ namespace SpaceCG.Device
         /// </summary>
         /// <param name="uid"></param>
         /// <returns></returns>
-        public LedStripObject GetLedStrip(uint uid) => _ledStrips.TryGetValue(uid, out var ledStrip) ? ledStrip : null;
+        public LedStripObject GetLedStrip(uint uid) => LedStrips.FirstOrDefault(x => x.UID == uid);        
         /// <summary>
         /// 跟据地址和端口获取指定的灯带对象，不存在返回 null。
         /// </summary>
         /// <param name="address"></param>
         /// <param name="port"></param>
         /// <returns></returns>
-        public LedStripObject GetLedStrip(ushort address, byte port) => _ledStrips.Values.FirstOrDefault(x => x.Address == address && x.Port == port);
+        public LedStripObject GetLedStrip(ushort address, byte port) => LedStrips.FirstOrDefault(x => x.Address == address && x.Port == port);
         #endregion
 
 
@@ -297,17 +383,16 @@ namespace SpaceCG.Device
         {
             if (address == 0)
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                     ledStrip.IsRenderEnabled = false;
             }
             else
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                 {
                     if (ledStrip.Address == address)
                     {
                         ledStrip.IsRenderEnabled = false;
-                        break;
                     }
                 }
             }
@@ -320,17 +405,16 @@ namespace SpaceCG.Device
         {
             if (address == 0)
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                     ledStrip.IsRenderEnabled = true;
             }
             else
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                 {
                     if (ledStrip.Address == address)
                     {
                         ledStrip.IsRenderEnabled = true;
-                        break;
                     }
                 }
             }
@@ -344,19 +428,18 @@ namespace SpaceCG.Device
         {
             if (address == 0)
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                 {
                     ledStrip.ClearRenderingFrames();
                 }
             }
             else
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                 {
                     if (ledStrip.Address == address)
                     {
                         ledStrip.ClearRenderingFrames();
-                        break;
                     }
                 }
             }
@@ -381,9 +464,9 @@ namespace SpaceCG.Device
         /// <exception cref="ArgumentOutOfRangeException">参数超出合法范围。</exception>
         private static byte[] CreateEmptyFrame(ushort group, ushort address, byte port, byte funCode, int value)
         {
-            if (port < 0 || port > 6) throw new ArgumentOutOfRangeException(nameof(port), "端口号不能大于 6");
-            if (group < 0 || group > 1024) throw new ArgumentOutOfRangeException(nameof(group), "组地址不能大于 1024");
-            if (address < 0 || address > 4096) throw new ArgumentOutOfRangeException(nameof(address), "地址不能大于 4096");
+            if (port > 6) throw new ArgumentOutOfRangeException(nameof(port), "端口号不能大于 6");
+            if (group > 1024) throw new ArgumentOutOfRangeException(nameof(group), "组地址不能大于 1024");
+            if (address > 4096) throw new ArgumentOutOfRangeException(nameof(address), "地址不能大于 4096");
 
             byte[] frame = new byte[21];
 
@@ -433,7 +516,7 @@ namespace SpaceCG.Device
         {
             if (baudRate != 9600 && baudRate != 115200 && baudRate != 230400 && baudRate != 460800 && baudRate != 921600)
                 throw new ArgumentException("设备波特率只支持：9600、115200、230400、460800、921600，其它波特率设备不支持");
-            EnqueueFrame(CreateEmptyFrame(group, address, 0x00, 0x95, baudRate));
+            AddFrame(CreateEmptyFrame(group, address, 0x00, 0x95, baudRate));
         }
         /// <summary>
         /// 设置总线上设备处理数据的超时时间（功能码 0x8E）。控制器串口通信超时时间默认值是 5ms，可修改的范围是 5ms ~ 1000ms。
@@ -450,7 +533,7 @@ namespace SpaceCG.Device
         {
             if (timeout < 5 || timeout > 1000) 
                 throw new ArgumentException("超时时间范围必须在 5-1000 之间");
-            EnqueueFrame(CreateEmptyFrame(group, address, 0x00, 0x8E, timeout));
+            AddFrame(CreateEmptyFrame(group, address, 0x00, 0x8E, timeout));
         }
         /// <summary>
         /// 设置设备上电显示颜色（功能码 0x9B）或关闭上电显示（功能码 0x9C）。
@@ -469,8 +552,8 @@ namespace SpaceCG.Device
 
             byte[] frame = renderModel.CreateEmptyColorFrame(0x0000, 1, renderModel.LedCount);
 
-            // 设置上电显示的颜色（9B）
-            // 关闭上电显示功能（9C）
+            // 设置上电显示的颜色（0x9B）
+            // 关闭上电显示功能（0x9C）
             frame[8] = (byte)(isShow ? 0x9B : 0x9C);    // 功能码
 
             if (isShow)
@@ -495,7 +578,7 @@ namespace SpaceCG.Device
                 }
             }
 
-            EnqueueFrame(frame);
+            AddFrame(frame);
         }
         #endregion
 
@@ -522,7 +605,7 @@ namespace SpaceCG.Device
             }
             catch (Exception ex)
             {
-                Trace.TraceError($"[{Name}] RenderBitmap Error: {ex}");
+                Trace.TraceError($"[{Name}] RenderBitmap Exception: {ex.Message}");
             }
             finally
             {
@@ -554,7 +637,7 @@ namespace SpaceCG.Device
                 throw new ArgumentException("参数不能为空或图像尺寸不得为 0");
 
             var inputIndices = pixelFormat.GetChannelIndices();    // 输入像素排列的通道索引表
-            var inputChannelCount = inputIndices.Count;            // 颜值的通道数量
+            var inputChannelCount = inputIndices.Count;            // 颜色值的通道数量
 
             if (stride < width * inputChannelCount)
                 throw new ArgumentException($"stride 必须大于等于 width * {inputChannelCount}");
@@ -563,7 +646,7 @@ namespace SpaceCG.Device
 
             try
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                 {
                     var ledCount = ledStrip.LedCount;
                     if (ledCount <= 0) continue;
@@ -607,14 +690,11 @@ namespace SpaceCG.Device
                         {
                             var index = channelMap[j];
                             byte* pixel = pixelOffset + index;
-
-                            //Trace.Write($"index:{index} pixel:{*pixel} ,,, ");
                             frame[frameOffset++] = (index >= 0) ? *pixel : (byte)0xFF;
                         }
                     }
                                         
                     ledStrip.AddColorFrame(frame);
-                    //Trace.WriteLine($"length::{frameOffset}//{frame.Length}");
                 }
             }
             catch (Exception ex)
@@ -656,10 +736,10 @@ namespace SpaceCG.Device
         {
             FrameRenderModel renderModel = GetRenderModel(address, port);
             if (renderModel == null)
-                throw new ArgumentException($"未找到地址为 {address} 端口为 {port} 的设备", nameof(address));
+                throw new ArgumentException($"未找到地址为 {address} 端口为 {port} 的设备或灯带", nameof(address));
 
-            var frame = renderModel.CreateColorFrame(color, fromPosition, fillCount, repeatCount, colorFormat);
-            EnqueueFrame(frame);
+            var frame = renderModel.CreateFillColorFrame(color, fromPosition, fillCount, repeatCount, colorFormat);
+            AddColorFrame(frame);
         }
         /// <summary>
         /// 添加待渲染的颜色数据帧到 <b>总线渲染队列</b>（委托给匹配的渲染模型创建帧，然后入队到总线）。
@@ -675,20 +755,20 @@ namespace SpaceCG.Device
         {
             FrameRenderModel renderModel = GetRenderModel(address, port);
             if (renderModel == null)
-                throw new ArgumentException($"未找到地址为 {address} 端口为 {port} 的设备", nameof(address));
+                throw new ArgumentException($"未找到地址为 {address} 端口为 {port} 的设备或灯带", nameof(address));
 
-            var frame = renderModel.CreateColorFrame(colors, fromPosition, repeatCount, colorFormat);
-            EnqueueFrame(frame);
+            var frame = renderModel.CreateFillColorFrame(colors, fromPosition, repeatCount, colorFormat);
+            AddColorFrame(frame);
         }
         /// <inheritdoc cref="AddColorFrame(ushort, byte, IReadOnlyList{byte}, int, int, ColorFormat)"/> 
         public void AddColorFrame(ushort address, byte port, IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat colorFormat = ColorFormat.ARGB)
         {
             FrameRenderModel renderModel = GetRenderModel(address, port);
             if (renderModel == null)
-                throw new ArgumentException($"未找到地址为 {address} 端口为 {port} 的设备", nameof(address));
+                throw new ArgumentException($"未找到地址为 {address} 端口为 {port} 的设备或灯带", nameof(address));
 
-            var frame = renderModel.CreateColorFrame(colors, fromPosition, repeatCount, colorFormat);
-            EnqueueFrame(frame);
+            var frame = renderModel.CreateFillColorFrame(colors, fromPosition, repeatCount, colorFormat);
+            AddColorFrame(frame);
         }
         #endregion
 
@@ -700,7 +780,7 @@ namespace SpaceCG.Device
         /// <para>点亮一颗灯珠的时间为 30us，要点亮 1024 颗灯珠需要 1024 * 30us + 50us(复位信号) ≈ 30.77ms </para>
         /// </summary>
         /// <param name="frame">待发送的完整帧。</param>
-        /// <returns>返回设备响应消息，无响应或组/广播地址返回空字符串 <see cref="string.Empty"/>; 超时时返回 <c>"ResponseTimeout"</c>。</returns>
+        /// <returns>返回设备响应消息，广播帧返回空字符串 <see cref="string.Empty"/>; 超时时返回 <c>"ResponseTimeout"</c>。</returns>
         private string WriteFrame(byte[] frame)
         {
             if (Channel == null || !Channel.IsConnected) return string.Empty;
@@ -719,92 +799,119 @@ namespace SpaceCG.Device
             var port = frame.GetPort();
             var group = frame.GetGroup();
             var address = frame.GetAddress();
+            var isColorFrame = frame.IsColorFrame();
 
             // 记录非颜色数据帧
-            if (funCode != 0x98 && funCode != 0x99)
-                Trace.TraceInformation($"RenderBus ({Name}) Write Frame({frame.Length} bytes) to Device({group}/{address}/{port}): FunctionCode(0x{funCode:X2})");
+            if (!isColorFrame)
+            {
+                var description = FunCodeDescription.TryGetValue(funCode, out var des) ? des : "未知功能码";
+                Trace.TraceInformation($"RenderBus ({Name}) Write Frame({frame.Length} bytes) Device:{group}/{address}/{port} FunCode:0x{funCode:X2} Description:{description}");
+            }
 
-            if (group != 0x0000) return string.Empty;
-            if (address == 0x0000) return string.Empty;
-
-            var message = string.Empty;
+            // 0x95 修改控制器通信波特率（0x95），无响应信息
+            if (funCode == 0x95) return string.Empty;
+            // 注意：广播帧 不会有任何响应信息
+            if (group != 0x00 || address == 0x00) return string.Empty;
+            
             const string RecvEnd = nameof(RecvEnd);
             const string DisplayEnd = nameof(DisplayEnd);
             const string SaveInsEnd = nameof(SaveInsEnd);
             const string SaveInsErr = nameof(SaveInsErr);
 
-            // 0x99 显示颜色数据
-            // 0x98 从指定的 IC 显示颜色数据
-            // RecvEnd -> DisplayEnd
-            if (funCode == 0x98 || funCode == 0x99)
-            {
-                message = ReadResponseUntil(msg => msg.Contains(DisplayEnd));
-            }
-            // 设置上电显示的颜色 (0x9B); 关闭上电显示功能 (9C) 
-            // RecvEnd -> SaveInsEnd||SaveInsErr 
-            else if (funCode == 0x9B || funCode == 0x9C)
-            {
-                message = ReadResponseUntil(msg => msg.Contains(SaveInsEnd) || msg.Contains(SaveInsErr));
-            }
-            // 修改控制器串口通信超时时间 (8E)；修改通信超时时间后立即生效，无需重启
-            // RecvEnd
-            else if (funCode == 0x8E)
-            {
-                message = ReadResponseUntil(msg => msg.Contains(RecvEnd));
-            }
-            else
-            {
-                Trace.TraceInformation($"RenderBus ({Name}) Device({group}/{address}/{port}): FunctionCode(0x{funCode:X2}) Response Message: {message}");
-            }
-
-            Channel.ClearReadBuffer();
-
-            return message;
-        }
-        /// <summary>
-        /// 循环读取响应直到满足条件或超时。
-        /// </summary>
-        /// <param name="condition">终止条件。</param>
-        /// <returns>累积的响应消息；超时返回 <c>"ResponseTimeout"</c>。</returns>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private string ReadResponseUntil(Func<string, bool> condition)
-        {
-            var count = 0;
+            var offset = 0;
             var message = string.Empty;
             var responseTimeout = ResponseTimeout;
-
+            var responsePollInterval = ResponsePollInterval;
             _responseStopwatch.Restart();
 
-            while (!condition(message))
+            #region 读取响应数据
+            while (true)
             {
                 if (_responseStopwatch.ElapsedMilliseconds > responseTimeout)
                 {
-                    return nameof(ResponseTimeout);
+                    message = nameof(ResponseTimeout);
+                    break;
                 }
 
                 if (Channel.Available <= 0)
                 {
-                    Thread.Sleep(1);
-                    //Thread.Sleep(0);
-                    //Thread.Yield();
+                    Thread.Sleep(responsePollInterval);
                     continue;
                 }
 
-                int bytesRead = 0;
                 try
                 {
-                    bytesRead = Channel.Read(_responseBuffer, count, Channel.Available);
+                    var bytesRead = Channel.Read(_responseBuffer, offset, Channel.Available);
+                    if (bytesRead > 0) offset += bytesRead;
                 }
                 catch (Exception ex)
                 {
                     Trace.TraceWarning($"RenderBus ({Name}) Channel.Read Message Exception: {ex.Message}");
-                    return string.Empty;
+                    continue;
                 }
 
-                if (bytesRead > 0) count += bytesRead;
-                if (count >= 6)     // 至少读取到 6 字节才能解析消息
-                    message = Encoding.UTF8.GetString(_responseBuffer, 0, count);
+                // 收到结束符
+                var isTerminate = offset >= 4 && _responseBuffer[offset - 2] == 0x0D && _responseBuffer[offset - 1] == 0x0A;
+                if (!isTerminate) continue;
+
+                message = Encoding.UTF8.GetString(_responseBuffer, 0, offset - 2);
+                if (offset >= 6 && FrameExceptionMessages.ContainsKey(message)) break;
+
+                // 0x99 显示颜色数据; 0x98 从指定的 IC 显示颜色数据；
+                // 返回：RecvEnd\r\n -> DisplayEnd\r\n
+                if (isColorFrame)
+                {
+                    if (message.Contains(RecvEnd) && message.Contains(DisplayEnd)) break;
+                }
+                // 设置上电显示的颜色 (0x9B); 关闭上电显示功能 (0x9C) ；
+                // 返回：RecvEnd\r\n -> SaveInsEnd\r\n | SaveInsErr\r\n 
+                else if (funCode == 0x9B || funCode == 0x9C)
+                {
+                    if (message.Contains(RecvEnd) && (message.Contains(SaveInsEnd) || message.Contains(SaveInsErr))) break;
+                }
+                // 0x8D 查询控制器串口通信超时时间(0x8D)；返回实际值(ms)，例如：0005\r\n
+                // 0x8E 修改控制器串口通信超时时间(0x8E)；返回：RecvEnd\r\n
+                else if (funCode == 0x8D || funCode == 0x8E)
+                {
+                    if (funCode == 0x8D || message.Contains(RecvEnd)) break;
+                }
+                else
+                {
+                    // 其它一些查询、修改指令；注意：所有广播帧不会返回任何信息。
+
+                    // 0x8B 查询控制器信息反馈设置状态，返回：F0\r\n | F1\r\n | F2\r\n
+                    // 0x8C 修改控制器信息反馈设置状态，修改成功时返回：F0\r\n | F1\r\n | F2\r\n
+                    if (funCode == 0x8B || funCode == 0x8C) break;
+
+                    // 0x8F 查询控制器唯一序列号（0x8F）返回：14字节 十六进制数据 [12]=0D [13]=0A
+                    if (funCode == 0x8F) break;
+
+                    // 0x90 通过控制器唯一序列号查询控制器设备地址（0x90）, 返回示例：0001\r\n，控制器地址\r\n
+                    // 0x91 通过控制器唯一序列号修改控制器设备地址（0x91）, 返回示例：0002\r\n，控制器地址\r\n
+                    if (funCode == 0x90 || funCode == 0x91) break;
+
+                    // 0x92 查询总线上有没有与指令中组地址和设备地址匹配的控制器（0x92）, 有匹配时返回：YES\r\n
+                    if (funCode == 0x92) break;
+
+                    // 0x93 查询控制器组地址（0x93）, 有匹配时返回控制器组地址，示例：0001\r\n
+                    // 0x94 查询控制器设备地址（0x94）, 有匹配时返回控制器地址，示例：0002\r\n
+                    if (funCode == 0x93 || funCode == 0x94) break;
+
+                    // 0x96 修改控制器组地址（0x96），修改成功返回新的组地址，示例：0002\r\n
+                    // 0x97 修改控制器设备地址（0x97），修改成功返回新的设备地址，示例：0002\r\n
+                    if (funCode == 0x96 || funCode == 0x97) break;
+
+                    // 0x9D 读取上电显示的数据，如果设置过则返回十六进制颜色数据，否则返回：null\r\n
+                    if (funCode == 0x9D) break;
+
+                    Trace.TraceWarning($"RenderBus ({Name}) Device({group}/{address}/{port}): 未处理的功能码：0x{funCode:X2} Response Message: {message}");
+                }
             }
+            #endregion
+
+            _responseStopwatch.Stop();
+            Channel.ClearReadBuffer();
+            //Debug.WriteLine($"Response::{message}<< length:{offset}");
 
             return message;
         }
@@ -824,7 +931,7 @@ namespace SpaceCG.Device
 
             var busName = renderBus.Name;
             var cancellationToken = renderBus._cts.Token;
-            var ledStrips = renderBus.LedStrips.Values.OrderBy(x => x.Port).ToList();
+            var ledStrips = renderBus.LedStrips.OrderBy(x => x.Port).ToList();
             Trace.TraceInformation($"RenderBus [{busName}] 开始同步渲染，线程ID：{Thread.CurrentThread.ManagedThreadId}，灯带数量：{renderBus.LedStrips.Count} 条，最长灯带灯珠数量：{renderBus.LedCount} 颗，灯珠总数量：{renderBus.TotalLedCount} 颗");
 
             var loopCount = 0;              // 线程循环次数计数
@@ -851,6 +958,7 @@ namespace SpaceCG.Device
                     try
                     {
                         renderBus.Channel.Close();
+
                         Thread.Sleep(100);
                         if (cancellationToken.IsCancellationRequested) break;
 
@@ -871,11 +979,13 @@ namespace SpaceCG.Device
                     Thread.Sleep(16);
                     continue;
                 }
+
                 // 对端口进行排序，以便串行通道的效率提升
                 if (ledStrips.Count != ledStripsCount)
-                    ledStrips = renderBus.LedStrips.Values.OrderBy(x => x.Port).ToList();
+                    ledStrips = renderBus.LedStrips.OrderBy(x => x.Port).ToList();
 
                 var hasWrittenFrame = false;
+                var interFrameDelay = renderBus.InterFrameDelay;
 
                 #region 总线上的帧队列数据 （指令帧、广播帧优先）
                 while (renderBus.TryDequeueFrame(out var frame))
@@ -889,11 +999,11 @@ namespace SpaceCG.Device
                         var message = renderBus.WriteFrame(frame);
                         if (string.IsNullOrEmpty(message))
                         {
-                            if (renderBus.Timeout > 0) Thread.Sleep(renderBus.Timeout);
+                            if (interFrameDelay > 0) Thread.Sleep(interFrameDelay);
                             continue;
                         }
 
-                        message = message.Trim().Replace("\r\n", " ");
+                        //message = message.Trim().Replace("\r\n", " ");
                         if (!FrameExceptionMessages.ContainsKey(message))
                         {
                             exceptionFrameCount = 0;
@@ -903,12 +1013,12 @@ namespace SpaceCG.Device
                         exceptionFrameCount++;
                         renderBus.ResetRenderingState();
                         renderBus.Channel.ClearReadBuffer();
-                        Trace.TraceError($"RenderBus ({busName}) Respose Error Message({message}): {FrameExceptionMessages[message]}");
+                        Trace.TraceError($"RenderBus ({busName}) Rendering Respose Error Message({message}): {FrameExceptionMessages[message]}");
                     }
                     catch (Exception ex)
                     {
                         exceptionFrameCount++;
-                        Trace.TraceWarning($"RenderBus ({busName}) Render Exception: {ex}");
+                        Trace.TraceWarning($"RenderBus ({busName}) Rendering Exception: {ex.Message}");
                     }
                 }
                 #endregion
@@ -919,7 +1029,7 @@ namespace SpaceCG.Device
                     if (cancellationToken.IsCancellationRequested || renderBus.Channel == null) break;
 
                     if (!ledStrip.TryDequeueFrame(out var frame)) continue;
-                    if (!ledStrip.IsRenderEnabled && (frame[8] == 0x98 || frame[8] == 0x99)) continue;
+                    if (!ledStrip.IsRenderEnabled && frame.IsColorFrame()) continue;
 
                     try
                     {
@@ -928,11 +1038,11 @@ namespace SpaceCG.Device
                         var message = renderBus.WriteFrame(frame);
                         if (string.IsNullOrEmpty(message))
                         {
-                            if (ledStrip.Timeout > 0) Thread.Sleep(ledStrip.Timeout);
+                            if (interFrameDelay > 0) Thread.Sleep(interFrameDelay);
                             continue;
                         }
 
-                        message = message.Trim().Replace("\r\n", " ");
+                        //message = message.Trim().Replace("\r\n", " ");
                         if (!FrameExceptionMessages.ContainsKey(message))
                         {
                             exceptionFrameCount = 0;
@@ -942,12 +1052,12 @@ namespace SpaceCG.Device
                         exceptionFrameCount++;
                         ledStrip.ResetRenderingState();
                         renderBus.Channel.ClearReadBuffer();
-                        Trace.TraceError($"RenderBus ({busName})(Address:{ledStrip.Address} Port:{ledStrip.Port}) Respose Error Message({message}): {FrameExceptionMessages[message]} ");
+                        Trace.TraceError($"RenderBus ({busName})(Address:{ledStrip.Address} Port:{ledStrip.Port}) Rendering Respose Error Message({message}): {FrameExceptionMessages[message]} ");
                     }
                     catch (Exception ex)
                     {
                         exceptionFrameCount++;
-                        Trace.TraceWarning($"RenderBus ({busName}) {ledStrip} Render Exception: {ex}");
+                        Trace.TraceWarning($"RenderBus ({busName}) {ledStrip} Rendering Exception: {ex.Message}");
                     }
                 }
                 #endregion
@@ -985,7 +1095,7 @@ namespace SpaceCG.Device
                 if (!hasWrittenFrame) Thread.Sleep(1);
             }
 
-            foreach (var ledStrip in renderBus.LedStrips.Values)
+            foreach (var ledStrip in renderBus.LedStrips)
             {
                 ledStrip.ResetRenderingState();
             }
@@ -1007,7 +1117,7 @@ namespace SpaceCG.Device
             BusCollections.Remove(this);
             if (IsConnected && IsRendering)
             {
-                foreach (var ledStrip in LedStrips.Values)
+                foreach (var ledStrip in LedStrips)
                 {
                     ledStrip.IsRenderEnabled = false;
                 }
@@ -1030,7 +1140,7 @@ namespace SpaceCG.Device
         /// <inheritdoc/>
         public override string ToString()
         {
-            return $"[({nameof(LedRenderBus)}] Channel:{Channel.Name}  LedStripCount:{LedStrips.Count}";
+            return $"[{nameof(LedRenderBus)}] Channel:{Channel?.Name}  LedStripCount:{LedStrips.Count}";
         }
 
         /// <summary>
@@ -1073,11 +1183,14 @@ namespace SpaceCG.Device
             ledRenderBus = new LedRenderBus(type, element.Attribute("Params").Value, ledType, colorFormat);
             ledRenderBus.Comment = element.Attribute(nameof(Comment))?.Value;
 
-            var timeoutAttr = element.Attribute(nameof(Timeout));
-            if (timeoutAttr != null && int.TryParse(timeoutAttr.Value, out var timeout)) ledRenderBus.Timeout = timeout;
+            var interFrameDelayAttr = element.Attribute(nameof(InterFrameDelay));
+            if (interFrameDelayAttr != null && int.TryParse(interFrameDelayAttr.Value, out var timeout)) ledRenderBus.InterFrameDelay = timeout;
 
             var responseTimeoutAttr = element.Attribute(nameof(ResponseTimeout));
             if (responseTimeoutAttr != null && int.TryParse(responseTimeoutAttr.Value, out var resposeTimeout)) ledRenderBus.ResponseTimeout = resposeTimeout;
+
+            var responsePollIntervalAttr = element.Attribute(nameof(ResponsePollInterval));
+            if (responsePollIntervalAttr != null && int.TryParse(responsePollIntervalAttr.Value, out var responsePollInterval)) ledRenderBus.ResponsePollInterval = responsePollInterval;
 
             if (createLedStrips)
             {
