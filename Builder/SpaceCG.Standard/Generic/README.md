@@ -302,13 +302,13 @@ pool.Return(buffer);
 ### 架构
 
 ```
-外部写入字节 → [内部线性缓冲区] → Parse() 匹配完整包 → PacketReceived 事件
+外部写入字节 → [内部线性缓冲区] → TryParseFrame() 匹配完整数据帧 → FrameReceived 事件
 ```
 
 - 使用线性缓冲区（byte[] + 读写双指针）实现零拷贝
 - 尾部空间不足时自动紧凑（Compact）
 - 缓冲区满载且无完整包时清空防止内存无限增长
-- 通过 `SemaphoreSlim` 保证线程安全
+- 非线程安全，请勿多线程写入调用
 
 ### 子类实现
 
@@ -336,20 +336,14 @@ using SpaceCG.Generic;
 var parser = new FooterProtocolParser(
     new byte[] { 0x0D, 0x0A });  // \r\n
 
-parser.PacketReceived += (sender, args) =>
+parser.FrameReceived += (sender, args) =>
 {
     string line = Encoding.UTF8.GetString(
-        args.Packet.Array,
-        args.Packet.Offset,
-        args.Packet.Count);
+        args.FrameView.Array,
+        args.FrameView.Offset,
+        args.FrameView.Count);
     Console.WriteLine($"收到: {line}");
 };
-
-// 从流中异步读取
-using (var stream = tcpClient.GetStream())
-{
-    await parser.ReadFromAsync(stream, cancellationToken);
-}
 
 // 或手动写入
 byte[] data = Encoding.UTF8.GetBytes("hello\r\n");
@@ -361,18 +355,13 @@ int written = parser.Write(data, 0, data.Length);
 ```csharp
 public class MyProtocolParser : ProtocolParser
 {
-    protected override ArraySegment<byte> Parse(ArraySegment<byte> pendingView)
+    protected override ArraySegment<byte> TryParseFrame(ArraySegment<byte> pendingView)
     {
         // 实现自定义协议逻辑
         // 返回匹配到的数据包视图，或 default 表示需要更多数据
     }
 }
 ```
-
-### 重要约束
-
-> ⚠ **PacketReceived 事件在锁内触发**，回调中**绝对不可**再次调用 `Write`、`ReadFromAsync`、`Clear` 或 `ClearAsync`，否则会因 `SemaphoreSlim` 不支持重入而**死锁**。
-
 ---
 
 > 文档版本：v1.0  |  最后更新：2026-07-19  |  维护：SpaceCG 团队

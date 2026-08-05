@@ -112,6 +112,10 @@
       <Project>{b42abde9-7a46-4f92-a3d0-4ac3cd732061}</Project>
       <Name>SpaceCG.Standard.LedRenderer</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Builder\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj">
+      <Project>{ab345686-8084-4a9f-9356-dd91336afe43}</Project>
+      <Name>SpaceCG.Standard.Wpf</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Builder\SpaceCG.Standard\SpaceCG.Standard.csproj">
       <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
       <Name>SpaceCG.Standard</Name>

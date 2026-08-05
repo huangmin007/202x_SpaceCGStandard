@@ -68,6 +68,7 @@ Global
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.projitems*{837b66e2-9b60-4626-9b4a-0e739b683993}*SharedItemsImports = 13
 		SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems*{b42abde9-7a46-4f92-a3d0-4ac3cd732061}*SharedItemsImports = 4
 		SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems*{f0391a9d-3cb3-4a9e-abec-b20be2fdcafd}*SharedItemsImports = 13
 	EndGlobalSection

@@ -44,7 +44,14 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Class1.cs" />
+    <Compile Include="Extensions\SocketExtensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj">
+      <Project>{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}</Project>
+      <Name>SpaceCG.Standard</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

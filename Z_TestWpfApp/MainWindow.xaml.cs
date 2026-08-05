@@ -48,7 +48,7 @@ namespace Z_TestWpfApp
 
             rpcServer?.Dispose();
             _ledRenderBus?.Dispose();
-
+            _cts?.Cancel();
         }
 
         protected override async void OnKeyDown(KeyEventArgs e)
@@ -149,9 +149,30 @@ namespace Z_TestWpfApp
         }
 
         Stopwatch stopwatch = new Stopwatch();
+        Task connectTask;
+        CancellationTokenSource _cts;
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            var parser = new FooterProtocolParser(new byte[] { 0x0D, 0x0A });
+            parser.FrameReceived += (s0, e0) =>
+            {
+                var message = Encoding.UTF8.GetString(e0.FrameView.Array, e0.FrameView.Offset, e0.FrameView.Count);
+                Trace.WriteLine($"{DateTime.Now:hh:mm:ss.fff}收到消息: {message}");
+            };
+            _cts = new CancellationTokenSource();
+
+            TcpClient client = new TcpClient();
+            //_ = client.ConnectAsync("127.0.0.1", 2001);
+            //connectTask = client.ReceiveParseAsync(parser, newClient => client = newClient, _cts.Token);
+            connectTask = client.ReceiveParseAsync("127.0.0.1", 2001, parser, newClient => client = newClient, _cts.Token);
+
+            //UdpClient client = new UdpClient(2002);
+            //connectTask = client.ReceiveParseAsync(parser, _cts.Token);
+
+            //var serial = new SerialPort("COM3", 115200);
+            //connectTask = serial.ReceiveParseAsync(parser, _cts.Token);
+
 #if false
             _ledRenderBus = new LedRenderBus(SpaceCG.IO.ChannelType.SERIAL, "CH343,921600");
             var ledStrip = new LedStripObject(0x0001, 0x01);
@@ -161,12 +182,14 @@ namespace Z_TestWpfApp
             var config = XElementExtensions.LoadConfig($"Resources/Config.xml");
             ledRenderControl = new LedRenderControl(Canvas_Leds);
             ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
-            ledRenderControl.StartRender();
+            //ledRenderControl.StartRender();
             //ledRenderControl.RenderSceneId(1);
 
             //LedRenderBus.Collections[0].SetDeviceBaudRate(0x0000, 0x0001, 921600);
-            LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
+            //LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
 #endif
+
+            Trace.WriteLine("Ready ... ");
         }
 
         private string F2(ICollection<byte> b)
