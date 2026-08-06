@@ -603,7 +603,7 @@ namespace SpaceCG.Net
                 }
                 #endregion
 
-                #region 执行方法调用（SyncContext.Post 模式） 
+                #region 执行方法调用（SyncContext.Send 模式） 
                 object invokeResult = null;
                 Exception invokeException = null;
                 var returnType = methodInfo.ReturnType;

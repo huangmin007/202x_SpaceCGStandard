@@ -41,7 +41,7 @@ namespace SpaceCG.Net
         void Reset();
 
         /// <summary>
-        /// 回收当前对象。暂未实现。
+        /// 将当前消息实例归还到对象池中，以供后续复用。
         /// </summary>
         void Return();
     }
@@ -227,7 +227,7 @@ namespace SpaceCG.Net
     {
         /// <summary>
         /// 消息唯一标识，对应请求 <see cref="InvokeMessage.Id"/>，用于 请求-响应 的跟踪匹配。
-        /// <para>默认值为 0，当值小于 0 时（如 0、-1）表示不进行 Id 跟踪匹配。</para>
+        /// <para>默认值为 0，当值小于等于 0 时（如 0、-1）表示不进行 Id 跟踪匹配。</para>
         /// </summary>
         public int Id { get; internal set; } = 0;
         /// <summary>

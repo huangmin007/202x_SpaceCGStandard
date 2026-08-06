@@ -107,7 +107,7 @@
 ### 2.2 分层职责
 
 | 层次 | 类/组件 | 职责 |
-|------|---------|------|
+|-------|---------|------|
 | **传输层** | `TcpListener` / `TcpClient` | TCP 连接生命周期管理，Accept/Read/Write |
 | **数据拆分** | 环形缓冲 + 分割符扫描 | 字节流 → 字节拆分（基类统一实现） |
 | **协议解析** | `DeserializeInvokeMessage()` (abstract) | 数据字节 → `InvokeMessage`（子类实现，单条消息） |
@@ -211,8 +211,8 @@
 工厂方法：
 ```csharp
 InvokeMessage.Create("Demo", "GetCurrentPage");                      // 无参
-InvokeMessage.Create("Demo", "OpenPage", "2,\"en-US\"");             // 字符串参数
-InvokeMessage.Create("Video", "Seek", new object[] { 5.6 });          // 强类型参数
+InvokeMessage.Create("Demo", "OpenPage", "2,en-US");                 // 字符串参数
+InvokeMessage.Create("Video", "Seek", new object[] { 5.6 });         // 强类型参数
 ```
 
 ### 3.3 `ResponseMessage`
@@ -253,10 +253,22 @@ InvokeMessage.Create("Video", "Seek", new object[] { 5.6 });          // 强类�
 基于 XML 协议的 `RpcServerBase` 实现，可直接使用的子类。
 
 **协议要点**：
-- 默认以 CRLF 为数据边界，为一条 XML 格式消息
-- `DeserializeInvokeMessage` 将一行解码为 UTF-8 字符串，解析为单条 `InvokeMessage`
+- 默认以 XML 元素结束标记 `/>` 为消息分隔符（兼容早期版本），可通过构造函数参数 `useLegacyDelimiter=false` 切换为 CRLF
+- `DeserializeInvokeMessage` 将字节数据解码为 UTF-8 字符串，通过 `XElement.Parse` 解析为单条 `InvokeMessage`
 - 请求格式：`<InvokeMessage ObjectName="xx" MethodName="xx" Parameters="xx" Id="xx" ResponseMode="xx" />\r\n`
 - 响应格式：`<ResponseMessage Id="xx" Code="xx" ObjectMethod="xx" ReturnValue="xx" ... />\r\n`
+
+**构造函数**：
+```csharp
+// 默认端口 2000，默认使用 /> 分隔符
+var server = new RpcServer4X();
+var server = new RpcServer4X(8080);
+// 使用 CRLF 分隔符
+var server = new RpcServer4X(8080, useLegacyDelimiter: false);
+// 指定 IP + 端口
+var server = new RpcServer4X(IPAddress.Loopback, 8080);
+var server = new RpcServer4X(IPAddress.Loopback, 8080, useLegacyDelimiter: false);
+```
 
 ### 3.6 `RpcClientBase`
 
@@ -300,9 +312,9 @@ protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessa
 详见 [远程过程调用(XML-RPC)消息协议.md](./远程过程调用(XML-RPC)消息协议.md)。
 
 关键约定：
-- 每条 XML 自闭合消息，以 CRLF 结尾
+- 每个 XML 自闭合元素为一条消息，默认以 `/>` 为分隔符，可通过 `useLegacyDelimiter` 切换为 CRLF
 - 参数支持弱类型 `Parameters` 属性（自动类型转换）
-- 字符串用单/双引号包裹，数组用 `[...]`，十六进制用 `0x` 前缀
+- 字符串直接书写（不建议含 `,`、`[`、`]` 等特殊字符），数组用 `[...]`，十六进制用 `0x` 前缀
 - `ResponseMode` 控制是否响应：`-1` 不响应、`0` 默认、`1` 必须响应
 
 ---

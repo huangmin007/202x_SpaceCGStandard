@@ -128,14 +128,17 @@ public abstract class RpcServerBase : IDisposable
 ### 构造函数
 
 ```csharp
-// 监听所有网卡
+// 监听所有网卡，默认使用 /> 分隔符（兼容早期版本）
 var server = new RpcServer4X(8080);
+
+// 使用 CRLF 分隔符（与基类一致）
+var server = new RpcServer4X(8080, useLegacyDelimiter: false);
 
 // 仅监听本地回环
 var server = new RpcServer4X(IPAddress.Loopback, 8080);
 
-// 指定 IP 字符串
-var server = new RpcServer4X("192.168.1.100", 8080);
+// 指定 IP 字符串 + 使用 CRLF 分隔符
+var server = new RpcServer4X("192.168.1.100", 8080, useLegacyDelimiter: false);
 ```
 
 ### 设计要点
@@ -155,7 +158,7 @@ var server = new RpcServer4X("192.168.1.100", 8080);
 
 ### 特性
 
-- 每行一条 XML 格式消息，以 CRLF 为行边界
+- 每个 XML 自闭合元素为一条消息，默认以 `/>` 为消息分隔符（兼容早期版本），可通过构造函数 `useLegacyDelimiter` 参数切换为 CRLF
 - 使用 `XElement.Parse` 反序列化，`StringBuilder` 直拼 XML 响应（性能优化）
 - 内置备用的 `XAttributeParse` 正则解析路径（`#if false` 条件编译切换，当前使用 `StringBuilder` 直拼路径）
 - 响应使用 `SecurityElement.Escape` 进行 XML 转义

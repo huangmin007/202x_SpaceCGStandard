@@ -24,21 +24,29 @@ namespace SpaceCG.Net
         /// <summary>
         /// 使用指定的端口创建 <see cref="RpcServer4X"/> 实例。
         /// </summary>
+        /// <inheritdoc cref="RpcServer4X(IPAddress, int, bool)"/>
         public RpcServer4X(int localPort = 2000) : this(IPAddress.Any, localPort)
         {
-            this.Delimiters = XmlTerminate;
         }
         /// <summary>
         /// 使用指定的端口创建 <see cref="RpcServer4X"/> 实例。
-        /// <para>为了兼容 XML-RPC 早期版本，保留了 delimiters 分割符设置。 </para>
         /// </summary>
-        public RpcServer4X(int localPort, byte[] delimiters) : this(IPAddress.Any, localPort)
-        {
-            this.Delimiters = delimiters;
+        /// <inheritdoc cref="RpcServer4X(IPAddress, int, bool)"/>
+        public RpcServer4X(int localPort, bool useLegacyDelimiter) : this(IPAddress.Any, localPort, useLegacyDelimiter)
+        {            
         }
-        /// <inheritdoc /> 
-        public RpcServer4X(IPAddress ipAddress, int localPort) : base(ipAddress, localPort)
+        /// <summary>
+        /// 使用指定的 IP 地址和端口号创建 <see cref="RpcServer4X"/> 实例。
+        /// </summary>
+        /// <param name="ipAddress">服务器绑定的本地 IP 地址。</param>
+        /// <param name="localPort">服务器监听的本地端口号，范围 1-65535。</param>
+        /// <param name="useLegacyDelimiter">
+        /// 是否兼容 XML-RPC 协议早期版本，使用 XML 元素结束标记 <c>/&gt;</c>（<see cref="XmlTerminate"/>(0x2F 0x3E)）作为消息分隔符。<br/>
+        /// 默认为 <c>true</c>；设为 <c>false</c> 则使用 <c>CRLF</c>（<c>0x0D 0x0A</c>），与 <see cref="RpcServerBase"/> 基类默认行为一致。
+        /// </param>
+        public RpcServer4X(IPAddress ipAddress, int localPort, bool useLegacyDelimiter = true) : base(ipAddress, localPort)
         {
+            this.Delimiters = useLegacyDelimiter ? XmlTerminate : NewLine;
         }
 
         /// <summary>
