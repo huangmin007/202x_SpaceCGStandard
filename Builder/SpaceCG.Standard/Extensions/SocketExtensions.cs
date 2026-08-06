@@ -164,7 +164,7 @@ namespace SpaceCG.Extensions
         /// // 2. 订阅数据帧事件
         /// parser.FrameReceived += (sender, e) =>
         /// {
-        ///     var message = Encoding.UTF8.GetString(e.FramwView.Array, e.FramwView.Offset, e.FramwView.Count);
+        ///     var message = Encoding.UTF8.GetString(e.FrameView.Array, e.FrameView.Offset, e.FrameView.Count);
         ///     Console.WriteLine($"收到: {message}");
         /// };
         ///
@@ -300,7 +300,7 @@ namespace SpaceCG.Extensions
         /// // 3. 订阅数据帧事件
         /// parser.FrameReceived += (sender, e) =>
         /// {
-        ///     Console.WriteLine($"收到 {e.FramwView.Count} 字节");
+        ///     Console.WriteLine($"收到 {e.FrameView.Count} 字节");
         /// };
         ///
         /// // 4. 启动接收解析循环

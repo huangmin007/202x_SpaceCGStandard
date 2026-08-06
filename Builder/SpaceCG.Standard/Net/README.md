@@ -20,7 +20,6 @@
 | [`InvokeMessage`](#invokemessage--responsemessage) | class | 客户端调用请求数据对象 |
 | [`ResponseMessage`](#invokemessage--responsemessage) | class | 方法调用结果数据对象 |
 | [`InvokeMessageEventArgs`](#invokemessageeventargs) | class | 消息拦截事件参数 |
-| [`TcpClientEx`](#tcpclientex) | sealed class | 带自动重连的增强型 TCP 客户端，事件驱动接收数据 |
 | [`DataReceivedEventArgs`](#tcpclientex) | class | TCP 数据接收事件参数 |
 | [`HttpServerBase`](#httpserverbase) | abstract class | HTTP 服务抽象基类（HttpListener） |
 | [`HttpWebServer`](#httpwebserver) | class | 静态文件 Web 服务 |
@@ -342,65 +341,6 @@ server.ClientInvokeRequest += (sender, args) =>
         args.Cancel = true;  // 拦截关机调用
 };
 ```
-
----
-
-## TcpClientEx
-
-增强型 TCP 客户端，提供自动重连、异步收发和事件通知。
-
-### 关键 API
-
-```csharp
-public sealed class TcpClientEx : IDisposable
-{
-    // 属性
-    public bool IsConnected { get; }
-    public IPEndPoint RemoteEndPoint { get; }
-    public IPEndPoint LocalEndPoint { get; }
-    public int SendBufferSize { get; set; }        // 默认 32KB
-    public int ReceiveBufferSize { get; set; }     // 默认 64KB
-    public TimeSpan DefaultTimeout { get; set; }   // 默认 3 秒
-    public TimeSpan ReconnectDelay { get; set; }   // 默认 3 秒
-
-    // 连接管理
-    public void Connect();
-    public void Connect(IPAddress address, int port);
-    public void Close();
-
-    // 发送
-    public Task WriteAsync(byte[] data, int offset, int length, CancellationToken ct);
-    public Task WriteAsync(byte[] data);
-
-    // 事件
-    public event EventHandler<EventArgs> Connected;
-    public event EventHandler<EventArgs> Disconnected;
-    public event EventHandler<DataReceivedEventArgs> DataReceived;
-}
-```
-
-### 使用示例
-
-```csharp
-var client = new TcpClientEx("127.0.0.1", 8888);
-client.DataReceived += (sender, e) =>
-{
-    Console.WriteLine($"收到 {e.Data.Length} 字节");
-};
-client.Connected += (sender, e) => Console.WriteLine("已连接");
-client.Disconnected += (sender, e) => Console.WriteLine("已断开");
-client.Connect();
-await client.WriteAsync(Encoding.UTF8.GetBytes("Hello"));
-client.Close();
-```
-
-### 与 RpcClientBase 的区别
-
-| 特性 | TcpClientEx | RpcClientBase |
-|------|:--:|:--:|
-| 数据消费 | `DataReceived` 事件通知（原始字节） | 内部环形缓冲 + Delimiters 分隔 + 协议解析 |
-| 用途 | 通用 TCP 客户端 | RPC 框架专用 |
-| 协议层 | 无（调用方自行解析） | 子类实现 Serialize/Deserialize |
 
 ---
 
