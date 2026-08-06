@@ -99,6 +99,9 @@ namespace SpaceCG.IO
         /// <param name="count">要写入的字节数。</param>
         void Write(byte[] buffer, int offset, int count);
 
+        /// <inheritdoc cref="Write(byte[], int, int)"/> 
+        void Write(ArraySegment<byte> buffer);
+
     }
     
 }

@@ -121,6 +121,8 @@ namespace SpaceCG.IO
             if (_tcpClient == null || !IsConnected) return;
             _tcpClient.GetStream().Write(buffer, offset, count);
         }
+        /// <inheritdoc/>
+        public void Write(ArraySegment<byte> buffer) => Write(buffer.Array, buffer.Offset, buffer.Count);
 
         /// <inheritdoc/>
         public void ClearReadBuffer()

@@ -17,6 +17,7 @@ using SpaceCG.Device;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
 using SpaceCG.Net;
+using static System.Net.Mime.MediaTypeNames;
 using Point = System.Drawing.Point;
 
 namespace Z_TestWpfApp

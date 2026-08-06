@@ -326,6 +326,8 @@ namespace SpaceCG.Extensions
         public unsafe static bool SequenceEqual(byte* source, int srcOffset, int srcCount, byte* destination, int destOffset, int destCount)
         {
             if (source == null || destination == null) return false;
+
+            if (srcOffset < 0 || destOffset < 0) return false;
             if (srcCount != destCount || srcCount <= 0) return false;
 
 #if true
@@ -389,14 +391,31 @@ namespace SpaceCG.Extensions
             if (ReferenceEquals(source, destination)) return true;
             if (source == null || destination == null) return false;
 
-            var sLength = source.Length;
-            if (sLength != destination.Length) return false;
-            if (sLength == 0) return true;
+            var sourecLength = source.Length;
+            if (sourecLength != destination.Length) return false;
+            if (sourecLength == 0) return true;
 
             fixed (byte* ps = source)
             fixed (byte* pd = destination)
             {
-                return SequenceEqual(ps, 0, sLength, pd, 0, sLength);
+                return SequenceEqual(ps, 0, sourecLength, pd, 0, sourecLength);
+            }
+        }
+
+        /// <inheritdoc cref="SequenceEqual(byte[], byte[])"/> 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe static bool SequenceEqual(this ArraySegment<byte> source, ArraySegment<byte> destination)
+        {
+            if (ReferenceEquals(source, destination)) return true;
+            if (source.Array == null || destination.Array == null) return false;
+
+            var sourceLength = source.Count;
+            if (sourceLength != destination.Count || sourceLength == 0) return false;
+
+            fixed (byte* ps = source.Array)
+            fixed (byte* pd = destination.Array)
+            {
+                return SequenceEqual(ps + source.Offset, pd + destination.Offset, sourceLength);
             }
         }
         #endregion

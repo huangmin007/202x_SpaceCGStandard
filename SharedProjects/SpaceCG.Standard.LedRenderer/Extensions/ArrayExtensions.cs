@@ -39,14 +39,31 @@ namespace SpaceCG.Extensions
             if (ReferenceEquals(source, destination)) return true;
             if (source == null || destination == null) return false;
 
-            var sLength = source.Length;
-            if (sLength != destination.Length) return false;
-            if (sLength == 0) return true;
+            var sourceLength = source.Length;
+            if (sourceLength != destination.Length) return false;
+            if (sourceLength == 0) return true;
 
             fixed (byte* ps = source)
             fixed (byte* pd = destination)
             {
-                return memcmp(ps, pd, sLength) == 0;
+                return memcmp(ps, pd, sourceLength) == 0;
+            }
+        }
+
+        /// <inheritdoc cref="FastSequenceEqual(byte[], byte[])"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public unsafe static bool FastSequenceEqual(this ArraySegment<byte> source, ArraySegment<byte> destination)
+        {
+            if (ReferenceEquals(source, destination)) return true;
+            if (source.Array == null || destination.Array == null) return false;
+
+            var sourceLength = source.Count;
+            if (sourceLength != destination.Count || sourceLength == 0) return false;
+
+            fixed (byte* ps = source.Array)
+            fixed (byte* pd = destination.Array)
+            {
+                return memcmp(ps + source.Offset, pd + destination.Offset, sourceLength) == 0;
             }
         }
 

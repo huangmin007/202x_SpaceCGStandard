@@ -129,6 +129,8 @@ namespace SpaceCG.IO
             else
                 _udpClient.Send(buffer.Skip(offset).ToArray<byte>(), count);
         }
+        /// <inheritdoc/>
+        public void Write(ArraySegment<byte> buffer) => Write(buffer.Array, buffer.Offset, buffer.Count);
 
         /// <inheritdoc/>
         public void ClearReadBuffer() { }

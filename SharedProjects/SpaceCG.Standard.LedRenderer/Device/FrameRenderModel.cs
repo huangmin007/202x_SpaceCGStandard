@@ -494,7 +494,7 @@ namespace SpaceCG.Device
             if (frameSize < RGBFrameBaseLength || frameSize > FrameMaxLength)
                 throw new ArgumentOutOfRangeException(nameof(frameSize), "租用数据帧大小超出范围");
 
-            // 一般情况下，10~30 帧/秒，场景或效果不切换的情况下，帧长度会一直是一样长的；
+            // 一般情况下，15~30 帧/秒，场景或效果不切换的情况下，帧长度会一直是一样长的；
             // 这种情况，从空闲池中取比 new 的收益大，命中概率极高，不用重新分配内存 byte[]
             // 即使长度不匹配，清空空闲池，在 new 重新入池，也能减少绝大部份一直 new byte[] 的情况
             // 还一种更优的情况(.NET std2.0环境)，使用 ArraySegment<byte>，总长度满足的情况下就可以租借出去，但代码改动有点多，留未来考虑、升级(整体收益也差不多)
@@ -527,8 +527,49 @@ namespace SpaceCG.Device
             return frame;
         }
         /// <summary>
+        /// 从空闲帧池中租借一个指定大小的帧视图（ArraySegment）。
+        /// 与 <see cref="RentFrame"/> 不同，本方法允许租借池中大于等于 <paramref name="frameSize"/> 的缓冲区，
+        /// 通过 ArraySegment 切片返回前 <paramref name="frameSize"/> 字节，提高池命中率。
+        /// </summary>
+        protected ArraySegment<byte> RentFrameView(int frameSize)
+        {
+            if (frameSize < RGBFrameBaseLength || frameSize > FrameMaxLength)
+                throw new ArgumentOutOfRangeException(nameof(frameSize), "租用数据帧大小超出范围");
+
+            var frame = Array.Empty<byte>();
+#if UseQueue
+            lock (_availableFramesLock)
+            {
+                while (_availableFrames.Count > 0)
+                {
+                    frame = _availableFrames.Dequeue();
+
+                    if (frame == null) continue;
+                    if (frame.Length >= frameSize) break;
+
+                    frame = Array.Empty<byte>();
+                }
+            }
+#else
+            while (_availableFrames.TryDequeue(out frame))
+            {
+                if (frame == null) continue;
+                if (frame.Length >= frameSize) break;
+                frame = Array.Empty<byte>();
+            }
+#endif
+            if (frame == null || frame.Length != frameSize)
+            {
+                frame = new byte[frameSize];
+            }
+
+            return new ArraySegment<byte>(frame, 0, frameSize);
+        }
+
+        /// <summary>
         /// 将使用完毕的数据帧归还到空闲帧池，供后续 <see cref="RentFrame"/> 复用。
         /// 当池中帧数已达 <see cref="MaxAvailableFrameCount"/> 上限时丢弃该帧，由 GC 回收。
+        /// <para>先添加到末尾，后移除开头。</para>
         /// </summary>
         /// <param name="frame">待归还的数据帧。若为 <c>null</c> 或长度不足则忽略。</param>
         protected void ReturnFrame(byte[] frame)
@@ -537,12 +578,14 @@ namespace SpaceCG.Device
 #if UseQueue
             lock (_availableFramesLock)
             {
-                if (_availableFrames.Count >= MaxAvailableFrameCount) return;
                 _availableFrames.Enqueue(frame);
+                if (_availableFrames.Count > MaxAvailableFrameCount)
+                    _ = _availableFrames.Dequeue();
             }
 #else
-            if (_availableFrames.Count >= MaxAvailableFrameCount) return;
             _availableFrames.Enqueue(frame);
+            if (_availableFrames.Count > MaxAvailableFrameCount)
+                _availableFrames.TryDequeue(out _);
 #endif
         }
         /// <summary>

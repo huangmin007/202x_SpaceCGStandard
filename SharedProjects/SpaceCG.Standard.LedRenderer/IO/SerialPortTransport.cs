@@ -163,6 +163,8 @@ namespace SpaceCG.IO
             _serialPort.Write(buffer, offset, count);
             _serialPort.BaseStream.Flush();
         }
+        /// <inheritdoc/>
+        public void Write(ArraySegment<byte> buffer) => Write(buffer.Array, buffer.Offset, buffer.Count);
 
         /// <inheritdoc/>
         public void ClearReadBuffer()
