@@ -20,7 +20,6 @@
 | [`InvokeMessage`](#invokemessage--responsemessage) | class | 客户端调用请求数据对象 |
 | [`ResponseMessage`](#invokemessage--responsemessage) | class | 方法调用结果数据对象 |
 | [`InvokeMessageEventArgs`](#invokemessageeventargs) | class | 消息拦截事件参数 |
-| [`DataReceivedEventArgs`](#tcpclientex) | class | TCP 数据接收事件参数 |
 | [`HttpServerBase`](#httpserverbase) | abstract class | HTTP 服务抽象基类（HttpListener） |
 | [`HttpWebServer`](#httpwebserver) | class | 静态文件 Web 服务 |
 | [`WebSocketAPI`](#websocketapi) | abstract class | WebSocket 双向通信基类（ClientWebSocket） |
@@ -116,8 +115,8 @@ public abstract class RpcServerBase : IDisposable
     public void RegisterObject(string objectName, object objectInstance);
 
     // 子类实现（协议层，消息反序列化）
-    protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> dataLine, IPEndPoint remoteEndPoint);
-    protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint remoteEndPoint);
+    protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> requestMessage, IPEndPoint clientEndPoint);
+    protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint clientEndPoint);
 
     // 事件
     public event EventHandler<IPEndPoint> ClientConnected;
@@ -158,7 +157,7 @@ var server = new RpcServer4X("192.168.1.100", 8080);
 
 - 每行一条 XML 格式消息，以 CRLF 为行边界
 - 使用 `XElement.Parse` 反序列化，`StringBuilder` 直拼 XML 响应（性能优化）
-- 内置备用的 `XAttributeParse` 正则解析路径（`#if true` 条件编译切换）
+- 内置备用的 `XAttributeParse` 正则解析路径（`#if false` 条件编译切换，当前使用 `StringBuilder` 直拼路径）
 - 响应使用 `SecurityElement.Escape` 进行 XML 转义
 
 ### 静态成员
@@ -310,7 +309,7 @@ int count = response.GetReturnValue<int>();
 | -12 | 方法不存在（缓存未命中） |
 | -13 | 参数转换失败 |
 | -14 | 方法执行异常 |
-| -15 | 内部处理异常 |
+| -20 | 内部处理异常 |
 
 ### ResponseMode 响应模式
 
@@ -348,7 +347,7 @@ server.ClientInvokeRequest += (sender, args) =>
 
 基于 `HttpListener` 的 HTTP 服务抽象基类。
 
-**文件**：`Http/HttpServerBase.cs`
+**文件**：`HttpServerBase.cs`
 
 ### 关键 API
 
@@ -408,7 +407,7 @@ server.Start(8080);
 
 基于 `HttpServerBase` 的静态文件 Web 服务。
 
-**文件**：`Http/HttpWebServer.cs`
+**文件**：`HttpWebServer.cs`
 
 ### 关键 API
 
@@ -512,10 +511,8 @@ SpaceCG.Standard/Net/
 ├── RpcServer4X.cs                        ← 服务端 XML 协议实现
 ├── RpcClientBase.cs                      ← 客户端抽象基类
 ├── RpcClient4X.cs                        ← 客户端 XML 协议实现
-├── TcpClientEx.cs                        ← 增强型 TCP 客户端（自动重连+事件驱动）
-├── Http/
-│   ├── HttpServerBase.cs                 ← HTTP 服务抽象基类
-│   └── HttpWebServer.cs                  ← 静态文件 Web 服务
+├── HttpServerBase.cs                     ← HTTP 服务抽象基类
+├── HttpWebServer.cs                      ← 静态文件 Web 服务
 └── WebSockets/
     └── WebSocketAPI.cs                   ← WebSocket 双向通信基类
 ```

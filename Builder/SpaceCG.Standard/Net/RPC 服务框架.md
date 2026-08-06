@@ -1,6 +1,6 @@
 # RPC 服务框架
 
-基于 .NET Standard 2.0 / C# 7.3 的轻量级远程过程调用（RPC）框架，面向局域网络下的 DEMO 交互控制场景。
+基于 .NET Framework 4.8 / C# 7.3 的轻量级远程过程调用（RPC）框架，面向局域网络下的 DEMO 交互控制场景。
 
 ---
 
@@ -76,7 +76,7 @@
   <text x="340" y="80" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">数据解析</text>
   <text x="340" y="98" text-anchor="middle" font-size="10" fill="#718096">环形缓冲 RingBuffer</text>
   <text x="340" y="114" text-anchor="middle" font-size="10" fill="#718096">数据字节分割</text>
-  <text x="340" y="130" text-anchor="middle" font-size="10" fill="#718096">白字符跳过</text>
+  <text x="340" y="130" text-anchor="middle" font-size="10" fill="#718096">分隔符扫描</text>
   <rect x="440" y="60" width="160" height="75" rx="4" fill="white" stroke="#a0aec0" stroke-width="1.5"/>
   <text x="520" y="80" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a5568">方法反射调用</text>
   <text x="520" y="98" text-anchor="middle" font-size="10" fill="#718096">SyncContext.Send</text>
@@ -140,7 +140,7 @@
   <!-- Semaphore -->
   <rect x="260" y="70" width="140" height="110" rx="6" fill="#fefcbf" stroke="#d69e2e" stroke-width="2"/>
   <text x="330" y="95" text-anchor="middle" font-size="11" font-weight="bold" fill="#975a16">SemaphoreSlim</text>
-  <text x="330" y="115" text-anchor="middle" font-size="10" fill="#975a16">(25, 60)</text>
+  <text x="330" y="115" text-anchor="middle" font-size="10" fill="#975a16">(8, 64)</text>
   <text x="330" y="135" text-anchor="middle" font-size="9" fill="#a0aec0">并发限流</text>
   <text x="330" y="155" text-anchor="middle" font-size="9" fill="#a0aec0">防止线程爆炸</text>
   <!-- Arrow to SyncContext -->
@@ -177,10 +177,10 @@
 | `NewLine` | `static byte[]` | CRLF 分隔符 `{0x0D, 0x0A}` |
 | `IsRunning` | `bool` | 服务是否正在运行 |
 | `LocalEndPoint` | `IPEndPoint` | 监听地址 |
-| `Clients` | `IReadOnlyList<TcpClient>` | 已连接客户端列表 |
+| `Clients` | `IEnumerable<TcpClient>` | 已连接客户端集合 |
 | `SendBufferSize` | `int` | 发送缓冲区，默认 32KB |
 | `ReceiveBufferSize` | `int` | 接收缓冲区，默认 64KB |
-| `MessageDelimiter` | `byte[]` | 消息分隔符字节数组，默认为 `NewLine` |
+| `Delimiters` | `byte[]` | 消息分隔符字节数组，默认为 `NewLine` |
 | `MethodFilters` | `List<string>` | 禁止调用的方法列表，默认包含 `*.Dispose`、`*.Close` |
 | `Start()` | 方法 | 启动服务监听 |
 | `Stop()` | 方法 | 停止服务并断开所有客户端 |
@@ -282,10 +282,10 @@ InvokeMessage.Create("Video", "Seek", new object[] { 5.6 });          // 强类�
 
 ```csharp
 // 解析：数据字节(ArraySegment<byte>) → InvokeMessage（单条消息）
-protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> dataLine, IPEndPoint remoteEndPoint);
+protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> requestMessage, IPEndPoint clientEndPoint);
 
 // 序列化：ResponseMessage → byte[] 响应数据(数据消息)
-protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint remoteEndPoint);
+protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessage, IPEndPoint clientEndPoint);
 ```
 
 子类只需实现这两个方法即可支持新的消息格式：
@@ -329,7 +329,7 @@ protected abstract byte[] SerializeResponseMessage(ResponseMessage responseMessa
   <rect x="150" y="92" width="400" height="60" rx="4" fill="#f0fff4" stroke="#68d391" stroke-width="1.5"/>
   <text x="350" y="108" text-anchor="middle" font-size="11" fill="#276749" font-weight="bold">2. HandleClientSessionAsync(client)</text>
   <text x="350" y="124" text-anchor="middle" font-size="9" fill="#276749">环形缓冲 → 扫描分割符 → 提取数据字节</text>
-  <text x="350" y="140" text-anchor="middle" font-size="9" fill="#276749">跳过尾部白字符 (0x00/0x20/0x09等)</text>
+  <text x="350" y="140" text-anchor="middle" font-size="9" fill="#276749">紧凑阈值 bufferSize/4 空间管理</text>
   <line x1="350" y1="152" x2="350" y2="168" stroke="#38a169" stroke-width="1.5" marker-end="url(#aDn)"/>
   <!-- Parse -->
   <rect x="150" y="170" width="400" height="45" rx="4" fill="#fffbeb" stroke="#d69e2e" stroke-width="1.5"/>
@@ -526,7 +526,7 @@ client.Close();
 | `Post` (async) | 不阻塞调用线程 | 需要 `async void` lambda，异常不可捕获，Result 在响应前未填充（竞态Bug）| ❌ |
 | `Send` (sync) | 调用结果立即可用，无竞态，异常可捕获 | 阻塞 ThreadPool 线程（60-100 QPS 下影响可忽略）| ✅ |
 
-`Send` 阻塞的 ThreadPool 线程量：`100 QPS × 2ms/次 = 0.2 个等效线程`，远低于上限。加上 `SemaphoreSlim(25, 60)` 保护，不会导致 ThreadPool 饥饿。
+`Send` 阻塞的 ThreadPool 线程量：`100 QPS × 2ms/次 = 0.2 个等效线程`，远低于上限。加上 `SemaphoreSlim(8, 64)` 保护，不会导致 ThreadPool 饥饿。
 
 ### 7.2 为什么选择 Fire-and-Forget 而非消息队列？
 
@@ -545,7 +545,7 @@ Fire-and-Forget 消除了轮询延迟，信号量替代了队列的背压能力�
 
 ### 7.4 为什么预缓存 `MethodInfo`？
 
-`RegisterObject` 时通过 `CacheObjectMethods` 一次性扫描所有公共方法和扩展方法，生成 `{ObjectName}.{MethodName}({ParameterSignature})` 缓存键存入 `CacheMethodInfos`。调用时直接 `TryGetValue`，避免每次调用都执行 `GetMethods()` + `GetParameters()` 的反射开销。
+`RegisterObject` 时通过 `CacheObjectMethods` 一次性扫描所有公共方法和扩展方法，生成 `{ObjectName}.{MethodName}({ParameterSignature})` 缓存键存入 `RegisteredMethods`。调用时直接 `TryGetValue`，避免每次调用都执行 `GetMethods()` + `GetParameters()` 的反射开销。
 
 ### 7.5 为什么禁止 `special-name` 方法，以及方法参数为 `ref` `out` 类型？
 
@@ -566,7 +566,10 @@ SpaceCG.Standard/Net/
 ├── RpcServer4X.cs                        ← XML-RPC 服务端实现
 ├── RpcClientBase.cs                      ← RPC 客户端抽象基类
 ├── RpcClient4X.cs                        ← XML-RPC 客户端实现
-└── AutoReconnectTcpClient.cs             ← 独立 TCP 客户端（自动重连）
+├── HttpServerBase.cs                     ← HTTP 服务抽象基类
+├── HttpWebServer.cs                      ← 静态文件 Web 服务
+└── WebSockets/
+    └── WebSocketAPI.cs                   ← WebSocket 双向通信基类
 ```
 
 ## 附录 B：命名约定
