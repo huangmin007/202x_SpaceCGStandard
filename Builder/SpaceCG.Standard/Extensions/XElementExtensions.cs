@@ -332,7 +332,7 @@ namespace SpaceCG.Extensions
         /// <param name="name">属性名称。</param>
         /// <param name="value">属性值，null 转为空字符串。</param>
         /// <returns>设置成功返回 <c>true</c>；元素为 null 或名称为空返回 <c>false</c>。</returns>
-        public static bool SetAttributeValue(this XElement element, string name, object value)
+        public static bool UpdateAttribute(this XElement element, string name, object value)
         {
             if (element == null) return false;
             if (string.IsNullOrWhiteSpace(name)) return false;

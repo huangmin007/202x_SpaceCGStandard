@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -45,65 +46,51 @@ namespace SpaceCG.Extensions
         #region IndexOf
         /// <summary>
         /// 在字节数组中查找指定字节模式首次出现的位置。
-        /// <para>搜索区间为 [<paramref name="index"/>, <paramref name="index"/> + <paramref name="count"/>)。
-        /// 采用头尾双过滤策略：先同时比对首尾字节，只有两者都命中才进入内循环逐字节比对。
-        /// 随机数据下误入内循环概率约 1/65536，适合实时数据流分析等高性能场景。</para>
-        /// <para>与 <see cref="IndexOf{T}"/> 泛型版本不同，本重载直接使用 CPU 原生的
-        /// <c>byte == byte</c> 比较（单条 CMP 指令），避免虚调用开销，
+        /// <para>搜索区间为 [<paramref name="startIndex"/>, <paramref name="startIndex"/> + <paramref name="count"/>)。
+        /// 采用头尾双过滤策略：先同时比对首尾字节，只有两者都命中才进入内循环逐字节比对。随机数据下误入内循环概率约 1/65536，适合实时数据流分析等高性能场景。</para>
+        /// <para>与 <see cref="IndexOf{T}"/> 泛型版本不同，本重载直接使用 CPU 原生的 <c>byte == byte</c> 比较（单条 CMP 指令），避免虚调用开销，
         /// 且在 .NET Framework 4.8 下可享受 JIT 的边界检查消除和自动向量化优化。</para>
         /// <para>时间复杂度：平均 O(n)；空间复杂度 O(1)。</para>
         /// </summary>
-        /// <param name="source">源字节数组。</param>
+        /// <param name="source">要搜索的一维从零开始的数组。</param>
         /// <param name="pattern">待查找的字节模式，不能为空数组。</param>
-        /// <param name="index">搜索起始索引（从 0 开始）。</param>
-        /// <param name="count">
-        /// 要搜索的元素数量，必须大于 0。
-        /// 若 <c>index + count</c> 超出 <paramref name="source"/> 末尾，则自动截断到数组末尾。
-        /// </param>
+        /// <param name="startIndex">从零开始的搜索索引（从 0 开始）。</param>
+        /// <param name="count">要搜索的节中的元素数。必须大于 0。
+        /// 若 <c>index + count</c> 超出 <paramref name="source"/> 末尾，则自动截断到数组末尾。</param>
         /// <returns>找到时返回首次出现的起始索引；未找到或参数无效返回 -1。</returns>
-        public static unsafe int IndexOf(this byte[] source, byte[] pattern, int index, int count)
+        public static int IndexOf(this byte[] source, byte[] pattern, int startIndex, int count)
         {
             // 参数有效性检查：null 或空数组直接返回 -1
-            if (source == null || source.Length == 0) return -1;
-            if (pattern == null || pattern.Length == 0) return -1;
+            if (source == null || pattern == null) return -1;
 
-            // count 必须为正数
-            if (count <= 0) return -1;
+            var sourceLength = source.Length;
+            var patternLength = pattern.Length;
 
-            var sCount = source.Length;
-            var pCount = pattern.Length;
+            // 索引与长度边界检查
+            if (startIndex < 0 || startIndex >= sourceLength) return -1;
+            if (sourceLength == 0 || patternLength == 0 || count <= 0) return -1;
 
-            // 模式比要搜索的范围还长，直接返回 -1
-            if (pCount > count || pCount > sCount) return -1;
+            // 实际可搜索长度（自动截断到数组末尾）
+            var searchLength = Math.Min(count, sourceLength - startIndex);
+            if (searchLength < patternLength) return -1;
 
-            // 起始索引越界检查
-            if (index < 0 || index >= sCount) return -1;
+            // 最后一个允许匹配的位置
+            var searchEndExclusive = startIndex + searchLength;
+            // 搜索结束位置(不包含) - Pattern长度
+            var lastIndex = searchEndExclusive - patternLength;
 
-            // 防止 index + count 整型溢出，安全且精准地实现“自动截断”
-            var searchEnd = (count > sCount - index) ? sCount : index + count;
-            if (searchEnd <= index) return -1;
-
-            var limit = searchEnd - pCount;
-            if (index > limit) return -1;
-
-            // 缓存首字节到局部变量
             var head = pattern[0];
-
             // 单字节模式，委托给 Array.IndexOf（JIT 内在优化）
-            if (pCount == 1)
-            {
-                var searchLength = searchEnd - index;
-                return Array.IndexOf(source, head, index, searchLength);
-            }
+            if (patternLength == 1)
+                return Array.IndexOf(source, head, startIndex, searchLength);
 
-            var pLast = pCount - 1;             // 尾部索引
-            var tail = pattern[pLast];          // 尾字节（缓存成员访问）
+            var lastPatternIndex = patternLength - 1;
+            var tail = pattern[lastPatternIndex];
 
-#if true
             // 双字节模式，直接比对两个字节
-            if (pCount == 2)
+            if (patternLength == 2)
             {
-                for (int i = index; i <= limit; i++)
+                for (int i = startIndex; i <= lastIndex; i++)
                 {
                     if (source[i] == head && source[i + 1] == tail) 
                         return i;
@@ -111,58 +98,21 @@ namespace SpaceCG.Extensions
                 return -1;
             }
 
-            // 头尾双过滤 + 中间逐字节比对
-            // 策略：先同时检查首尾两个字节
-            // 随机数据下同时命中的概率 ≈ 1/65536，第一步几乎全部排除
-            // 若首尾都命中，再从第 2 到 pLast-1 逐字节确认（尾部已验过，跳过）
-            for (int i = index; i <= limit; i++)
+            // 三字节及以上：
+            // 先比较首尾两个字节，命中后再验证中间内容。
+            for (int i = startIndex; i <= lastIndex; i++)
             {
-                // 头尾同时比对（两次比较，短路求值：头不命中直接跳过尾比较）
-                if (source[i] != head || source[i + pLast] != tail) continue;
+                if (source[i] != head || source[i + lastPatternIndex] != tail) continue;
 
                 // 逐字节比对中间部分，发现不匹配立即 break
                 int j;
-                for (j = 1; j < pLast; j++)
+                for (j = 1; j < lastPatternIndex; j++)
                 {
                     if (source[i + j] != pattern[j]) break;
                 }
 
-                if (j == pLast) return i;
+                if (j == lastPatternIndex) return i;
             }
-#else
-            // 固定内存，获取指针
-            fixed (byte* pSrc = source, pPat = pattern)
-            {
-                // 双字节模式：指针直接比较，无边界检查开销
-                if (pCount == 2)
-                {
-                    for (int i = index; i <= limit; i++)
-                    {
-                        if (pSrc[i] == head && pSrc[i + 1] == tail)
-                            return i;
-                    }
-                    return -1;
-                }
-
-                // 多字节模式：头尾过滤 + 指针内层块比较
-                for (int i = index; i <= limit; i++)
-                {
-                    // 1. 头尾过滤（使用指针，无边界检查）
-                    if (pSrc[i] != head || pSrc[i + pLast] != tail)
-                        continue;
-
-                    // 2. 内层逐字节比对（指针遍历）
-                    int j = 1;
-                    for (; j < pLast; j++)
-                    {
-                        if (pSrc[i + j] != pPat[j])
-                            break;
-                    }
-
-                    if (j == pLast) return i;
-                }
-            }
-#endif
 
             return -1;
         }
@@ -171,53 +121,41 @@ namespace SpaceCG.Extensions
         
         /// <summary>
         /// 在 <see cref="ArraySegment{T}"/> 的字节序列中查找指定字节模式的首次出现位置。
-        /// <para>搜索区间为视图内 [<paramref name="index"/>, <paramref name="index"/> + <paramref name="count"/>)。
+        /// <para>搜索区间为视图内 [<paramref name="startIndex"/>, <paramref name="startIndex"/> + <paramref name="count"/>)。
         /// 返回相对于视图起始（即 <see cref="ArraySegment{T}.Offset"/>）的偏移索引。</para>
         /// </summary>
         /// <param name="source">要搜索的源字节序列视图。</param>
         /// <param name="pattern">待查找的字节模式，不能为空数组。</param>
-        /// <param name="index">
-        /// 搜索起始位置，相对于视图起始的偏移（从 0 开始）。
-        /// 传入 0 表示从视图的第一个字节开始搜索。
-        /// </param>
+        /// <param name="startIndex">搜索起始位置，相对于视图起始的偏移（从 0 开始）。传入 0 表示从视图的第一个字节开始搜索。</param>
         /// <param name="count">要搜索的元素数量，必须大于 0。</param>
-        /// <returns>
-        /// 模式首次出现相对于视图起始的偏移索引；未找到或参数无效返回 -1。
-        /// </returns> 
-        public static int IndexOf(this ArraySegment<byte> source, byte[] pattern, int index, int count)
+        /// <returns> 模式首次出现相对于视图起始的偏移索引；未找到或参数无效返回 -1。</returns> 
+        public static int IndexOf(this ArraySegment<byte> source, byte[] pattern, int startIndex, int count)
         {
-            // 参数有效性检查
-            if (pattern == null || pattern.Length == 0) return -1;
-            if (source.Array == null || source.Count == 0) return -1;
+            if (source.Array == null || pattern == null) return -1;
 
-            var viewCount = source.Count;
-            if (viewCount == 0 || count <= 0) return -1;
+            var sourceLength = source.Count;
+            var patternLength = pattern.Length;
 
-            // index 相对于视图的越界检查
-            if (index < 0 || index >= viewCount) return -1;
+            // 索引与长度边界检查
+            if (startIndex < 0 || startIndex >= sourceLength) return -1;
+            if (sourceLength == 0 || patternLength == 0 || count <= 0) return -1;
 
-            if (count > viewCount - index) return -1;
+            var searchLength = Math.Min(count, sourceLength - startIndex);
+            if (searchLength < patternLength) return -1;
 
-            // 将视图内的相对偏移转换为底层数组的绝对索引
-            int absoluteIndex = source.Offset + index;
+            // ArraySegment 内偏移转换为底层数组绝对索引
+            var absoluteStartIndex = source.Offset + startIndex;
+
             // 委托给 byte[] 重载（返回绝对索引）
-            int absoluteResult = IndexOf(source.Array, pattern, absoluteIndex, count);
+            var absoluteResultIndex = IndexOf(source.Array, pattern, absoluteStartIndex, searchLength);
+            if (absoluteResultIndex < 0) return -1;
 
-            // 转换回相对于视图的偏移
-            if (absoluteResult < 0) return -1;
-            return absoluteResult - source.Offset;
+            // 转换回 ArraySegment 内相对索引
+            return absoluteResultIndex - source.Offset;
         }
         /// <inheritdoc cref="IndexOf(byte[], byte[], int, int)"/> 
-        public static int IndexOf(this ArraySegment<byte> source, byte[] pattern)
-        {
-            if (pattern == null || pattern.Length == 0) return -1;
-            if (source.Array == null || source.Count == 0) return -1;
-
-            int absoluteIndex = IndexOf(source.Array, pattern, source.Offset, source.Count);
-            if (absoluteIndex < 0) return -1;
-            return absoluteIndex - source.Offset;  // 转换为相对偏移
-        }
-
+        public static int IndexOf(this ArraySegment<byte> source, byte[] pattern) => IndexOf(source, pattern, 0, source.Count);
+        
         /// <summary>
         /// 在泛型数组中查找指定模式首次出现的位置。
         /// <para>采用头尾双过滤策略：先同时比对首尾元素，只有两者都命中才进入内循环逐元素比对。</para>
@@ -226,73 +164,64 @@ namespace SpaceCG.Extensions
         /// <typeparam name="T">数组元素类型，必须实现 <see cref="IEquatable{T}"/></typeparam>
         /// <param name="source">源数组</param>
         /// <param name="pattern">待查找的元素模式</param>
-        /// <param name="index">搜索起始索引</param>
+        /// <param name="startIndex">搜索起始索引</param>
         /// <param name="count">要搜索的元素数量</param>
         /// <returns>找到时返回首次出现的起始索引；未找到或参数无效返回 -1。</returns>
-        public static int IndexOf<T>(this T[] source, T[] pattern, int index, int count) where T : IEquatable<T>
+        public static int IndexOf<T>(this T[] source, T[] pattern, int startIndex, int count) where T : IEquatable<T>
         {
             // 参数有效性检查：null 或空数组直接返回 -1
-            if (source == null || source.Length == 0) return -1;
-            if (pattern == null || pattern.Length == 0) return -1;
-            if (count <= 0) return -1;
+            if (source == null || pattern == null) return -1;
 
-            var sCount = source.Length;
-            var pCount = pattern.Length;
+            var sourceLength = source.Length;
+            var patternLength = pattern.Length;
 
-            // 模式比要搜索的范围还长，直接返回 -1
-            if (pCount > count || pCount > sCount) return -1;
+            // 索引与长度边界检查
+            if (startIndex < 0 || startIndex >= sourceLength) return -1;
+            if (sourceLength == 0 || patternLength == 0 || count <= 0) return -1;
 
-            // 起始索引越界检查
-            if (index < 0 || index >= sCount) return -1;
+            // 实际可搜索长度（自动截断到数组末尾）
+            var searchLength = Math.Min(count, sourceLength - startIndex);
+            if (searchLength < patternLength) return -1;
 
-            // 防止 index + count 整型溢出，安全且精准地实现“自动截断”
-            var searchEnd = (count > sCount - index) ? sCount : index + count;
-            if (searchEnd <= index) return -1;
+            // 最后一个允许匹配的位置
+            var searchEndExclusive = startIndex + searchLength;
+            // 搜索结束位置(不包含) - Pattern长度
+            var lastIndex = searchEndExclusive - patternLength;
 
-            var limit = searchEnd - pCount;
-            if (index > limit) return -1;
-
-            // 缓存首字节到局部变量
             var head = pattern[0];
+            // 单字节模式，委托给 Array.IndexOf（JIT 内在优化）
+            if (patternLength == 1)
+                return Array.IndexOf(source, head, startIndex, searchLength);
+
+            var lastPatternIndex = patternLength - 1;
+            var tail = pattern[lastPatternIndex];
             var comparer = EqualityComparer<T>.Default;
 
-            // 单元素模式：委托给 Array.IndexOf，JIT 内在优化
-            if (pCount == 1)
+            // 双字节模式，直接比对两个字节
+            if (patternLength == 2)
             {
-                var searchLength = searchEnd - index;
-                return Array.IndexOf(source, head, index, searchLength);
-            }
-
-            var pLast = pCount - 1;             // 尾部索引
-            var tail = pattern[pLast];          // 尾元素（缓存成员访问）
-
-            // 双元素模式，直接比对两个元素
-            if (pCount == 2)
-            {
-                for (int i = index; i <= limit; i++)
+                for (int i = startIndex; i <= lastIndex; i++)
                 {
-                    if (comparer.Equals(source[i], head) && comparer.Equals(source[i + 1], tail)) return i;
+                    if (comparer.Equals(source[i], head) && comparer.Equals(source[i + 1], tail)) 
+                        return i;
                 }
                 return -1;
             }
 
-            // 头尾双过滤 + 中间逐元素比对
-            // 策略：先同时检查首尾两个元素
-            // 随机数据下同时命中的概率 ≈ 1/n²（n 为候选值数量），第一步几乎全部排除
-            // 若首尾都命中，再从第2到pLast-1逐元素确认（尾部已验过，跳过）
-            for (int i = index; i <= limit; i++)
+            // 三字节及以上：
+            // 先比较首尾两个字节，命中后再验证中间内容。
+            for (int i = startIndex; i <= lastIndex; i++)
             {
-                // 头尾同时比对（两次比较，短路求值：头不命中直接跳过尾比较）
-                if (!comparer.Equals(source[i], head) || !comparer.Equals(source[i + pLast], tail)) continue;
+                if (!comparer.Equals(source[i], head) || !comparer.Equals(source[i + lastPatternIndex], tail)) continue;
 
-                // 逐元素比对中间部分，发现不匹配立即 break
+                // 逐字节比对中间部分，发现不匹配立即 break
                 int j;
-                for (j = 1; j < pLast; j++)
+                for (j = 1; j < lastPatternIndex; j++)
                 {
                     if (!comparer.Equals(source[i + j], pattern[j])) break;
                 }
 
-                if (j == pLast) return i;
+                if (j == lastPatternIndex) return i;
             }
 
             return -1;
@@ -347,10 +276,8 @@ namespace SpaceCG.Extensions
             for (int i = 0; i < blocks; i++)
             {
                 // 一次比较 4 个 ulong，任一不匹配即返回 false
-                if (src64[0] != dst64[0] || 
-                    src64[1] != dst64[1] ||
-                    src64[2] != dst64[2] || 
-                    src64[3] != dst64[3])
+                if (src64[0] != dst64[0] ||  src64[1] != dst64[1] ||
+                    src64[2] != dst64[2] ||  src64[3] != dst64[3])
                 {
                     return false;
                 }
