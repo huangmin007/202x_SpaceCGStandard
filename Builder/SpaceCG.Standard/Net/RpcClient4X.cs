@@ -73,13 +73,13 @@ namespace SpaceCG.Net
             try
             {
                 content = Encoding.UTF8.GetString(responseMessage.Array, responseMessage.Offset, responseMessage.Count);
+                if (string.IsNullOrWhiteSpace(content)) return null;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 Trace.TraceWarning($"客户端 {LocalEndPoint} 响应消息解码为字符串时异常：({ex.GetType().Name}){ex.Message}");
                 return null;
             }
-            if (string.IsNullOrWhiteSpace(content)) return null;
 
             try
             {

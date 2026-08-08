@@ -38,10 +38,7 @@ namespace Z_TestWpfApp
             InitializeComponent();
             
             Trace.Listeners.Add(new LoggerTraceListener(true));
-
-            rpcServer = new RpcServer4X(2000, RpcServer4X.XmlTerminate);
-            rpcServer.RegisterObject("Demo", this);
-            rpcServer.Start();            
+         
         }
         protected override void OnClosing(CancelEventArgs e)
         {
@@ -62,16 +59,18 @@ namespace Z_TestWpfApp
             switch (e.Key)
             {
                 case Key.D0:
-                    ledRenderControl.RenderSceneId(0);
+                    //ledRenderControl.RenderSceneId(0);
                     break;
                 case Key.D1:
-                    ledRenderControl.RenderSceneId(1);
-                    //await rpcClient.InvokeActionAsync("Demo", "test", new object[] {1,2 });
+                    //ledRenderControl.RenderSceneId(1);
+                    await rpcClient.InvokeActionAsync("Demo", "Test", new object[] {1,2 });
                     break;
 
                 case Key.D2:
+                    var delayTask = Task.Delay(1000);
+                    delayTask.Dispose();
                     ledRenderControl.RenderSceneId(2);
-#if false
+#if true
                     if (rpcClient == null) break;
                     var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
                     Trace.TraceInformation($"Response::{result}");
@@ -155,6 +154,13 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            rpcServer = new RpcServer4X(2000);
+            rpcServer.RegisterObject("Demo", this);
+            rpcServer.Start();
+
+            rpcClient = new RpcClient4X("127.0.0.1", 2000);
+            rpcClient.Connect();
+
             var parser = new FooterProtocolParser(new byte[] { 0x0D, 0x0A });
             parser.FrameReceived += (s0, e0) =>
             {
@@ -163,10 +169,10 @@ namespace Z_TestWpfApp
             };
             _cts = new CancellationTokenSource();
 
-            TcpClient client = new TcpClient();
+            //TcpClient client = new TcpClient();
             //_ = client.ConnectAsync("127.0.0.1", 2001);
             //connectTask = client.ReceiveParseAsync(parser, newClient => client = newClient, _cts.Token);
-            connectTask = client.ReceiveParseAsync("127.0.0.1", 2001, parser, newClient => client = newClient, _cts.Token);
+            //connectTask = client.ReceiveParseAsync("127.0.0.1", 2001, parser, newClient => client = newClient, _cts.Token);
 
             //UdpClient client = new UdpClient(2002);
             //connectTask = client.ReceiveParseAsync(parser, _cts.Token);

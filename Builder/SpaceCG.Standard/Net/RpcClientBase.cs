@@ -29,10 +29,9 @@ namespace SpaceCG.Net
         /// <inheritdoc cref="RpcServerBase.NewLine"/> 
         public static readonly byte[] NewLine = RpcServerBase.NewLine;
 
-        private readonly object _lock = new object();
-
         private bool _isDisposed;
         private bool _isManualClosed;
+        private readonly object _syncLock = new object();
 
         private Task _connectTask;
         private TcpClient _tcpClient;
@@ -159,7 +158,7 @@ namespace SpaceCG.Net
             try { _cts?.Cancel(); }
             catch (Exception) { }
 
-            lock (_lock)
+            lock (_syncLock)
             {
                 CloseTcpClient();
             }
@@ -219,7 +218,7 @@ namespace SpaceCG.Net
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                lock (_lock)
+                lock (_syncLock)
                 {
                     LocalEndPoint = null;
                     CloseTcpClient();
@@ -227,7 +226,7 @@ namespace SpaceCG.Net
                 }
 
                 var newClient = new TcpClient();
-                lock (_lock)
+                lock (_syncLock)
                 {
                     if (_isDisposed || _isManualClosed)
                     {
@@ -241,7 +240,7 @@ namespace SpaceCG.Net
                 {
                     await _tcpClient.ConnectAsync(address, port).ConfigureAwait(false);
 
-                    lock (_lock)
+                    lock (_syncLock)
                     {
                         if (_isManualClosed || _isDisposed || cancellationToken.IsCancellationRequested)
                         {
@@ -445,31 +444,28 @@ namespace SpaceCG.Net
         /// <param name="taskSource">用于等待响应的任务完成源。</param>
         /// <param name="invokeMessage">原始调用消息，用于超时时构造错误响应。</param>
         /// <param name="timeout">超时时间。</param>
+        /// <param name="cancellationToken">用于取消等待操作的令牌。</param>
         /// <returns>服务端返回的响应消息，或超时/错误响应。</returns>
-        private async Task<ResponseMessage> WaitResponseMessageAsync(TaskCompletionSource<ResponseMessage> taskSource, InvokeMessage invokeMessage, TimeSpan timeout)
+        private async Task<ResponseMessage> WaitResponseMessageAsync(TaskCompletionSource<ResponseMessage> taskSource, InvokeMessage invokeMessage, TimeSpan timeout, CancellationToken cancellationToken)
         {
-            using (var timeoutCts = new CancellationTokenSource())
-            {
-                var completedTask = await Task.WhenAny(taskSource.Task, Task.Delay(timeout, timeoutCts.Token)).ConfigureAwait(false);
+            var delayTask = Task.Delay(timeout, cancellationToken);
+            var completedTask = await Task.WhenAny(taskSource.Task, delayTask).ConfigureAwait(false);
 
-                if (completedTask == taskSource.Task)
-                {
-                    // 正常完成，取消多余的 Delay
-                    timeoutCts.Cancel();
-                    return await taskSource.Task.ConfigureAwait(false);
-                }
-                else
-                {
-                    // 超时：从字典移除并返回超时错误
-                    if (_pendingCalls.TryRemove(invokeMessage.Id, out _))
-                    {                        
-                        var responseMessage = ResponseMessage.Create(invokeMessage, -97, "Response timeout");
-                        taskSource.TrySetResult(responseMessage);
-                    }
-                    return await taskSource.Task.ConfigureAwait(false);
-                }
+            // 任务正常完成
+            if (completedTask == taskSource.Task)
+            {
+                return await taskSource.Task.ConfigureAwait(false);
             }
-        }
+
+            // 超时：从字典移除并返回超时错误
+            if (_pendingCalls.TryRemove(invokeMessage.Id, out _))
+            {
+                var responseMessage = ResponseMessage.Create(invokeMessage, -97, "Response timeout");
+                taskSource.TrySetResult(responseMessage);
+            }
+
+            return await taskSource.Task.ConfigureAwait(false);
+        }    
         #endregion
 
 
@@ -486,7 +482,7 @@ namespace SpaceCG.Net
         /// <exception cref="InvalidOperationException">客户端未连接时抛出。</exception>
         /// <exception cref="ArgumentNullException">data 为 null 时抛出。</exception>
         /// <exception cref="ArgumentOutOfRangeException">offset/length 越界时抛出。</exception>
-        public async Task WriteAsync(byte[] data, int offset, int length, CancellationToken cancellationToken)
+        protected async Task WriteAsync(byte[] data, int offset, int length, CancellationToken cancellationToken)
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(RpcClientBase));
@@ -518,7 +514,7 @@ namespace SpaceCG.Net
             }
         }
         /// <inheritdoc cref="WriteAsync(byte[], int, int, CancellationToken)"/>
-        public async Task WriteAsync(byte[] data) => await WriteAsync(data, 0, data.Length, _cts.Token);
+        protected async Task WriteAsync(byte[] data) => await WriteAsync(data, 0, data.Length, _cts.Token);
 
         /// <summary>
         /// 发起单向远程调用，不等待服务端响应（ResponseMode = -1）。
@@ -528,8 +524,9 @@ namespace SpaceCG.Net
         /// <param name="objectName">目标对象名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="methodName">目标方法名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="parameters">方法参数对象数组，可为 null 表示无参调用。</param>
+        /// <param name="cancellationToken">用于取消发送操作的令牌。</param>
         /// <returns>发送是否成功（仅表示写入 TCP 流成功，不表示服务端处理成功）。</returns>
-        public async Task<bool> InvokeActionAsync(string objectName, string methodName, object[] parameters = null)
+        public async Task<bool> InvokeActionAsync(string objectName, string methodName, object[] parameters, CancellationToken cancellationToken)
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(RpcClientBase));
@@ -546,6 +543,7 @@ namespace SpaceCG.Net
             try
             {
                 messageBytes = SerializeInvokeMessage(invokeMessage);
+                if (messageBytes == null || messageBytes.Length == 0) return false;
             }
             catch (Exception ex)
             {
@@ -553,11 +551,9 @@ namespace SpaceCG.Net
                 return false;
             }
 
-            if (messageBytes == null || messageBytes.Length == 0) return false;
-
             try
             {
-                await WriteAsync(messageBytes).ConfigureAwait(false);
+                await WriteAsync(messageBytes, 0, messageBytes.Length, cancellationToken).ConfigureAwait(false);
                 return true;
             }
             catch (Exception ex)
@@ -567,6 +563,10 @@ namespace SpaceCG.Net
 
             return false;
         }
+        /// <inheritdoc cref="InvokeActionAsync(string, string, object[], CancellationToken)"/>
+        public async Task<bool> InvokeActionAsync(string objectName, string methodName) => await InvokeActionAsync(objectName, methodName, null, _cts.Token);
+        /// <inheritdoc cref="InvokeActionAsync(string, string, object[], CancellationToken)"/>
+        public async Task<bool> InvokeActionAsync(string objectName, string methodName, object[] parameters) => await InvokeActionAsync(objectName, methodName, parameters, _cts.Token);
 
         /// <summary>
         /// 发起远程请求调用并等待服务端返回结果（ResponseMode = 1，必须响应）。
@@ -578,10 +578,11 @@ namespace SpaceCG.Net
         /// <param name="objectName">目标对象名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="methodName">目标方法名称，需符合 <see cref="RpcServerBase.IdentifierPattern"/> 命名规则。</param>
         /// <param name="parameters">方法参数对象数组，可为 null 表示无参调用。</param>
-        /// <param name="timeout">超时时间，null 表示使用 <see cref="ResponseTimeout"/>。</param>
+        /// <param name="responseTimeout">响应超时时间，默认使用 <see cref="ResponseTimeout"/>。</param>
+        /// <param name="cancellationToken">用于取消发送/等待操作的令牌。</param>
         /// <returns>包含状态码、描述信息和原始返回值的响应消息。</returns>
         /// <exception cref="ObjectDisposedException">实例已释放时抛出。</exception>
-        public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters = null, TimeSpan? timeout = null)
+        public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters, TimeSpan responseTimeout, CancellationToken cancellationToken)
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(RpcClientBase));
@@ -595,6 +596,10 @@ namespace SpaceCG.Net
             try
             {
                 messageBytes = SerializeInvokeMessage(invokeMessage);
+                if (messageBytes == null || messageBytes.Length == 0)
+                {
+                    return ResponseMessage.Create(invokeMessage, -106, "Message serialize result is empty");
+                }
             }
             catch (Exception ex)
             {
@@ -602,15 +607,10 @@ namespace SpaceCG.Net
                 return ResponseMessage.Create(invokeMessage, -105, "Message serialization failed");
             }
 
-            if (messageBytes == null || messageBytes.Length == 0)
-            {
-                return ResponseMessage.Create(invokeMessage, -106, "Message serialize result is empty");
-            }
-
-            var tcs = new TaskCompletionSource<ResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var taskSource = new TaskCompletionSource<ResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
             var pending = new PendingCall 
             { 
-                TaskSource = tcs,
+                TaskSource = taskSource,
                 InvokeMessage = invokeMessage,
             };
             if (!_pendingCalls.TryAdd(invokeMessage.Id, pending))
@@ -627,10 +627,10 @@ namespace SpaceCG.Net
                     {
                         removed.SetError(-101, "Client connection closed");
                     }
-                    return await tcs.Task.ConfigureAwait(false);
+                    return await taskSource.Task.ConfigureAwait(false);
                 }
 
-                await WriteAsync(messageBytes).ConfigureAwait(false);
+                await WriteAsync(messageBytes, 0, messageBytes.Length, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -638,12 +638,20 @@ namespace SpaceCG.Net
                 {
                     removed.SetError(-107, $"Client write failed: {ex.Message}");
                 }
-                return await tcs.Task.ConfigureAwait(false);
+                return await taskSource.Task.ConfigureAwait(false);
             }
 
             // 等待响应（带超时）
-            return await WaitResponseMessageAsync(tcs, invokeMessage, timeout ?? ResponseTimeout).ConfigureAwait(false);
+            return await WaitResponseMessageAsync(taskSource, invokeMessage, responseTimeout, cancellationToken).ConfigureAwait(false);
         }
+        /// <inheritdoc cref="InvokeFuncAsync(string, string, object[], TimeSpan, CancellationToken)"/> 
+        public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName) => await InvokeFuncAsync(objectName, methodName, null, ResponseTimeout, _cts.Token).ConfigureAwait(false);
+        /// <inheritdoc cref="InvokeFuncAsync(string, string, object[], TimeSpan, CancellationToken)"/> 
+        public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters) => await InvokeFuncAsync(objectName, methodName, parameters, ResponseTimeout, _cts.Token).ConfigureAwait(false);
+        /// <inheritdoc cref="InvokeFuncAsync(string, string, object[], TimeSpan, CancellationToken)"/> 
+        public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters, TimeSpan responseTimeout) => await InvokeFuncAsync(objectName, methodName, parameters, responseTimeout, _cts.Token).ConfigureAwait(false);
+        /// <inheritdoc cref="InvokeFuncAsync(string, string, object[], TimeSpan, CancellationToken)"/> 
+        public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters, CancellationToken cancellationToken) => await InvokeFuncAsync(objectName, methodName, parameters, ResponseTimeout, cancellationToken).ConfigureAwait(false);
         #endregion
 
 

@@ -75,16 +75,24 @@ namespace SpaceCG.Net
                 throw new FormatException("Invalid XML-RPC message format."); ;
             }
 
-            int id = int.TryParse(messageElement.Attribute(nameof(InvokeMessage.Id))?.Value, out var _id) ? _id : -1;
-            int mode = int.TryParse(messageElement.Attribute(nameof(InvokeMessage.ResponseMode))?.Value, out var _responseMode) ? _responseMode : 0;
+            int id = -1;
+            var idAttr = messageElement.Attribute(nameof(InvokeMessage.Id));
+            if (idAttr != null && int.TryParse(idAttr.Value, out var _id)) id = _id;
 
-            InvokeMessage invokeMessage = InvokeMessage.Create(objectName, methodName, messageElement.Attribute(nameof(InvokeMessage.Parameters))?.Value, id, mode);
+            int responseMode = 0;
+            var modeAttr = messageElement.Attribute(nameof(InvokeMessage.ResponseMode));
+            if (modeAttr != null && int.TryParse(modeAttr.Value, out var _responseMode)) responseMode = _responseMode;
+
+            var parameters = messageElement.Attribute(nameof(InvokeMessage.Parameters))?.Value;
+            InvokeMessage invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, id, responseMode);
             // 解析 Description
             invokeMessage.Description = messageElement.Attribute(nameof(InvokeMessage.Description))?.Value;
             // 解析 Version
-            if (Version.TryParse(messageElement.Attribute(nameof(InvokeMessage.Version))?.Value, out var version)) invokeMessage.Version = version;
+            var versionAttr = messageElement.Attribute(nameof(InvokeMessage.Version));
+            if (versionAttr != null && Version.TryParse(versionAttr.Value, out var version)) invokeMessage.Version = version;
             // 解析 Timestamp
-            if (DateTimeOffset.TryParse(messageElement.Attribute(nameof(InvokeMessage.Timestamp))?.Value, out var timestamp)) invokeMessage.Timestamp = timestamp;
+            var timestampAttr = messageElement.Attribute(nameof(InvokeMessage.Timestamp));
+            if (timestampAttr != null && DateTimeOffset.TryParse(timestampAttr.Value, out var timestamp)) invokeMessage.Timestamp = timestamp;
 
             return invokeMessage;
         }
@@ -164,7 +172,7 @@ namespace SpaceCG.Net
             {
                 Trace.TraceWarning($"客户端 {clientEndPoint} 响应消息序列化时异常：({ex.GetType().Name}){ex.Message}");
                 return Array.Empty<byte>();
-            } 
+            }
         }
 
         /// <summary>

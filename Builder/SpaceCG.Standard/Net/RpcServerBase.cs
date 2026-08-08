@@ -96,9 +96,6 @@ namespace SpaceCG.Net
         protected readonly ConcurrentDictionary<string, object> RegisterObjects = new ConcurrentDictionary<string, object>();
         /// <summary> 注册对象的实例缓存的方法信息；在 <see cref="RegisterObject"/> 时将实例的所有公共方法和扩展方法预缓存在字典中。 </summary>
         protected readonly ConcurrentDictionary<string, MethodInfo> RegisteredMethods = new ConcurrentDictionary<string, MethodInfo>();
-
-        //private readonly RpcMessagePool<InvokeMessage> InvokeMessagePool = new RpcMessagePool<InvokeMessage>(25, 128);
-        //private readonly RpcMessagePool<ResponseMessage> ResponseMessagePool = new RpcMessagePool<ResponseMessage>(25, 128);
         #endregion
 
         #region Constructors
@@ -143,11 +140,11 @@ namespace SpaceCG.Net
                 throw new ArgumentNullException(nameof(objectName), "对象名称不能为空或命名格式不正确");
 
             if (objectInstance == null || typeof(RpcServerBase).IsInstanceOfType(objectInstance))
-                throw new ArgumentNullException(nameof(objectInstance), "对象实例不能为空，也不能注册 RpcServerBase 自身或其子类实例");
+                throw new ArgumentNullException(nameof(objectInstance), $"对象实例不能为空，也不能注册 {nameof(RpcServerBase)} 自身或其子类实例");
 
             var objectType = objectInstance.GetType();
-            if (objectType.IsValueType /*|| objectType == typeof(RPCClient)*/)
-                throw new ArgumentException($"不能注册的对象实例类型 {objectType}");
+            if (objectType.IsValueType || objectType == typeof(string))
+                throw new NotSupportedException($"不支持注册的对象实例类型 {objectType}");
 
             if (RegisterObjects.ContainsKey(objectName))
                 throw new ArgumentException($"已存在的对象名称 {objectName}");
@@ -224,8 +221,9 @@ namespace SpaceCG.Net
                         if (parameters == null || parameters.Length == 0) continue;
                         if (parameters.Any(p => p.ParameterType.IsByRef)) continue;  // ref out 参数不支持
 
-                        // 类型相同，或是父级类，或接口类型
-                        // 使用 IsAssignableFrom 支持基类和接口类型的扩展方法
+                        // 检查扩展方法是否适用于当前实例类型：
+                        // instanceType 必须是扩展方法第一个参数类型的子类、实现类或相同类型
+                        // IsAssignableFrom: 判断 T1 变量能否接受 T2 实例 → T2 是 T1 的子类/实现
                         if (parameters[0].ParameterType.IsAssignableFrom(instanceType))
                         {
                             var paramsSign = parameters.Skip(1).Select(p => p.ParameterType).GetSignature();
@@ -260,7 +258,6 @@ namespace SpaceCG.Net
                 throw new ObjectDisposedException(nameof(RpcServerBase));
 
             if (IsRunning) return;
-
             _tcpListener = new TcpListener(LocalEndPoint);
 
             try
@@ -811,7 +808,7 @@ namespace SpaceCG.Net
                 responseMessage?.Return();
             }
         }
-#endregion
+        #endregion
 
         #region 子类重写抽象方法 DeserializeInvokeMessage & SerializeResponseMessage
         /// <summary>
