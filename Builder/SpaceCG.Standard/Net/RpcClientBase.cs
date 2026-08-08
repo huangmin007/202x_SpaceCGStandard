@@ -531,6 +531,8 @@ namespace SpaceCG.Net
         }
         /// <inheritdoc cref="WriteAsync(byte[], int, int, CancellationToken)"/>
         protected async Task WriteAsync(byte[] data) => await WriteAsync(data, 0, data.Length, _cts.Token);
+        /// <inheritdoc cref="WriteAsync(byte[], int, int, CancellationToken)"/>
+        protected async Task WriteAsync(byte[] data, int offset, int length) => await WriteAsync(data, offset, length, _cts.Token);
 
         /// <summary>
         /// 发起单向远程调用，不等待服务端响应（ResponseMode = -1）。
@@ -598,10 +600,13 @@ namespace SpaceCG.Net
         /// <param name="cancellationToken">用于取消发送/等待操作的令牌。</param>
         /// <returns>包含状态码、描述信息和原始返回值的响应消息。</returns>
         /// <exception cref="ObjectDisposedException">实例已释放时抛出。</exception>
+        /// <exception cref="ArgumentOutOfRangeException">响应超时时间必须大于零。</exception>
         public async Task<ResponseMessage> InvokeFuncAsync(string objectName, string methodName, object[] parameters, TimeSpan responseTimeout, CancellationToken cancellationToken)
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(RpcClientBase));
+            if (responseTimeout <= TimeSpan.Zero) 
+                throw new ArgumentOutOfRangeException(nameof(responseTimeout), "响应超时时间必须大于零");
 
             var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, GetNextMessageId(), 1);
 

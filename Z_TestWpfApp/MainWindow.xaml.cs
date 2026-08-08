@@ -70,15 +70,18 @@ namespace Z_TestWpfApp
                     ledRenderControl.RenderSceneId(2);
 #if true
                     if (rpcClient == null) break;
-                    var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
-                    //var result = await rpcClient.InvokeFuncAsync("Demo", nameof(SetColor), new object[] { Colors.Red }); 
+                    //var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
+                    var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test2), new object[] { "Hello,world" });
+                    //var result = await rpcClient.InvokeFuncAsync("Demo", nameof(SetColor1), new object[] { Colors.Red }); 
                     Trace.TraceInformation($"Response::{result}");
                     Trace.TraceInformation($"ReturnType::{result.ReturnType}");
                     Trace.TraceInformation($"ReturnValue::{result.GetReturnValue<string>()}");
-                    //Trace.TraceInformation($"ReturnValue::{result.GetReturnValue<IEnumerable<IEnumerable<int>>>()}");  //IEnumerable<IEnumerable<int>>
+                    //Trace.TraceInformation($"ReturnValue::{result.GetReturnValue<IEnumerable<int>>()}");  //IEnumerable<IEnumerable<int>>
 
-                    //var value22 = result.GetReturnValue<IEnumerable<IEnumerable<int>>>();
+                    //var value22 = result.GetReturnValue<IEnumerable<int>>();
                     //Trace.WriteLine($"{string.Join(",", value22)}");
+
+                    Trace.WriteLine("");
 #endif
                     break;
 

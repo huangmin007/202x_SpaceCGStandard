@@ -90,10 +90,8 @@ namespace SpaceCG.Net
                 if (string.IsNullOrWhiteSpace(objectMethod)) return null;
                 if (!int.TryParse(element.Attribute(nameof(ResponseMessage.Code))?.Value, out var code)) return null;
 
-                var description = element.Attribute(nameof(ResponseMessage.Description))?.Value;                
+                var description = element.Attribute(nameof(ResponseMessage.Description))?.Value;
                 var id = int.TryParse(element.Attribute(nameof(ResponseMessage.Id))?.Value, out var _id) ? _id : 0;
-                var version = Version.TryParse(element.Attribute(nameof(ResponseMessage.Version))?.Value, out var _version) ? _version : new Version(0, 0);
-                var timestamp = DateTimeOffset.TryParse(element.Attribute(nameof(ResponseMessage.Timestamp))?.Value, out var _timestamp) ? _timestamp : DateTime.UtcNow;
 
                 Type returnType = null;
                 object returnValue = null;
@@ -118,10 +116,12 @@ namespace SpaceCG.Net
                         Trace.TraceWarning($"客户端 {LocalEndPoint} 响应消息参数反序列化时异常：({ex.GetType().Name}){ex.Message}");
                     }
                 }
-                
+
                 var message = ResponseMessage.Create(id, code, description, objectMethod, returnType, returnValue);
-                message.Version = version;
-                message.Timestamp = timestamp;
+                var versionAttr = element.Attribute(nameof(ResponseMessage.Version));
+                if (versionAttr != null && Version.TryParse(versionAttr.Value, out var version)) message.Version = version;
+                var timestampAttr = element.Attribute(nameof(ResponseMessage.Timestamp));
+                if (timestampAttr != null && DateTimeOffset.TryParse(timestampAttr.Value, out var timestamp)) message.Timestamp = timestamp;
 
                 return message;
             }
