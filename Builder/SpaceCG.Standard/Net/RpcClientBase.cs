@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using SpaceCG.Extensions;
@@ -400,14 +401,13 @@ namespace SpaceCG.Net
             try
             {
                 response = DeserializeResponseMessage(responseMessage);
+                if (response == null || response.Id < 0) return;
             }
             catch (Exception ex)
             {
                 Trace.TraceWarning($"RPC 客户端 {clientEndPoint} 解析响应消息反序列化异常：({ex.GetType().Name}) {ex.Message}");
                 return;
             }
-
-            if (response == null || response.Id < 0) return;
 
             // 将接收到的响应消息分派到对应的 PendingCall
             if (_pendingCalls.TryRemove(response.Id, out var pending))
@@ -421,10 +421,29 @@ namespace SpaceCG.Net
         }
 
         /// <summary>
+        /// 获取下一个消息编号。
+        /// </summary>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int GetNextMessageId()
+        {
+            var id = Interlocked.Increment(ref _messageId);
+            if (id > 0) return id;
+
+            // 溢出到负数或零时，通过 CAS 重置为 1 并重新获取
+            if (id <= 0)
+            {
+                Interlocked.CompareExchange(ref _messageId, 0, id);
+                id = Interlocked.Increment(ref _messageId);
+            }
+            return id;
+        }
+        /// <summary>
         /// 取消所有待响应的调用。
         /// </summary>
         /// <param name="code">错误状态码。</param>
         /// <param name="description">错误描述信息。</param>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void CancelAllPendingCalls(int code, string description)
         {
             var keys = _pendingCalls.Keys.ToList();            
@@ -436,7 +455,7 @@ namespace SpaceCG.Net
                 }
             }
         }
-
+        
         /// <summary>
         /// 等待响应消息，支持超时处理。
         /// <para>正常完成时返回服务端响应；超时时从待响应字典移除并从 <see cref="TaskCompletionSource{TResult}"/> 返回超时错误。</para>
@@ -457,15 +476,12 @@ namespace SpaceCG.Net
                 return await taskSource.Task.ConfigureAwait(false);
             }
 
-            // 超时：从字典移除并返回超时错误
-            if (_pendingCalls.TryRemove(invokeMessage.Id, out _))
-            {
-                var responseMessage = ResponseMessage.Create(invokeMessage, -97, "Response timeout");
-                taskSource.TrySetResult(responseMessage);
-            }
+            // 任务响应超时
+            var responseMessage = ResponseMessage.Create(invokeMessage, -97, "Response timeout");
+            taskSource.TrySetResult(responseMessage);
 
             return await taskSource.Task.ConfigureAwait(false);
-        }    
+        }
         #endregion
 
 
@@ -538,7 +554,7 @@ namespace SpaceCG.Net
             }
 
             byte[] messageBytes = null;
-            var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, Interlocked.Increment(ref _messageId), -1);
+            var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, GetNextMessageId(), -1);
 
             try
             {
@@ -587,7 +603,7 @@ namespace SpaceCG.Net
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(RpcClientBase));
 
-            var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, Interlocked.Increment(ref _messageId), 1);
+            var invokeMessage = InvokeMessage.Create(objectName, methodName, parameters, GetNextMessageId(), 1);
 
             if (!IsConnected)
                 return ResponseMessage.Create(invokeMessage, -100, "Client not connected");
@@ -608,12 +624,12 @@ namespace SpaceCG.Net
             }
 
             var taskSource = new TaskCompletionSource<ResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var pending = new PendingCall 
+            var pendingCall = new PendingCall 
             { 
                 TaskSource = taskSource,
                 InvokeMessage = invokeMessage,
             };
-            if (!_pendingCalls.TryAdd(invokeMessage.Id, pending))
+            if (!_pendingCalls.TryAdd(invokeMessage.Id, pendingCall))
             {
                 return ResponseMessage.Create(invokeMessage, -96, $"Message Id {invokeMessage.Id} already exists in pending calls");
             }
@@ -636,7 +652,7 @@ namespace SpaceCG.Net
             {
                 if (_pendingCalls.TryRemove(invokeMessage.Id, out var removed))
                 {
-                    removed.SetError(-107, $"Client write failed: {ex.Message}");
+                    removed.SetError(-107, $"Client Exception: {ex.Message}");
                 }
                 return await taskSource.Task.ConfigureAwait(false);
             }

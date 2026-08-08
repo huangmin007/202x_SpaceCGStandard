@@ -67,25 +67,18 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D2:
-                    var delayTask = Task.Delay(1000);
-                    delayTask.Dispose();
                     ledRenderControl.RenderSceneId(2);
 #if true
                     if (rpcClient == null) break;
                     var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
+                    //var result = await rpcClient.InvokeFuncAsync("Demo", nameof(SetColor), new object[] { Colors.Red }); 
                     Trace.TraceInformation($"Response::{result}");
                     Trace.TraceInformation($"ReturnType::{result.ReturnType}");
-                    Trace.TraceInformation($"ReturnValue::{result.ReturnValue}");
+                    Trace.TraceInformation($"ReturnValue::{result.GetReturnValue<string>()}");
+                    //Trace.TraceInformation($"ReturnValue::{result.GetReturnValue<IEnumerable<IEnumerable<int>>>()}");  //IEnumerable<IEnumerable<int>>
 
-                    if (result.ReturnValue is IEnumerable<IEnumerable<int>> resultEnumerable)
-                    {
-                        foreach (var item in resultEnumerable)
-                        {
-                            Trace.WriteLine($">>{string.Join(",", item)}");
-                        }
-                    }
-                    
-                    Trace.WriteLine($"ReturnValue::{result.ReturnValue}");
+                    //var value22 = result.GetReturnValue<IEnumerable<IEnumerable<int>>>();
+                    //Trace.WriteLine($"{string.Join(",", value22)}");
 #endif
                     break;
 
@@ -219,7 +212,7 @@ namespace Z_TestWpfApp
         public async Task<string> Test(string msg)
         {
             Trace.WriteLine($"MSG:::{msg}");
-            await Task.Delay(1000).ConfigureAwait(false);
+            await Task.Delay(2000).ConfigureAwait(false);
 
             Trace.WriteLine($"MSG:::{msg} ....");
 

@@ -107,19 +107,10 @@ namespace SpaceCG.Net
 
                         if (returnType != null && !string.IsNullOrWhiteSpace(returnContent))
                         {
-                            if (returnType == typeof(string))
+                            if (returnContent.TryParseParameters(out var parameters) && parameters?.Length == 1)
                             {
-                                var hashSingleQuote = returnContent.StartsWith("'") && returnContent.EndsWith("'");
-                                returnValue = hashSingleQuote ? returnContent.Substring(1, returnContent.Length - 2) : returnContent;
-                                //returnValue = Regex.Unescape(returnValueContent);
+                                TypeExtensions.TryConvertParameter(parameters[0], returnType, out returnValue);
                             }
-                            else
-                            {
-                                if (returnContent.TryParseParameters(out var parameters) && parameters?.Length == 1)
-                                {
-                                    TypeExtensions.TryConvertParameter(parameters[0], returnType, out returnValue);
-                                }
-                            }                               
                         }
                     }
                     catch (Exception ex)
