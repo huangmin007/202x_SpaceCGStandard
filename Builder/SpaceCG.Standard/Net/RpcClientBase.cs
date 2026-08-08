@@ -416,7 +416,7 @@ namespace SpaceCG.Net
             }
             else
             {
-                Trace.TraceWarning($"RPC 客户端 {clientEndPoint} 收到未匹配的响应消息 Id:{response.Id}");
+                Trace.TraceWarning($"RPC 客户端 {clientEndPoint} 收到未匹配的响应消息(或响应消息已超时) Id:{response.Id}");
             }
         }
 
@@ -476,9 +476,12 @@ namespace SpaceCG.Net
                 return await taskSource.Task.ConfigureAwait(false);
             }
 
-            // 任务响应超时
-            var responseMessage = ResponseMessage.Create(invokeMessage, -97, "Response timeout");
-            taskSource.TrySetResult(responseMessage);
+            // 任务响应超时，从待响应字典移除，并从 TaskCompletionSource 返回超时错误
+            if (_pendingCalls.TryRemove(invokeMessage.Id, out _))
+            {
+                var responseMessage = ResponseMessage.Create(invokeMessage, -97, "Response timeout");
+                taskSource.TrySetResult(responseMessage);
+            }
 
             return await taskSource.Task.ConfigureAwait(false);
         }
