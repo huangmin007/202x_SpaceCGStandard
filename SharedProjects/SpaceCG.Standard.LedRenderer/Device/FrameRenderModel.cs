@@ -134,24 +134,24 @@ namespace SpaceCG.Device
 #endif
 
         /// <summary>
-        /// 渲染状态同步锁，保护 <see cref="_lastRenderingFrame"/>、<see cref="_renderingRepeatCount"/>、<see cref="_renderingCount"/> 的并发读写。
+        /// 渲染状态同步锁，保护 <see cref="_renderingCount"/>、<see cref="_renderingRepeatCount"/>、<see cref="_lastRenderingFrame"/> 的并发读写。
         /// </summary>
         private readonly object _renderingStateLock = new object();
         /// <summary>
         /// 自上次 <see cref="ResetRenderingState"/> 调用以来已渲染的帧累计数量，可用于计算 FPS。
         /// </summary>
-        /// <remarks>受 <c>_renderingStateLock</c> 保护。</remarks>
+        /// <remarks>受 <c><see cref="_renderingStateLock"/></c> 保护。</remarks>
         private int _renderingCount = 0;
         /// <summary>
         /// 连续相同数据帧的累计计数。当帧内容与 <see cref="_lastRenderingFrame"/> 相同时递增，
         /// 达到 <see cref="RenderingRepeatInterval"/> 的整数倍时才实际渲染一次，其余跳过以降低无效渲染开销。
         /// </summary>
-        /// <remarks>受 <c>_renderingStateLock</c> 保护。</remarks>
+        /// <remarks>受 <c><see cref="_renderingStateLock"/></c> 保护。</remarks>
         private int _renderingRepeatCount = 0;
         /// <summary>
         /// 上一次实际渲染的数据帧引用，用于与当前帧做内容比较以检测连续相同帧。
         /// </summary>
-        /// <remarks>受 <c>_renderingStateLock</c> 保护。初始值为 <see cref="Array.Empty{T}"/>，确保首帧必然渲染。</remarks>
+        /// <remarks>受 <c><see cref="_renderingStateLock"/></c> 保护。初始值为 <see cref="Array.Empty{T}"/>，确保首帧必然渲染。</remarks>
         private byte[] _lastRenderingFrame = Array.Empty<byte>();
         /// <summary>
         /// 连续相同帧的渲染间隔。当连续相同帧累计次数为该值的整数倍时，才实际渲染一次。
@@ -527,11 +527,11 @@ namespace SpaceCG.Device
             return frame;
         }
         /// <summary>
-        /// 从空闲帧池中租借一个指定大小的帧视图（ArraySegment）。
+        /// <b> 收益不大，改动大，暂不使用。</b> 从空闲帧池中租借一个指定大小的帧视图（ArraySegment）。
         /// 与 <see cref="RentFrame"/> 不同，本方法允许租借池中大于等于 <paramref name="frameSize"/> 的缓冲区，
         /// 通过 ArraySegment 切片返回前 <paramref name="frameSize"/> 字节，提高池命中率。
         /// </summary>
-        protected ArraySegment<byte> RentFrameView(int frameSize)
+        private ArraySegment<byte> RentFrameView(int frameSize)
         {
             if (frameSize < RGBFrameBaseLength || frameSize > FrameMaxLength)
                 throw new ArgumentOutOfRangeException(nameof(frameSize), "租用数据帧大小超出范围");

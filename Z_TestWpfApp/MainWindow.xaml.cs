@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using SpaceCG;
 using SpaceCG.Device;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
@@ -47,6 +48,8 @@ namespace Z_TestWpfApp
             rpcServer?.Dispose();
             _ledRenderBus?.Dispose();
             _cts?.Cancel();
+
+            rfidDevice?.Dispose();
         }
 
         protected override async void OnKeyDown(KeyEventArgs e)
@@ -148,6 +151,8 @@ namespace Z_TestWpfApp
         Task connectTask;
         CancellationTokenSource _cts;
 
+        RfidDevice rfidDevice;
+
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             rpcServer = new RpcServer4X(2000);
@@ -165,11 +170,25 @@ namespace Z_TestWpfApp
             };
             _cts = new CancellationTokenSource();
 
+            LinkedList<int> linked = new LinkedList<int>();
+            linked.AddFirst(1);
+            linked.AddFirst(2);
+            linked.AddFirst(3);
+            linked.AddFirst(4);
+            linked.AddFirst(5);
+            Trace.WriteLine($"{linked.Count} linked,,{linked.Last}");
+            //linked.Clear();
+            //var element = linked.FirstOrDefault(x => x == 3);
+            linked.Remove(3);
+            
+            Trace.WriteLine($"{linked.Count} linked");
+            Trace.WriteLine($"{linked.Count} linked");
+
             //TcpClient client = new TcpClient();
             //_ = client.ConnectAsync("127.0.0.1", 2001);
             //connectTask = client.ReceiveParseAsync(parser, newClient => client = newClient, _cts.Token);
             //connectTask = client.ReceiveParseAsync("127.0.0.1", 2001, parser, newClient => client = newClient, _cts.Token);
-
+            
             //UdpClient client = new UdpClient(2002);
             //connectTask = client.ReceiveParseAsync(parser, _cts.Token);
 
@@ -191,6 +210,10 @@ namespace Z_TestWpfApp
             //LedRenderBus.Collections[0].SetDeviceBaudRate(0x0000, 0x0001, 921600);
             //LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
 #endif
+
+            rfidDevice = new RfidDevice();
+            rfidDevice.Open();
+            rfidDevice.StartSync();
 
             Trace.WriteLine("Ready ... ");
         }
