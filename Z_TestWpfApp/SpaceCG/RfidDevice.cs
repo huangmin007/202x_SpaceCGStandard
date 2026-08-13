@@ -91,7 +91,7 @@ namespace SpaceCG
         }
         private readonly byte[] ReadRFID = new byte[] { 0x02, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x38 };
 
-        private async Task SyncThread(object state)
+        private void SyncThread(object state)
         {
             var device = state as RfidDevice;
             if (device == null) return;

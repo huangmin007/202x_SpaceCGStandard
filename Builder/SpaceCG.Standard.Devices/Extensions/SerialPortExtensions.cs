@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.IO.Ports;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using SpaceCG.Generic;
@@ -12,6 +13,33 @@ namespace SpaceCG.Extensions
     /// </summary>
     public static partial class SerialPortExtensions
     {
+        /// <summary>
+        /// Windows 串口名称的正则表达式
+        /// </summary>
+        public static readonly Regex PortNameRegexForWindows = new Regex("^COM[0-9]{1,2}$", RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// 获取当前计算机的唯一的串行端口号
+        /// </summary>
+        /// <param name="searchPattern">查找匹配字符，不区分大小写。</param>
+        /// <returns>返回唯一串行端口号名称（例如："COM3"，"COM14"），如果没有找到则返回空字符串；如果找到多个，则返回其中的第一个。</returns>
+        public static string GetPortName(string searchPattern)
+        {
+            if (PortNameRegexForWindows.IsMatch(searchPattern)) return searchPattern;
+
+            var ports = SystemExtensions.GetSerialDevices();
+            foreach (var port in ports)
+            {
+                if (string.IsNullOrWhiteSpace(port.FriendlyName)) continue;
+                if (port.FriendlyName.IndexOf(searchPattern, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return port.PortName;
+                }
+            }
+
+            return string.Empty;
+        }
+
         /// <summary>
         /// 串口异步接收解析方法。循环从串口读取数据写入 ProtocolParser 并触发帧解析。
         /// <para>串口未打开时自动尝试打开，无数据时等待 1ms 后重试，未打开时等待 3000ms 后重试。</para>
