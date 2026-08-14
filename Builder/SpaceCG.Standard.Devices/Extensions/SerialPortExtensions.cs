@@ -1,7 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using SpaceCG.Generic;
@@ -12,34 +12,7 @@ namespace SpaceCG.Extensions
     /// 串口扩展方法
     /// </summary>
     public static partial class SerialPortExtensions
-    {
-        /// <summary>
-        /// Windows 串口名称的正则表达式
-        /// </summary>
-        public static readonly Regex PortNameRegexForWindows = new Regex("^COM[0-9]{1,2}$", RegexOptions.IgnoreCase);
-
-        /// <summary>
-        /// 获取当前计算机的唯一的串行端口号
-        /// </summary>
-        /// <param name="searchPattern">查找匹配字符，不区分大小写。</param>
-        /// <returns>返回唯一串行端口号名称（例如："COM3"，"COM14"），如果没有找到则返回空字符串；如果找到多个，则返回其中的第一个。</returns>
-        public static string GetPortName(string searchPattern)
-        {
-            if (PortNameRegexForWindows.IsMatch(searchPattern)) return searchPattern;
-
-            var ports = SystemExtensions.GetSerialDevices();
-            foreach (var port in ports)
-            {
-                if (string.IsNullOrWhiteSpace(port.FriendlyName)) continue;
-                if (port.FriendlyName.IndexOf(searchPattern, StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return port.PortName;
-                }
-            }
-
-            return string.Empty;
-        }
-
+    {        
         /// <summary>
         /// 串口异步接收解析方法。循环从串口读取数据写入 ProtocolParser 并触发帧解析。
         /// <para>串口未打开时自动尝试打开，无数据时等待 1ms 后重试，未打开时等待 3000ms 后重试。</para>
@@ -170,7 +143,7 @@ namespace SpaceCG.Extensions
             var received = 0;
             var buffer = new byte[responseLength];
 
-            // 获取系统启动的 ms
+            var spinWait = new SpinWait();
             var beginTime = Environment.TickCount;
             var readTimeout = serialPort.ReadTimeout > 0 ? serialPort.ReadTimeout : 300;
 
@@ -181,13 +154,18 @@ namespace SpaceCG.Extensions
                     throw new TimeoutException($"串口通道 ({serialPort.PortName}) 读取超时");
                 }
 
-                if (serialPort.BytesToRead <= 0)
+                int available = serialPort.BytesToRead;
+                if (available <= 0)
                 {
-                    Thread.Sleep(1);
+                    spinWait.SpinOnce();
                     continue;
                 }
 
-                var bytesToRead = serialPort.BaseStream.Read(buffer, received, responseLength - received);
+                spinWait.Reset();
+
+                var readCount = Math.Min(available, responseLength - received);
+                var bytesToRead = serialPort.BaseStream.Read(buffer, received, readCount);
+
                 received += bytesToRead;
                 if (received == responseLength) return buffer;
             }

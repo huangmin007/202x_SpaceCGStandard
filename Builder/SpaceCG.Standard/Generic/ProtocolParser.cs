@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using SpaceCG.Extensions;
 using Trace = SpaceCG.Diagnostics.Trace;
@@ -371,10 +372,9 @@ namespace SpaceCG.Generic
             //只返回 [headerIndex, footerIndex+footerLen] 的有效数据，不含头部垃圾
             var packetOffset = pendingView.Offset + headerIndex;
             var packetLength = offset + footerIndex + _footer.Length - headerIndex;
+
             return new ArraySegment<byte>(pendingView.Array, packetOffset, packetLength);
         }
     }
-
-
 
 }

@@ -161,12 +161,7 @@ namespace SpaceCG.Drawing
             _renderTargetBitmap = new RenderTargetBitmap(Rectangle.Width, Rectangle.Height, 96, 96, PixelFormats.Pbgra32);
             var stride = (_renderTargetBitmap.PixelWidth * _renderTargetBitmap.Format.BitsPerPixel + 7) / 8;
 
-            _drawingEventArgs = new DrawingEventArgs();
-            _drawingEventArgs.Stride = stride;
-            _drawingEventArgs.Width = Rectangle.Width;
-            _drawingEventArgs.Height = Rectangle.Height;
-            _drawingEventArgs.Source = _renderTargetBitmap;
-            _drawingEventArgs.PixelFormat = ColorFormat.BGRA;
+            _drawingEventArgs = new DrawingEventArgs(IntPtr.Zero, Rectangle.Width, Rectangle.Height, stride, ColorFormat.BGRA);
 
             _stopwatch.Restart();
             _dispatcherTimer.Interval = TimeSpan.FromMilliseconds(Interval);
@@ -242,9 +237,7 @@ namespace SpaceCG.Drawing
                     _renderTargetBitmap.CopyPixels(Int32Rect.Empty, pixels, bufferSize, stride);
 
                     //var drawingEventArgs = new DrawingEventArgs(pixels, stride, Rectangle.Width, Rectangle.Height, ColorFormat.BGRA);
-                    _drawingEventArgs.Pixels = pixels;
-                    _drawingEventArgs.ElapsedMilliseconds = _stopwatch.ElapsedMilliseconds - beginTime;
-
+                    _drawingEventArgs.UpdateSource(null, pixels, _stopwatch.ElapsedMilliseconds - beginTime);
                     NewDrawingFrame.Invoke(this, _drawingEventArgs);
                 }
             }

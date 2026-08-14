@@ -35,11 +35,6 @@ namespace SpaceCG.IO
         /// </summary>
         string Name { get; }
 
-        /// <summary> 
-        /// 获取或设置一个用于存储有关此元素的自定义信息的任意对象值。 
-        /// </summary>
-        object Tag { get; set; }
-
         /// <summary>
         /// 获取传输通道当前是否处于连接状态。
         /// </summary>
@@ -98,10 +93,6 @@ namespace SpaceCG.IO
         /// <param name="offset"><paramref name="buffer"/> 中开始读取数据的偏移量。</param>
         /// <param name="count">要写入的字节数。</param>
         void Write(byte[] buffer, int offset, int count);
-
-        /// <inheritdoc cref="Write(byte[], int, int)"/> 
-        void Write(ArraySegment<byte> buffer);
-
     }
     
 }

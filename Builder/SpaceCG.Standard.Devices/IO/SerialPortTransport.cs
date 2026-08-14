@@ -9,7 +9,7 @@ namespace SpaceCG.IO
     /// <summary>
     /// 串口传输连接对象
     /// </summary>
-    internal class SerialPortTransport : ITransportChannel
+    public sealed class SerialPortTransport : ITransportChannel
     {
         /// <summary>
         /// Windows 串口名称的正则表达式
@@ -62,7 +62,7 @@ namespace SpaceCG.IO
             if (baudRate <= 0) throw new ArgumentException("波特率必须大于0");
 
             this._portName = portName;
-            var actualPortName = GetPortName(_portName);
+            var actualPortName = SerialPortExtensions.GetPortName(_portName);
 
             _serialPort = new SerialPort();
             if (!string.IsNullOrWhiteSpace(actualPortName))
@@ -102,7 +102,7 @@ namespace SpaceCG.IO
             if (arguments.Length >= 5 && Enum.TryParse(arguments[4], out stopBits)) { }
 
             this._portName = arguments[0];
-            var actualPortName = GetPortName(_portName);
+            var actualPortName = SerialPortExtensions.GetPortName(_portName);
 
             _serialPort = new SerialPort();
             if (!string.IsNullOrWhiteSpace(actualPortName))
@@ -128,7 +128,7 @@ namespace SpaceCG.IO
             if (SerialPort.GetPortNames().Length == 0)
                 throw new Exception("没有找到可用的串口设备");
 
-            var portName = GetPortName(_portName);
+            var portName = SerialPortExtensions.GetPortName(_portName);
             if (string.IsNullOrWhiteSpace(portName))
                 throw new Exception($"跟据指定名称 {_portName} 获取串口失败");
 
@@ -163,8 +163,6 @@ namespace SpaceCG.IO
             _serialPort.Write(buffer, offset, count);
             _serialPort.BaseStream.Flush();
         }
-        /// <inheritdoc/>
-        public void Write(ArraySegment<byte> buffer) => Write(buffer.Array, buffer.Offset, buffer.Count);
 
         /// <inheritdoc/>
         public void ClearReadBuffer()
@@ -185,28 +183,6 @@ namespace SpaceCG.IO
             if (_serialPort.IsOpen) _serialPort.Close();
             _serialPort.Dispose();
             _serialPort = null;
-        }
-
-        /// <summary>
-        /// 获取当前计算机的唯一的串行端口号
-        /// </summary>
-        /// <param name="searchPattern">查找匹配字符，不区分大小写。</param>
-        /// <returns>返回唯一串行端口号名称（例如："COM3"，"COM14"），如果没有找到则返回空字符串；如果找到多个，则返回其中的第一个。</returns>
-        public static string GetPortName(string searchPattern)
-        {
-            if (PortNameRegexForWindows.IsMatch(searchPattern)) return searchPattern;
-
-            var ports = SystemExtensions.GetSerialDevices();
-            foreach (var port in ports)
-            {
-                if (string.IsNullOrWhiteSpace(port.FriendlyName)) continue;
-                if (port.FriendlyName.IndexOf(searchPattern, StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    return port.PortName;
-                }
-            }
-
-            return string.Empty;
         }
 
     }

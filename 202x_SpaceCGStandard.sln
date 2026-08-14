@@ -20,11 +20,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Wpf", "Bui
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard.Wpf", "SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.shproj", "{837B66E2-9B60-4626-9B4A-0E739B683993}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard.LedRenderer", "SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.shproj", "{F0391A9D-3CB3-4A9E-ABEC-B20BE2FDCAFD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices.LedRenderer", "Builder\SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj", "{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.LedRenderer", "Builder\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.csproj", "{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.WindowsApi", "Builder\SpaceCG.WindowsApi\SpaceCG.WindowsApi.csproj", "{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Windows", "Builder\SpaceCG.Standard.Windows\SpaceCG.Standard.Windows.csproj", "{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices", "Builder\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj", "{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9}"
 EndProject
@@ -66,17 +64,11 @@ Global
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{AB345686-8084-4A9F-9356-DD91336AFE43} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{837B66E2-9B60-4626-9B4A-0E739B683993} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
-		{F0391A9D-3CB3-4A9E-ABEC-B20BE2FDCAFD} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
 		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}
-	EndGlobalSection
-	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.projitems*{837b66e2-9b60-4626-9b4a-0e739b683993}*SharedItemsImports = 13
-		SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems*{b42abde9-7a46-4f92-a3d0-4ac3cd732061}*SharedItemsImports = 4
-		SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems*{f0391a9d-3cb3-4a9e-abec-b20be2fdcafd}*SharedItemsImports = 13
 	EndGlobalSection
 EndGlobal

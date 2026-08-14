@@ -17,6 +17,7 @@ using SpaceCG;
 using SpaceCG.Device;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
+using SpaceCG.IO;
 using SpaceCG.Net;
 using static System.Net.Mime.MediaTypeNames;
 using Point = System.Drawing.Point;
@@ -33,7 +34,7 @@ namespace Z_TestWpfApp
         LedRenderControl ledRenderControl;
 
         private LedRenderBus _ledRenderBus;
-
+        RequestResponseBase requestResponse;
         public MainWindow()
         {
             InitializeComponent();
@@ -50,6 +51,7 @@ namespace Z_TestWpfApp
             _cts?.Cancel();
 
             rfidDevice?.Dispose();
+            requestResponse?.Dispose();
         }
 
         protected override async void OnKeyDown(KeyEventArgs e)
@@ -66,7 +68,7 @@ namespace Z_TestWpfApp
                     break;
                 case Key.D1:
                     //ledRenderControl.RenderSceneId(1);
-                    await rpcClient.InvokeActionAsync("Demo", "Test", new object[] {1,2 });
+                    await rpcClient.InvokeActionAsync("Demo", "Test", new object[] { 1, 2 });
                     break;
 
                 case Key.D2:
@@ -142,7 +144,17 @@ namespace Z_TestWpfApp
 
                     break;
                 case Key.N:
-                    LedRenderBus.Collections.ResumeRender();
+                    //LedRenderBus.Collections.ResumeRender();
+                    try
+                    {
+                        byte[] ReadRFID = new byte[] { 0x02, 0x03, 0x00, 0x00, 0x00, 0x02, 0xC4, 0x38 };
+                        var bytes = await requestResponse.TransceiveAsync(ReadRFID, 0, ReadRFID.Length, 9, CancellationToken.None);
+                        Trace.WriteLine($"Result::{string.Join(" ", bytes.Select(x => x.ToString("X2")))}");
+                    }
+                    catch(Exception ex)
+                    {
+                        Trace.WriteLine($"Result::{ex.Message}");
+                    }
                     break;
             }
         }
@@ -211,9 +223,14 @@ namespace Z_TestWpfApp
             //LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
 #endif
 
+            var ports = SerialPortExtensions.GetPortFriendlyNames();
+            var portName = SerialPortExtensions.GetPortName("Serial CH A");
+
             rfidDevice = new RfidDevice();
             rfidDevice.Open();
             rfidDevice.StartSync();
+
+            //requestResponse = new RequestResponseBase(ChannelType.SERIAL, "COM34,19200");
 
             Trace.WriteLine("Ready ... ");
         }

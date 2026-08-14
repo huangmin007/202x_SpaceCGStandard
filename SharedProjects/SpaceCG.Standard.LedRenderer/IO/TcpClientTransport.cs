@@ -24,9 +24,6 @@ namespace SpaceCG.IO
         public string Name => $"{Type}_{_hostname}_{_port}";
 
         /// <inheritdoc/>
-        public object Tag { get; set; }
-
-        /// <inheritdoc/>
         public bool IsConnected => IsOnline(_tcpClient);
 
         /// <inheritdoc/>

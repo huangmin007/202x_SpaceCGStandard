@@ -21,7 +21,7 @@ namespace SpaceCG
 
         public RfidDevice()
         {
-            _serialPort = new SerialPort("COM3", 19200);
+            _serialPort = new SerialPort("COM34", 19200);
             _serialPort.ReadTimeout = 300;
             _serialPort.WriteTimeout = 300;
             //_serialPort.ReceivedBytesThreshold = 1;
@@ -105,6 +105,8 @@ namespace SpaceCG
             int count = 0;
             Stopwatch sw = new Stopwatch();
             sw.Restart();
+
+
             while (!cancellationToken.IsCancellationRequested)
             {
                 while (!serialPort.IsOpen && !cancellationToken.IsCancellationRequested)

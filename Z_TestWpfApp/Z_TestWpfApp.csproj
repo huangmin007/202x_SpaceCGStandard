@@ -109,9 +109,13 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Builder\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.csproj">
+    <ProjectReference Include="..\Builder\SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj">
       <Project>{b42abde9-7a46-4f92-a3d0-4ac3cd732061}</Project>
-      <Name>SpaceCG.Standard.LedRenderer</Name>
+      <Name>SpaceCG.Standard.Devices.LedRenderer</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Builder\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj">
+      <Project>{1b32f227-bfac-4443-a23e-6ebd66dbcac9}</Project>
+      <Name>SpaceCG.Standard.Devices</Name>
     </ProjectReference>
     <ProjectReference Include="..\Builder\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj">
       <Project>{ab345686-8084-4a9f-9356-dd91336afe43}</Project>
@@ -120,10 +124,6 @@
     <ProjectReference Include="..\Builder\SpaceCG.Standard\SpaceCG.Standard.csproj">
       <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
       <Name>SpaceCG.Standard</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Builder\SpaceCG.WindowsApi\SpaceCG.WindowsApi.csproj">
-      <Project>{12cec2d5-a670-4558-be27-a04de7e66f9b}</Project>
-      <Name>SpaceCG.WindowsApi</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

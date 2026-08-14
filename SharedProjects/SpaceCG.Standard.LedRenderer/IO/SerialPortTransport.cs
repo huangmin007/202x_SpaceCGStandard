@@ -17,9 +17,6 @@ namespace SpaceCG.IO
         public static readonly Regex PortNameRegexForWindows = new Regex("^COM[0-9]{1,2}$", RegexOptions.IgnoreCase);
 
         /// <inheritdoc/>
-        public object Tag { get; set; }
-        
-        /// <inheritdoc/>
         public ChannelType Type => ChannelType.SERIAL;
         /// <inheritdoc/>
         public string Name => $"{Type}_{_serialPort.PortName}_{_serialPort.BaudRate}";
@@ -163,8 +160,6 @@ namespace SpaceCG.IO
             _serialPort.Write(buffer, offset, count);
             _serialPort.BaseStream.Flush();
         }
-        /// <inheritdoc/>
-        public void Write(ArraySegment<byte> buffer) => Write(buffer.Array, buffer.Offset, buffer.Count);
 
         /// <inheritdoc/>
         public void ClearReadBuffer()

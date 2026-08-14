@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.Remoting.Channels;
 
 namespace SpaceCG.IO
 {
@@ -95,4 +96,27 @@ namespace SpaceCG.IO
         void Write(byte[] buffer, int offset, int count);
     }
     
+    public static class TransportChannel
+    {
+        public static ITransportChannel Create(ChannelType type, string arguments)
+        {
+            if (string.IsNullOrWhiteSpace(arguments))
+                throw new ArgumentNullException(nameof(arguments));
+
+            string[] args = null;
+            if (arguments.IndexOf(',') != -1) args = arguments.Split(',');
+            else if (arguments.IndexOf(':') != -1) args = arguments.Split(':');
+            else if (arguments.IndexOf(';') != -1) args = arguments.Split(';');
+            else throw new ArgumentException("参数格式不正确，多个参数以逗号分隔", nameof(arguments));
+
+            if (type == ChannelType.SERIAL)
+                return new SerialPortTransport(args);
+            else if (type == ChannelType.TCP)
+                return new TcpClientTransport(args);
+            else if (type == ChannelType.UDP)
+                return new UdpClientTransport(args);
+
+            throw new ArgumentException("不支持的传输通道类型", nameof(type));
+        }
+    }
 }

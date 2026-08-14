@@ -9,9 +9,9 @@ namespace SpaceCG.Extensions
 {
     
     /// <summary>
-    /// System.Drawing 扩展方法
+    /// Bitmap 扩展方法
     /// </summary>
-    public static partial class DrawingExtensions
+    public static partial class BitmapExtensions
     {        
         /// <summary>
         /// 将 <see cref="Bitmap"/> 转换为 <see cref="BitmapSource"/>

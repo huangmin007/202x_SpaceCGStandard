@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Linq;
-using System.Net;
 using System.Net.Sockets;
 using Trace = SpaceCG.Diagnostics.Trace;
 
@@ -111,20 +110,13 @@ namespace SpaceCG.IO
         public int Read(byte[] buffer, int offset, int count)
         {
             if (_udpClient == null || !_isConnected) return 0;
-
-            //EndPoint ipEndPoint = new IPEndPoint(IPAddress.Any, 0);
-            //return this._udpClient.Client.ReceiveFrom(buffer, offset, count, SocketFlags.None, ref ipEndPoint);
-            return this._udpClient.Client.Receive(buffer, offset, count, SocketFlags.None);
+            return _udpClient.Client.Receive(buffer, offset, count, SocketFlags.None);
         }
         /// <inheritdoc/>
         public void Write(byte[] buffer, int offset, int count)
         {
             if (_udpClient == null || !_isConnected) return;
-
-            if (offset <= 0)
-                _udpClient.Send(buffer, count);
-            else
-                _udpClient.Send(buffer.Skip(offset).ToArray<byte>(), count);
+            _udpClient.Client.Send(buffer, offset, count, SocketFlags.None);
         }
 
         /// <inheritdoc/>

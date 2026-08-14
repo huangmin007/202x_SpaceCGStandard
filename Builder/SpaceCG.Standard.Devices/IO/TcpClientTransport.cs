@@ -139,28 +139,5 @@ namespace SpaceCG.IO
             Close();
         }
 
-#if false
-        /// <summary>
-        /// TcpClient 连接状态即时检查
-        /// <para>参考：https://www.cnblogs.com/schyzhkj/p/13255291.html </para>
-        /// </summary>
-        /// <param name="tcpClient"></param>
-        /// <returns></returns>
-        private static bool IsOnline(TcpClient tcpClient)
-        {
-            if (tcpClient == null || tcpClient.Client == null) return false;
-
-            try
-            {
-                if (!tcpClient.Client.Connected) return false;
-                return !(tcpClient.Client.Poll(0, SelectMode.SelectRead) && tcpClient.Client.Available == 0);
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
-#endif
     }
 }

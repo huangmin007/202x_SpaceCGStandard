@@ -27,7 +27,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)IO\UdpClientTransport.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)ReadMe.md" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" />
     <None Include="$(MSBuildThisFileDirectory)串口全彩灯带控制器通信协议详解V2.1.pdf" />
   </ItemGroup>
 </Project>

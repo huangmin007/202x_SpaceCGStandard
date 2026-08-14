@@ -4,11 +4,11 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}</ProjectGuid>
+    <ProjectGuid>{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>SpaceCG</RootNamespace>
-    <AssemblyName>SpaceCG.WindowsApi</AssemblyName>
+    <AssemblyName>SpaceCG.Standard.Devices.LedRenderer</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -35,24 +35,39 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\SpaceCG.Standard\Trace.cs">
-      <Link>Trace.cs</Link>
-    </Compile>
-    <Compile Include="Generic\DeviceWatcher.cs" />
-    <Compile Include="Extensions\SystemExtensions.cs" />
-    <Compile Include="Interop\NativeMethods.cs" />
+    <Compile Include="Device\ColorFormat.cs" />
+    <Compile Include="Device\FrameRenderModel.cs" />
+    <Compile Include="Device\LedRenderBus.cs" />
+    <Compile Include="Device\LedStripObject.cs" />
+    <Compile Include="Drawing\DrawingDesktop.cs" />
+    <Compile Include="Drawing\IDrawingDisplay.cs" />
+    <Compile Include="Extensions\ArrayExtensions.cs" />
+    <Compile Include="Extensions\ColorFormatExtensions.cs" />
+    <Compile Include="Extensions\DrawingExtensions.cs" />
+    <Compile Include="Extensions\FrameExtensions.cs" />
+    <Compile Include="Extensions\LedRenderBus.Extensions.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj">
+      <Project>{1b32f227-bfac-4443-a23e-6ebd66dbcac9}</Project>
+      <Name>SpaceCG.Standard.Devices</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj">
+      <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
+      <Name>SpaceCG.Standard</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <None Include="README.md" />
+    <None Include="串口全彩灯带控制器通信协议详解V2.1.pdf" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

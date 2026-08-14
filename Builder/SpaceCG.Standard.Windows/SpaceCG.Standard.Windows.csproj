@@ -4,11 +4,11 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}</ProjectGuid>
+    <ProjectGuid>{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>SpaceCG</RootNamespace>
-    <AssemblyName>SpaceCG.Standard.LedRenderer.Wpf</AssemblyName>
+    <AssemblyName>SpaceCG.Standard.Windows</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -33,35 +33,26 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Drawing" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Xml" />
-    <Reference Include="WindowsBase" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\SpaceCG.Standard\Trace.cs">
       <Link>Trace.cs</Link>
     </Compile>
-    <Compile Include="Device\LedRenderControl.cs" />
-    <Compile Include="Drawing\DrawingWpfElement.cs" />
-    <Compile Include="Extensions\BrushExtensions.cs" />
-    <Compile Include="Extensions\DrawingExtensions.cs" />
+    <Compile Include="Generic\DeviceWatcher.cs" />
+    <Compile Include="Extensions\SystemExtensions.cs" />
+    <Compile Include="Interop\NativeMethods.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj">
-      <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
-      <Name>SpaceCG.Standard</Name>
-    </ProjectReference>
+    <None Include="README.md" />
   </ItemGroup>
-  <Import Project="..\..\SharedProjects\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.projitems" Label="Shared" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
