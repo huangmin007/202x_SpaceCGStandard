@@ -35,7 +35,7 @@ namespace SpaceCG.Device
         /// <summary> 默认设备响应超时时间，单位：毫秒 </summary>
         internal const int DefaultResponseTimeout = 300;
         /// <summary> 默认设备响应轮询间隔时间，单位：毫秒 </summary>
-        //internal const int DefaultResponsePollInterval = 1;
+        internal const int DefaultResponsePollInterval = 1;
         #endregion
 
 
@@ -73,7 +73,7 @@ namespace SpaceCG.Device
         }
         private int _responseTimeout = DefaultResponseTimeout;
 
-#if false
+#if true
         /// <summary>
         /// 响应轮询间隔时间（ms），即当通道无数据可读时等待的时间。范围 [0, 16]。默认 1 ms。
         /// </summary>
@@ -825,9 +825,9 @@ namespace SpaceCG.Device
             var offset = 0;
             var message = string.Empty;
             var responseTimeout = ResponseTimeout;
-            //var responsePollInterval = ResponsePollInterval;
+            var responsePollInterval = ResponsePollInterval;
 
-            _responseSpinWait.Reset();
+            //_responseSpinWait.Reset();
             _responseStopwatch.Restart();
 
             #region 读取响应数据
@@ -841,14 +841,14 @@ namespace SpaceCG.Device
 
                 if (Channel.Available <= 0)
                 {
-                    _responseSpinWait.SpinOnce();
-                    //Thread.Sleep(responsePollInterval);
+                    //_responseSpinWait.SpinOnce();
+                    Thread.Sleep(responsePollInterval);
                     continue;
                 }
 
                 try
                 {
-                    _responseSpinWait.Reset();
+                    //_responseSpinWait.Reset();
                     var bytesRead = Channel.Read(_responseBuffer, offset, Channel.Available);
                     if (bytesRead > 0) offset += bytesRead;
                 }
@@ -1197,8 +1197,8 @@ namespace SpaceCG.Device
             var responseTimeoutAttr = element.Attribute(nameof(ResponseTimeout));
             if (responseTimeoutAttr != null && int.TryParse(responseTimeoutAttr.Value, out var resposeTimeout)) ledRenderBus.ResponseTimeout = resposeTimeout;
 
-            //var responsePollIntervalAttr = element.Attribute(nameof(ResponsePollInterval));
-            //if (responsePollIntervalAttr != null && int.TryParse(responsePollIntervalAttr.Value, out var responsePollInterval)) ledRenderBus.ResponsePollInterval = responsePollInterval;
+            var responsePollIntervalAttr = element.Attribute(nameof(ResponsePollInterval));
+            if (responsePollIntervalAttr != null && int.TryParse(responsePollIntervalAttr.Value, out var responsePollInterval)) ledRenderBus.ResponsePollInterval = responsePollInterval;
 
             if (createLedStrips)
             {

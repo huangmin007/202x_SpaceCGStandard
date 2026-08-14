@@ -157,6 +157,7 @@ namespace SpaceCG.Extensions
                 int available = serialPort.BytesToRead;
                 if (available <= 0)
                 {
+                    //Thread.Sleep(1);
                     spinWait.SpinOnce();
                     continue;
                 }

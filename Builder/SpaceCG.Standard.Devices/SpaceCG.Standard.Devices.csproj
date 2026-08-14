@@ -46,6 +46,7 @@
     <Compile Include="Extensions\SerialPortExtensions.GetPortName.cs" />
     <Compile Include="IO\IRequestResponseClient.cs" />
     <Compile Include="IO\ITransportChannel.cs" />
+    <Compile Include="IO\RequestResponseBase.cs" />
     <Compile Include="IO\SerialPortTransport.cs" />
     <Compile Include="IO\TcpClientTransport.cs" />
     <Compile Include="IO\UdpClientTransport.cs" />
