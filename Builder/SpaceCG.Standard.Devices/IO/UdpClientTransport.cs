@@ -8,7 +8,7 @@ namespace SpaceCG.IO
     /// <summary>
     /// UDP 客户同步传输连接对象
     /// </summary>
-    public sealed class UdpClientTransport : ITransportChannel
+    internal sealed class UdpClientTransport : ITransportChannel
     {
         private UdpClient _udpClient;
 

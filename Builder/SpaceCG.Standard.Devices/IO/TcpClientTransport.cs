@@ -8,7 +8,7 @@ namespace SpaceCG.IO
     /// <summary>
     /// TCP 客户同步传输连接对象
     /// </summary>
-    public sealed class TcpClientTransport : ITransportChannel
+    internal sealed class TcpClientTransport : ITransportChannel
     {
         private readonly int _port;
         private readonly string _hostname;

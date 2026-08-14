@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
 using System.Threading;
@@ -211,6 +210,7 @@ namespace SpaceCG.Extensions
             var received = 0;
             var buffer = new byte[responseLength];
 
+            var spinWait = new SpinWait();
             var beginTime = Environment.TickCount;
             var readTimeout = serialPort.ReadTimeout > 0 ? serialPort.ReadTimeout : 300;
 
@@ -222,15 +222,20 @@ namespace SpaceCG.Extensions
                     throw new TimeoutException($"串口通道 ({serialPort.PortName}) 读取超时：已接收 {received}/{responseLength} 字节");
                 }
 
-                if (serialPort.BytesToRead <= 0)
+                int available = serialPort.BytesToRead;
+                if (available <= 0)
                 {
+                    spinWait.SpinOnce();
                     // 无数据可读，异步等待 1ms 后重试（避免同步 Sleep 阻塞线程）
-                    await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                    //await Task.Delay(1, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
 
+                spinWait.Reset();
+                var readCount = Math.Min(available, responseLength - received);
+
                 // 确认有数据后才调用 ReadAsync，避免永久阻塞
-                var bytesToRead = await serialPort.BaseStream.ReadAsync(buffer, received, responseLength - received, cancellationToken).ConfigureAwait(false);
+                var bytesToRead = await serialPort.BaseStream.ReadAsync(buffer, received, readCount, cancellationToken).ConfigureAwait(false);
 
                 if (bytesToRead == 0)
                     throw new IOException($"串口通道 ({serialPort.PortName}) 连接已关闭");

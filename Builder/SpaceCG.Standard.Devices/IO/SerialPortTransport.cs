@@ -9,7 +9,7 @@ namespace SpaceCG.IO
     /// <summary>
     /// 串口传输连接对象
     /// </summary>
-    public sealed class SerialPortTransport : ITransportChannel
+    internal sealed class SerialPortTransport : ITransportChannel
     {
         /// <summary>
         /// Windows 串口名称的正则表达式
@@ -20,7 +20,7 @@ namespace SpaceCG.IO
         public object Tag { get; set; }
         
         /// <inheritdoc/>
-        public ChannelType Type => ChannelType.SERIAL;
+        public ChannelType Type => ChannelType.Serial;
         /// <inheritdoc/>
         public string Name => $"{Type}_{_serialPort.PortName}_{_serialPort.BaudRate}";
 

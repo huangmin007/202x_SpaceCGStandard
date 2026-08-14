@@ -14,6 +14,7 @@ using Trace = SpaceCG.Diagnostics.Trace;
 using Bitmap = System.Drawing.Bitmap;
 using Imaging = System.Drawing.Imaging;
 using Rectangle = System.Drawing.Rectangle;
+using System.Runtime.Remoting.Channels;
 
 namespace SpaceCG.Device
 {
@@ -221,30 +222,18 @@ namespace SpaceCG.Device
         /// 初始化渲染总线实例。总线级别禁用重复帧去重（<see cref="FrameRenderModel.RenderingRepeatInterval"/> = 0）。
         /// </summary>
         /// <param name="channelType">传输通道类型。</param>
-        /// <param name="channelParams">通道参数，多个参数以逗号、冒号或分号分隔。</param>
+        /// <param name="channelArguments">通道参数，多个参数以逗号、冒号或分号分隔。</param>
         /// <param name="defaultLedType">默认灯带类型。</param>
         /// <param name="defaultColorFormat">默认颜色格式。</param>
         /// <exception cref="ArgumentNullException">channelParams 为空。</exception>
         /// <exception cref="ArgumentException">channelParams 格式不正确。</exception>
-        public LedRenderBus(ChannelType channelType, string channelParams, LedType defaultLedType = LedType.WS2812B, ColorFormat defaultColorFormat = ColorFormat.GRB)
+        public LedRenderBus(ChannelType channelType, string channelArguments, LedType defaultLedType = LedType.WS2812B, ColorFormat defaultColorFormat = ColorFormat.GRB)
             : base(0, 0, defaultLedType, defaultColorFormat)
         {
-            if (string.IsNullOrWhiteSpace(channelParams))
-                throw new ArgumentNullException(nameof(channelParams), "参数不能为空");
+            if (string.IsNullOrWhiteSpace(channelArguments))
+                throw new ArgumentNullException(nameof(channelArguments), "参数不能为空");
 
-            string[] arguments = null;
-            if (channelParams.IndexOf(',') != -1) arguments = channelParams.Split(',');
-            else if (channelParams.IndexOf(':') != -1) arguments = channelParams.Split(':');
-            else if (channelParams.IndexOf(';') != -1) arguments = channelParams.Split(';');
-            else throw new ArgumentException("参数格式不正确，多个参数以逗号分隔", nameof(channelParams));
-
-            if (channelType == ChannelType.SERIAL)
-                Channel = new SerialPortTransport(arguments);
-            else if (channelType == ChannelType.TCP)
-                Channel = new TcpClientTransport(arguments);
-            else if (channelType == ChannelType.UDP)
-                Channel = new UdpClientTransport(arguments);
-
+            Channel = TransportChannel.Create(channelType, channelArguments);
             Channel.ReadTimeout = 500;
             Channel.WriteTimeout = 500;
             RenderingRepeatInterval = 0;
