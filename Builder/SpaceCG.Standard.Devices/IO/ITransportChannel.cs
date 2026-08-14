@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.ConstrainedExecution;
 
 namespace SpaceCG.IO
 {
@@ -132,12 +133,26 @@ namespace SpaceCG.IO
             else if (arguments.IndexOf(';') != -1) args = arguments.Split(';');
             else throw new ArgumentException("参数格式不正确，多个参数以逗号分隔", nameof(arguments));
 
+            return Create(type, args);
+        }
+
+        /// <summary>
+        /// 根据通道类型和参数字符串创建传输通道实例。
+        /// </summary>
+        /// <param name="type">要创建的通道类型（串口 / TCP / UDP）。</param>
+        /// <param name="arguments">通道连接参数字符串。</param>
+        /// <returns>对应的 <see cref="ITransportChannel"/> 实例。</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="arguments"/> 参数个数不能小于 2 个时抛出。</exception>
+        public static ITransportChannel Create(ChannelType type, params string[] arguments)
+        {
+            if (arguments.Length < 2) throw new ArgumentOutOfRangeException("参数个数不能小于 2 个", nameof(arguments));
+
             if (type == ChannelType.Serial)
-                return new SerialPortTransport(args);
+                return new SerialPortTransport(arguments);
             else if (type == ChannelType.TCP)
-                return new TcpClientTransport(args);
+                return new TcpClientTransport(arguments);
             else if (type == ChannelType.UDP)
-                return new UdpClientTransport(args);
+                return new UdpClientTransport(arguments);
 
             throw new ArgumentException("不支持的传输通道类型", nameof(type));
         }

@@ -121,6 +121,7 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
+#if false
         #region 通道管理
         /// <summary>
         /// 打开集合中所有总线的通信通道。
@@ -163,6 +164,7 @@ namespace SpaceCG.Extensions
             }
         }
         #endregion
+#endif
 
         #region 渲染控制
         /// <summary>
@@ -234,37 +236,6 @@ namespace SpaceCG.Extensions
             }
         }
         #endregion
-
-        /// <summary>
-        /// 检查集合中所有总线的通道连接状态，断开时自动重连。
-        /// </summary>
-        /// <param name="collections">渲染总线集合。</param>
-        /// <remarks>
-        /// <para>遍历所有总线，对已断开的总线执行"关闭 → 打开"以尝试重连。</para>
-        /// <para>适用于定时健康检查场景，建议配合外部定时器周期性调用。</para>
-        /// <para>单个总线重连失败不影响后续总线的检查，异常会记录到 Trace 日志。</para>
-        /// </remarks>
-        [Obsolete("通道的连接检查，已经在对应的线程中有持续检查、重连处理。", false)]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void CheckChannelConnection(this IEnumerable<LedRenderBus> collections)
-        {
-            foreach (var ledRenderBus in collections)
-            {
-                try
-                {
-                    if (!ledRenderBus.IsConnected)
-                    {
-                        Trace.TraceInformation($"LedRenderBus [{ledRenderBus.Name}] 通信连接异常，重新连接中 ......");
-                        ledRenderBus.CloseChannel();
-                        ledRenderBus.OpenChannel();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError($"LedRenderBus [{ledRenderBus.Name}] Exception: {ex.Message}");
-                }
-            }
-        }
 
     }
 }

@@ -465,11 +465,7 @@ namespace SpaceCG.Device
         }
 
         /// <summary> 启动渲染  </summary>
-        public void StartRender()
-        {
-            LedRenderBus.Collections.OpenChannel();
-            LedRenderBus.Collections.StartRender();
-        }
+        public void StartRender() => LedRenderBus.Collections.StartRender();
         
         /// <summary> 停止渲染  </summary>
         public void StopRender() => LedRenderBus.Collections.StopRender();

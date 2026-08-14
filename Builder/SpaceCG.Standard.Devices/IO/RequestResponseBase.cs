@@ -97,19 +97,12 @@ namespace SpaceCG.IO
             {
                 #region 连接状态检查
                 while (!channel.IsConnected && !cancellationToken.IsCancellationRequested)
-                {
-                    // 等待 3 秒后尝试重连，分段 Sleep 避免 Stop/Close/Dispose 等待超时
-                    for (int i = 0; i < 30; i++)
-                    {
-                        Thread.Sleep(100);
-                        if (cancellationToken.IsCancellationRequested) break;
-                    }
-
+                {                    
                     try
                     {
                         channel.Close();
 
-                        Thread.Sleep(100);
+                        Thread.Sleep(10);
                         if (cancellationToken.IsCancellationRequested) break;
 
                         channel.Open();
@@ -119,7 +112,15 @@ namespace SpaceCG.IO
                         Trace.TraceWarning($"通道 ({channelName}) 连接异常：{ex.Message}");
                     }
 
-                    Thread.Sleep(100);
+                    if (!channel.IsConnected)
+                    {
+                        // 等待 3 秒后尝试重连，分段 Sleep 避免 Stop/Close/Dispose 等待超时
+                        for (int i = 0; i < 100; i++)
+                        {
+                            Thread.Sleep(30);
+                            if (cancellationToken.IsCancellationRequested) break;
+                        }
+                    }
                 }
                 #endregion
 

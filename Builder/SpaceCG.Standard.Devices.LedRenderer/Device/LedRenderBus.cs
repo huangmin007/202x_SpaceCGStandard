@@ -14,7 +14,6 @@ using Trace = SpaceCG.Diagnostics.Trace;
 using Bitmap = System.Drawing.Bitmap;
 using Imaging = System.Drawing.Imaging;
 using Rectangle = System.Drawing.Rectangle;
-using System.Runtime.Remoting.Channels;
 
 namespace SpaceCG.Device
 {
@@ -212,7 +211,7 @@ namespace SpaceCG.Device
         private Task _renderingTask;
         private CancellationTokenSource _cts;
 
-        private readonly SpinWait _responseSpinWait = default;
+        //private readonly SpinWait _responseSpinWait = default;
         /// <summary>响应数据读取缓冲区（0.5KB）。</summary>
         private readonly byte[] _responseBuffer = new byte[512];
         /// <summary>响应超时计时器。</summary>
@@ -234,8 +233,10 @@ namespace SpaceCG.Device
                 throw new ArgumentNullException(nameof(channelArguments), "参数不能为空");
 
             Channel = TransportChannel.Create(channelType, channelArguments);
-            Channel.ReadTimeout = 500;
-            Channel.WriteTimeout = 500;
+            Channel.ReadTimeout = 300;
+            Channel.WriteTimeout = 300;
+            try { Channel.Open(); } catch { }
+
             RenderingRepeatInterval = 0;
 
             BusCollections.Add(this);
@@ -334,11 +335,12 @@ namespace SpaceCG.Device
 
 
         #region Channel / Render Contrl 渲染控制
+#if false
         /// <summary> 打开总线传输通道  </summary>
         public void OpenChannel() => Channel.Open();
         /// <summary> 关闭总线传输通道  </summary>
         public void CloseChannel() => Channel.Close();
-
+#endif
         /// <summary> 启动渲染线程（LongRunning Task）  </summary>
         public void StartRender()
         {
@@ -356,7 +358,7 @@ namespace SpaceCG.Device
 
             try
             {
-                _renderingTask?.Wait(1000);
+                _renderingTask?.Wait(300);
                 _renderingTask?.Dispose();
             }
             finally { _renderingTask = null; }
@@ -442,7 +444,7 @@ namespace SpaceCG.Device
                 this.AddColorFrame(address, 0x00, 0x00000000, 0, 1, this.LedCount, ColorFormat.ARGB);
             }
         }
-        #endregion
+#endregion
 
 
         #region 设置上电显示颜色/设备波特率/设备数据处理超时时间
@@ -773,8 +775,9 @@ namespace SpaceCG.Device
         /// <para>点亮一颗灯珠的时间为 30us，要点亮 1024 颗灯珠需要 1024 * 30us + 50us(复位信号) ≈ 30.77ms </para>
         /// </summary>
         /// <param name="frame">待发送的完整帧。</param>
+        /// <param name="cancellationToken"></param>
         /// <returns>返回设备响应消息，广播帧返回空字符串 <see cref="string.Empty"/>; 超时时返回 <c>"ResponseTimeout"</c>。</returns>
-        private string WriteFrame(byte[] frame)
+        private string WriteFrame(byte[] frame, CancellationToken cancellationToken)
         {
             if (Channel == null || !Channel.IsConnected) return string.Empty;
 
@@ -805,6 +808,7 @@ namespace SpaceCG.Device
             if (funCode == 0x95) return string.Empty;
             // 注意：广播帧 不会有任何响应信息
             if (group != 0x00 || address == 0x00) return string.Empty;
+            if (cancellationToken.IsCancellationRequested) return string.Empty;
             
             const string RecvEnd = nameof(RecvEnd);
             const string DisplayEnd = nameof(DisplayEnd);
@@ -820,7 +824,7 @@ namespace SpaceCG.Device
             _responseStopwatch.Restart();
 
             #region 读取响应数据
-            while (true)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 if (_responseStopwatch.ElapsedMilliseconds > responseTimeout)
                 {
@@ -850,6 +854,7 @@ namespace SpaceCG.Device
                 // 收到结束符
                 var isTerminate = offset >= 4 && _responseBuffer[offset - 2] == 0x0D && _responseBuffer[offset - 1] == 0x0A;
                 if (!isTerminate) continue;
+                if (cancellationToken.IsCancellationRequested) break;
 
                 message = Encoding.UTF8.GetString(_responseBuffer, 0, offset - 2);
                 if (offset >= 6 && FrameExceptionMessages.ContainsKey(message)) break;
@@ -945,18 +950,11 @@ namespace SpaceCG.Device
                 #region 连接状态检查
                 while (!renderBus.Channel.IsConnected && !cancellationToken.IsCancellationRequested)
                 {
-                    // 等待 3 秒后尝试重连，分段 Sleep 避免 Stop/Close/Dispose 等待超时
-                    for (int i = 0; i < 30; i++)
-                    {
-                        Thread.Sleep(100);
-                        if (cancellationToken.IsCancellationRequested) break;
-                    }
-
                     try
                     {
                         renderBus.Channel.Close();
 
-                        Thread.Sleep(100);
+                        Thread.Sleep(10);
                         if (cancellationToken.IsCancellationRequested) break;
 
                         renderBus.Channel.Open();
@@ -966,7 +964,15 @@ namespace SpaceCG.Device
                         Trace.TraceWarning($"渲染通道 ({busName}) 连接异常：{ex.Message}");
                     }
 
-                    Thread.Sleep(100);
+                    if (!renderBus.Channel.IsConnected)
+                    {
+                        // 等待 3 秒后尝试重连，分段 Sleep 避免 Stop/Close/Dispose 等待超时
+                        for (int i = 0; i < 100; i++)
+                        {
+                            Thread.Sleep(30);
+                            if (cancellationToken.IsCancellationRequested) break;
+                        }
+                    }
                 }
                 #endregion
 
@@ -993,7 +999,7 @@ namespace SpaceCG.Device
                     {
                         writeFrameCount++;
                         hasWrittenFrame = true;
-                        var message = renderBus.WriteFrame(frame);
+                        var message = renderBus.WriteFrame(frame, cancellationToken);
                         if (string.IsNullOrEmpty(message))
                         {
                             if (interFrameDelay > 0) Thread.Sleep(interFrameDelay);
@@ -1032,7 +1038,7 @@ namespace SpaceCG.Device
                     {
                         writeFrameCount++;
                         hasWrittenFrame = true;
-                        var message = renderBus.WriteFrame(frame);
+                        var message = renderBus.WriteFrame(frame, cancellationToken);
                         if (string.IsNullOrEmpty(message))
                         {
                             if (interFrameDelay > 0) Thread.Sleep(interFrameDelay);
