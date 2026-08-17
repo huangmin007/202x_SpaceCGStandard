@@ -87,11 +87,11 @@ namespace SpaceCG.Extensions
 
         /// <summary>
         /// 通用设备信息枚举引擎，封装 SetupAPI 的 SetupDiEnumDeviceInfo 标准调用流程。
-        /// <para>适用于通过设备安装类 GUID 枚举的设备类型：Ports、Net、Bluetooth 等。</para>
+        /// <para>适用于通过设备安装类 GUID 枚举的设备类型：Ports、Net、Bluetooth 等。
         /// 因为 SetupDiEnumDeviceInfo 不遍历接口层，仅枚举设备节点。</para>
         /// <para>内部自动处理句柄生命周期（try-finally + SetupDiDestroyDeviceInfoList）。</para>
         /// </summary>
-        /// <typeparam name="T">返回的设备信息类型，必须继承自 <see cref="DeviceInfo"/>。</typeparam>
+        /// <typeparam name="T">返回的设备信息类型。</typeparam>
         /// <param name="classGuid">设备安装类 GUID。</param>
         /// <param name="selector">
         /// 工厂函数，从设备信息集句柄和 SP_DEVINFO_DATA 构建目标对象。

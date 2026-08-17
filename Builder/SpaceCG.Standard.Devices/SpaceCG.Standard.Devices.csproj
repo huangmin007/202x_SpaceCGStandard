@@ -46,15 +46,15 @@
   <ItemGroup>
     <Compile Include="Extensions\SerialPortExtensions.cs" />
     <Compile Include="Extensions\SerialPortExtensions.GetPortName.cs" />
-    <Compile Include="IO\IRequestResponseClient.cs" />
     <Compile Include="IO\ITransportChannel.cs" />
-    <Compile Include="IO\RequestResponseBase.cs" />
+    <Compile Include="IO\RequestResponseSession.cs" />
     <Compile Include="IO\SerialPortTransport.cs" />
     <Compile Include="IO\TcpClientTransport.cs" />
     <Compile Include="IO\UdpClientTransport.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="IO\ModbusRtu.cs" />
     <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>

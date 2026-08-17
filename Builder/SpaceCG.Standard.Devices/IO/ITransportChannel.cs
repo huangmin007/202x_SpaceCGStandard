@@ -23,7 +23,7 @@ namespace SpaceCG.IO
     /// </summary>
     /// <remarks>
     /// <para><b>应用用途</b>：本接口是设备通信体系的「传输底座」。它向上屏蔽串口、TCP、UDP 等不同物理链路的差异，对外只暴露统一的 <see cref="Read"/> / <see cref="Write"/> 数据流抽象。
-    /// 上层协议组件（如 <see cref="IRequestResponseClient"/> 请求-响应客户端、数据帧解析器）只需依赖本接口，即可在串口与网络设备之间无缝切换，而无需关心具体的连接与收发细节。</para>
+    /// 上层协议组件（如 <see cref="RequestResponseSession"/> 请求-响应客户端、数据帧解析器）只需依赖本接口，即可在串口与网络设备之间无缝切换，而无需关心具体的连接与收发细节。</para>
     /// <para><b>设计意图</b>：适用于封装不关心通信或连接状态的应用层业务，将「传输方式的选择」延迟到运行时，通过 <see cref="TransportChannel.Create"/> 工厂按需构造。</para>
     /// <para><b>实现要求</b>：实现类需支持串口（SerialPort）、TCP（TcpClient）、UDP（UdpClient）多种传输方式。</para>
     /// <para><b>线程安全</b>：此接口不保证线程安全，调用方需自行同步对同一实例的读写操作。</para>

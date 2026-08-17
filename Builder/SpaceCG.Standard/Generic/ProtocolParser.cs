@@ -288,7 +288,10 @@ namespace SpaceCG.Generic
         {
             if (pendingView.Count < _footer.Length) return default;
 
-            int footerIndex = pendingView.IndexOf(_footer);
+            //int footerIndex = pendingView.IndexOf(_footer);
+            //if (footerIndex < 0) return default;
+
+            var footerIndex = pendingView.LastIndexOf(_footer);
             if (footerIndex < 0) return default;
 
             return new ArraySegment<byte>(pendingView.Array, pendingView.Offset, footerIndex + _footer.Length);

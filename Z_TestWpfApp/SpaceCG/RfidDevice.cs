@@ -106,7 +106,6 @@ namespace SpaceCG
             Stopwatch sw = new Stopwatch();
             sw.Restart();
 
-
             while (!cancellationToken.IsCancellationRequested)
             {
                 while (!serialPort.IsOpen && !cancellationToken.IsCancellationRequested)

@@ -43,7 +43,7 @@ namespace SpaceCG.Extensions
             return builder.ToString().TrimEnd();
         }
 
-        #region IndexOf
+        #region IndexOf 系列函数
         /// <summary>
         /// 在字节数组中查找指定字节模式首次出现的位置。
         /// <para>搜索区间为 [<paramref name="startIndex"/>, <paramref name="startIndex"/> + <paramref name="count"/>)。
@@ -92,7 +92,7 @@ namespace SpaceCG.Extensions
             {
                 for (int i = startIndex; i <= lastIndex; i++)
                 {
-                    if (source[i] == head && source[i + 1] == tail) 
+                    if (source[i] == head && source[i + 1] == tail)
                         return i;
                 }
                 return -1;
@@ -118,7 +118,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="IndexOf(byte[], byte[], int, int)"/> 
         public static int IndexOf(this byte[] source, byte[] pattern) => IndexOf(source, pattern, 0, source.Length);
-        
+
         /// <summary>
         /// 在 <see cref="ArraySegment{T}"/> 的字节序列中查找指定字节模式的首次出现位置。
         /// <para>搜索区间为视图内 [<paramref name="startIndex"/>, <paramref name="startIndex"/> + <paramref name="count"/>)。
@@ -155,7 +155,7 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="IndexOf(byte[], byte[], int, int)"/> 
         public static int IndexOf(this ArraySegment<byte> source, byte[] pattern) => IndexOf(source, pattern, 0, source.Count);
-        
+
         /// <summary>
         /// 在泛型数组中查找指定模式首次出现的位置。
         /// <para>采用头尾双过滤策略：先同时比对首尾元素，只有两者都命中才进入内循环逐元素比对。</para>
@@ -202,7 +202,7 @@ namespace SpaceCG.Extensions
             {
                 for (int i = startIndex; i <= lastIndex; i++)
                 {
-                    if (comparer.Equals(source[i], head) && comparer.Equals(source[i + 1], tail)) 
+                    if (comparer.Equals(source[i], head) && comparer.Equals(source[i + 1], tail))
                         return i;
                 }
                 return -1;
@@ -215,6 +215,192 @@ namespace SpaceCG.Extensions
                 if (!comparer.Equals(source[i], head) || !comparer.Equals(source[i + lastPatternIndex], tail)) continue;
 
                 // 逐字节比对中间部分，发现不匹配立即 break
+                int j;
+                for (j = 1; j < lastPatternIndex; j++)
+                {
+                    if (!comparer.Equals(source[i + j], pattern[j])) break;
+                }
+
+                if (j == lastPatternIndex) return i;
+            }
+
+            return -1;
+        }
+        #endregion
+
+        #region LastIndexOf 系列函数
+        /// <summary>
+        /// 在字节数组中查找指定字节模式最后一次出现的位置。
+        /// <para>搜索区间为 [<paramref name="startIndex"/> - <paramref name="count"/> + 1, <paramref name="startIndex"/>]，
+        /// 即从 <paramref name="startIndex"/> 向前搜索 <paramref name="count"/> 个元素。
+        /// 采用头尾双过滤策略：先同时比对首尾字节，只有两者都命中才进入内循环逐字节比对。
+        /// 随机数据下误入内循环概率约 1/65536，适合实时数据流分析等高性能场景。</para>
+        /// <para>时间复杂度：平均 O(n)；空间复杂度 O(1)。</para>
+        /// </summary>
+        /// <param name="source">要搜索的一维从零开始的数组。</param>
+        /// <param name="pattern">待查找的字节模式，不能为空数组。</param>
+        /// <param name="startIndex">从零开始的向后搜索引。</param>
+        /// <param name="count">要搜索的节中的元素数。必须大于 0。
+        /// 若 <c>startIndex - count + 1</c> 小于 0，则自动截断到数组开头。</param>
+        /// <returns>找到时返回最后一次出现的起始索引；未找到或参数无效返回 -1。</returns>
+        public static int LastIndexOf(this byte[] source, byte[] pattern, int startIndex, int count)
+        {
+            // 参数有效性检查：null 或空数组直接返回 -1
+            if (source == null || pattern == null) return -1;
+
+            var sourceLength = source.Length;
+            var patternLength = pattern.Length;
+
+            // 索引与长度边界检查
+            if (startIndex < 0 || startIndex >= sourceLength) return -1;
+            if (sourceLength == 0 || patternLength == 0 || count <= 0) return -1;
+
+            // 实际可搜索长度（自动截断到数组开头）
+            var searchLength = Math.Min(count, startIndex + 1);
+            if (searchLength < patternLength) return -1;
+
+            // 搜索覆盖区间左端点（最小索引）
+            var searchStartInclusive = startIndex - searchLength + 1;
+            // 最大允许的模式起始索引（循环起点，保证 i + patternLength - 1 <= startIndex）
+            var lastIndex = startIndex - patternLength + 1;
+
+            var head = pattern[0];
+            // 单字节模式，委托给 Array.LastIndexOf（JIT 内在优化）
+            if (patternLength == 1)
+                return Array.LastIndexOf(source, head, startIndex, searchLength);
+
+            var lastPatternIndex = patternLength - 1;
+            var tail = pattern[lastPatternIndex];
+
+            // 双字节模式，直接比对两个字节
+            if (patternLength == 2)
+            {
+                for (int i = lastIndex; i >= searchStartInclusive; i--)
+                {
+                    if (source[i] == head && source[i + 1] == tail)
+                        return i;
+                }
+                return -1;
+            }
+
+            // 三字节及以上：
+            // 先比较首尾两个字节，命中后再验证中间内容。
+            for (int i = lastIndex; i >= searchStartInclusive; i--)
+            {
+                if (source[i] != head || source[i + lastPatternIndex] != tail) continue;
+
+                // 逐字节比对中间部分，发现不匹配立即 break
+                int j;
+                for (j = 1; j < lastPatternIndex; j++)
+                {
+                    if (source[i + j] != pattern[j]) break;
+                }
+
+                if (j == lastPatternIndex) return i;
+            }
+
+            return -1;
+        }
+        /// <inheritdoc cref="LastIndexOf(byte[], byte[], int, int)"/> 
+        public static int LastIndexOf(this byte[] source, byte[] pattern) => LastIndexOf(source, pattern, source.Length - 1, source.Length);
+
+        /// <summary>
+        /// 在 <see cref="ArraySegment{T}"/> 的字节序列中查找指定字节模式的最后一次出现位置。
+        /// <para>搜索区间为视图内 [<paramref name="startIndex"/> - <paramref name="count"/> + 1, <paramref name="startIndex"/>]。
+        /// 返回相对于视图起始（即 <see cref="ArraySegment{T}.Offset"/>）的偏移索引。</para>
+        /// </summary>
+        /// <param name="source">要搜索的源字节序列视图。</param>
+        /// <param name="pattern">待查找的字节模式，不能为空数组。</param>
+        /// <param name="startIndex">从零开始的向后搜索引。</param>
+        /// <param name="count">要搜索的元素数量，必须大于 0。</param>
+        /// <returns>模式最后一次出现相对于视图起始的偏移索引；未找到或参数无效返回 -1。</returns>
+        public static int LastIndexOf(this ArraySegment<byte> source, byte[] pattern, int startIndex, int count)
+        {
+            if (source.Array == null || pattern == null) return -1;
+
+            var sourceLength = source.Count;
+            var patternLength = pattern.Length;
+
+            // 索引与长度边界检查
+            if (startIndex < 0 || startIndex >= sourceLength) return -1;
+            if (sourceLength == 0 || patternLength == 0 || count <= 0) return -1;
+
+            var searchLength = Math.Min(count, startIndex + 1);
+            if (searchLength < patternLength) return -1;
+
+            // ArraySegment 内偏移转换为底层数组绝对索引
+            var absoluteStartIndex = source.Offset + startIndex;
+
+            // 委托给 byte[] 重载（返回绝对索引）
+            var absoluteResultIndex = LastIndexOf(source.Array, pattern, absoluteStartIndex, searchLength);
+            if (absoluteResultIndex < 0) return -1;
+
+            // 转换回 ArraySegment 内相对索引
+            return absoluteResultIndex - source.Offset;
+        }
+        /// <inheritdoc cref="LastIndexOf(byte[], byte[], int, int)"/> 
+        public static int LastIndexOf(this ArraySegment<byte> source, byte[] pattern) => LastIndexOf(source, pattern, source.Count - 1, source.Count);
+
+        /// <summary>
+        /// 在泛型数组中查找指定模式最后一次出现的位置。
+        /// <para>搜索区间为 [<paramref name="startIndex"/> - <paramref name="count"/> + 1, <paramref name="startIndex"/>]，
+        /// 即从 <paramref name="startIndex"/> 向前搜索。采用头尾双过滤策略：先同时比对首尾元素，
+        /// 只有两者都命中才进入内循环逐元素比对。</para>
+        /// <para>时间复杂度：平均 O(n)；空间复杂度 O(1)。</para>
+        /// </summary>
+        /// <typeparam name="T">数组元素类型，必须实现 <see cref="IEquatable{T}"/></typeparam>
+        /// <param name="source">源数组</param>
+        /// <param name="pattern">待查找的元素模式</param>
+        /// <param name="startIndex">从零开始的向后搜索引。</param>
+        /// <param name="count">要搜索的元素数量</param>
+        /// <returns>找到时返回最后一次出现的起始索引；未找到或参数无效返回 -1。</returns>
+        public static int LastIndexOf<T>(this T[] source, T[] pattern, int startIndex, int count) where T : IEquatable<T>
+        {
+            // 参数有效性检查：null 或空数组直接返回 -1
+            if (source == null || pattern == null) return -1;
+
+            var sourceLength = source.Length;
+            var patternLength = pattern.Length;
+
+            // 索引与长度边界检查
+            if (startIndex < 0 || startIndex >= sourceLength) return -1;
+            if (sourceLength == 0 || patternLength == 0 || count <= 0) return -1;
+
+            // 实际可搜索长度（自动截断到数组开头）
+            var searchLength = Math.Min(count, startIndex + 1);
+            if (searchLength < patternLength) return -1;
+
+            // 最后一个允许匹配的位置（最小索引）
+            var searchStartInclusive = startIndex - searchLength + 1;
+            var lastIndex = searchStartInclusive + patternLength - 1;
+
+            var head = pattern[0];
+            // 单字节模式，委托给 Array.LastIndexOf（JIT 内在优化）
+            if (patternLength == 1)
+                return Array.LastIndexOf(source, head, startIndex, searchLength);
+
+            var lastPatternIndex = patternLength - 1;
+            var tail = pattern[lastPatternIndex];
+            var comparer = EqualityComparer<T>.Default;
+
+            // 双字节模式，直接比对两个元素
+            if (patternLength == 2)
+            {
+                for (int i = lastIndex; i >= searchStartInclusive; i--)
+                {
+                    if (comparer.Equals(source[i], head) && comparer.Equals(source[i + 1], tail))
+                        return i;
+                }
+                return -1;
+            }
+
+            // 三字节及以上：
+            // 先比较首尾两个元素，命中后再验证中间内容。
+            for (int i = lastIndex; i >= searchStartInclusive; i--)
+            {
+                if (!comparer.Equals(source[i], head) || !comparer.Equals(source[i + lastPatternIndex], tail)) continue;
+
+                // 逐元素比对中间部分，发现不匹配立即 break
                 int j;
                 for (j = 1; j < lastPatternIndex; j++)
                 {
@@ -261,7 +447,7 @@ namespace SpaceCG.Extensions
         {
             // 空指针检查：任一指针为 null 则无法比较
             if (source == null || destination == null) return false;
-
+            
             // 表示空序列，返回 false
             if (count <= 0) return false;
             // 同一指针快速路径：指向相同地址则无需逐字节比较
@@ -276,8 +462,8 @@ namespace SpaceCG.Extensions
             for (int i = 0; i < blocks; i++)
             {
                 // 一次比较 4 个 ulong，任一不匹配即返回 false
-                if (src64[0] != dst64[0] ||  src64[1] != dst64[1] ||
-                    src64[2] != dst64[2] ||  src64[3] != dst64[3])
+                if (src64[0] != dst64[0] || src64[1] != dst64[1] ||
+                    src64[2] != dst64[2] || src64[3] != dst64[3])
                 {
                     return false;
                 }
@@ -285,7 +471,7 @@ namespace SpaceCG.Extensions
                 src64 += 4;
                 dst64 += 4;
             }
-            
+
             // ===== 尾部收尾 =====
             // 第一步：处理尾部数据中完整的 ulong（8 字节对齐部分）
             int tailBytes = count & 31;             // 尾部不足 32 字节的剩余字节数
@@ -363,7 +549,7 @@ namespace SpaceCG.Extensions
 
             // 边界检查：确保偏移 + 计数不超出数组末尾
             if (srcOffset < 0 || srcOffset + srcCount > source.Length)
-                throw new ArgumentOutOfRangeException(nameof(srcOffset), srcOffset,  $"源数组偏移越界：offset={srcOffset} + count={srcCount} > length={source.Length}");
+                throw new ArgumentOutOfRangeException(nameof(srcOffset), srcOffset, $"源数组偏移越界：offset={srcOffset} + count={srcCount} > length={source.Length}");
 
             if (destOffset < 0 || destOffset + destCount > destination.Length)
                 throw new ArgumentOutOfRangeException(nameof(destOffset), destOffset, $"目标数组偏移越界：offset={destOffset} + count={destCount} > length={destination.Length}");
@@ -391,14 +577,14 @@ namespace SpaceCG.Extensions
             if (ReferenceEquals(source, destination)) return true;
             if (source == null || destination == null) return false;
 
-            var sourecLength = source.Length;
-            if (sourecLength != destination.Length) return false;
-            if (sourecLength == 0) return true;
+            var sourceLength = source.Length;
+            if (sourceLength != destination.Length) return false;
+            if (sourceLength == 0) return true;
 
             fixed (byte* ps = source)
             fixed (byte* pd = destination)
             {
-                return SequenceEqual(ps, 0, sourecLength, pd, 0, sourecLength);
+                return SequenceEqual(ps, 0, sourceLength, pd, 0, sourceLength);
             }
         }
 

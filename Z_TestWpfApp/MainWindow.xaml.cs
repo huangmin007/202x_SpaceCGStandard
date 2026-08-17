@@ -34,7 +34,7 @@ namespace Z_TestWpfApp
         LedRenderControl ledRenderControl;
 
         private LedRenderBus _ledRenderBus;
-        RequestResponseBase requestResponse;
+        RequestResponseSession requestResponse;
         public MainWindow()
         {
             InitializeComponent();
@@ -50,6 +50,7 @@ namespace Z_TestWpfApp
             _ledRenderBus?.Dispose();
             _cts?.Cancel();
 
+            modbusRtu?.Dispose();
             rfidDevice?.Dispose();
             requestResponse?.Dispose();
         }
@@ -72,7 +73,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D2:
-                    ledRenderControl.RenderSceneId(2);
+                    ledRenderControl?.RenderSceneId(2);
 #if true
                     if (rpcClient == null) break;
                     //var result = await rpcClient.InvokeFuncAsync("Demo", nameof(Test), new object[] { "Hello,world" });
@@ -130,7 +131,6 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.C:
-                    _ledRenderBus.OpenChannel();
                     _ledRenderBus.StartRender();
                     break;
 
@@ -156,6 +156,21 @@ namespace Z_TestWpfApp
                         Trace.WriteLine($"Result::{ex.Message}");
                     }
                     break;
+
+                case Key.Q:
+                    var response = await modbusRtu.ReadHoldingRegistersAsync(0x02, 0x0000, 0x0002, CancellationToken.None);
+                    Trace.WriteLine($"Result::{string.Join(" ", response.Select(x => x.ToString("X2")))}");
+                    var lo = response[0];
+                    var hi = response[1];
+                    var cardId = ((hi << 16) | lo);
+                    Trace.WriteLine($"CardId: {cardId}");
+                    break;
+
+                case Key.S:
+                    await modbusRtu.WriteMultipleCoilsAsync(0x01, 0x00, new bool[] { false, false, false, false, false, false, false, false }, CancellationToken.None);
+                    var r0 = await modbusRtu.ReadCoilsAsync(0x01, 0x00, 8, CancellationToken.None);
+                    Trace.WriteLine($"Result::{string.Join(" ", r0)}");
+                    break;
             }
         }
 
@@ -164,9 +179,14 @@ namespace Z_TestWpfApp
         CancellationTokenSource _cts;
 
         RfidDevice rfidDevice;
+        ModbusRtu modbusRtu;
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            var array = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0D, 0x0A };
+            var index = array.LastIndexOf(new byte[] { 0x0D, 0x0A });
+            Trace.WriteLine($"Index:{index}");
+
             rpcServer = new RpcServer4X(2000);
             rpcServer.RegisterObject("Demo", this);
             rpcServer.Start();
@@ -213,9 +233,9 @@ namespace Z_TestWpfApp
             ledStrip.AddPoints(new Point(0, 0), new Point(99, 0));
             _ledRenderBus.AddLedStrip(ledStrip);
 #else
-            var config = XElementExtensions.LoadConfig($"Resources/Config.xml");
-            ledRenderControl = new LedRenderControl(Canvas_Leds);
-            ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
+            //var config = XElementExtensions.LoadConfig($"Resources/Config.xml");
+            //ledRenderControl = new LedRenderControl(Canvas_Leds);
+            //ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
             //ledRenderControl.StartRender();
             //ledRenderControl.RenderSceneId(1);
 
@@ -223,12 +243,14 @@ namespace Z_TestWpfApp
             //LedRenderBus.Collections[0].SetPowerOnColor(0x0001, 0x01, 0x0000FF00, false, ColorFormat.ARGB);
 #endif
 
-            var ports = SerialPortExtensions.GetPortFriendlyNames();
-            var portName = SerialPortExtensions.GetPortName("Serial CH A");
+            //var ports = SerialPortExtensions.GetPortFriendlyNames();
+            //var portName = SerialPortExtensions.GetPortName("Serial CH A");
 
-            rfidDevice = new RfidDevice();
-            rfidDevice.Open();
-            rfidDevice.StartSync();
+            //rfidDevice = new RfidDevice();
+            //rfidDevice.Open();
+            //rfidDevice.StartSync();
+
+            modbusRtu = new ModbusRtu(ChannelType.Serial, "CH343,38400");
 
             //requestResponse = new RequestResponseBase(ChannelType.SERIAL, "COM34,19200");
 
