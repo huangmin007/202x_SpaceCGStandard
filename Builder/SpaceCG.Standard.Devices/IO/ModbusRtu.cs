@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,40 +8,7 @@ using SpaceCG.Generic;
 namespace SpaceCG.IO
 {
     /// <summary>
-    /// 表示 Modbus 协议层的异常响应（从站返回的功能码高位置 1 的异常帧）。
-    /// </summary>
-    /// <remarks>
-    /// <para>当从站无法处理主站请求时，会将响应帧的功能码最高位（bit7）置 1，
-    /// 并在其后附一个字节的异常码（Exception Code）说明失败原因。</para>
-    /// </remarks>
-    public sealed class ModbusException : Exception
-    {
-        /// <summary> 从站地址（8 位）。 </summary>
-        public byte SlaveAddress { get; }
-
-        /// <summary> 触发异常的功能码（未置位的原始功能码）。 </summary>
-        public byte FunctionCode { get; }
-
-        /// <summary> 异常码（Exception Code），用于指示具体的错误原因。 </summary>
-        public byte ExceptionCode { get; }
-
-        /// <summary>
-        /// 构造 Modbus 异常实例。
-        /// </summary>
-        /// <param name="slaveAddress">从站地址。</param>
-        /// <param name="functionCode">原始功能码。</param>
-        /// <param name="exceptionCode">异常码。</param>
-        /// <param name="message">异常描述信息。</param>
-        public ModbusException(byte slaveAddress, byte functionCode, byte exceptionCode, string message) : base(message)
-        {
-            SlaveAddress = slaveAddress;
-            FunctionCode = functionCode;
-            ExceptionCode = exceptionCode;
-        }
-    }
-
-    /// <summary>
-    /// Modbus RTU 主站客户端，提供基于功能码 1/2/3/4/5/6/15/16/23 的读写操作。
+    /// Modbus RTU 主站客户端，提供基于功能码 1/2/3/4/5/6/15/16/23 的读写操作，功能码 5/6/15/16 支持广播功能。
     /// <para>Modbus RTU Data Tables and Formats: https://simplymodbus.ca/learn-rtu.html</para>
     /// </summary>
     /// <remarks>
@@ -51,6 +17,7 @@ namespace SpaceCG.IO
     /// </remarks>
     public class ModbusRtu : IDisposable
 	{
+        private readonly CancellationTokenSource _cts;
         private readonly RequestResponseSession _session;
 
         /// <summary>
@@ -60,10 +27,11 @@ namespace SpaceCG.IO
         /// <param name="arguments">连接参数字符串（由对应传输实现类约定格式）。</param>
         public ModbusRtu(ChannelType channelType, string arguments)
 		{
+            _cts = new CancellationTokenSource();
             _session = new RequestResponseSession(channelType, arguments);
         }
 
-        #region BuildRequestFrame & Response Result
+        #region Build & Unpack Message Frame
         /// <summary>
         /// 构建读操作请求帧（功能码 1/2/3/4 共用）。
         /// </summary>
@@ -94,8 +62,8 @@ namespace SpaceCG.IO
         private static void AppendCrc16(byte[] message)
         {
             var crc16 = CRCCheckHelper.ComputeCRC16_MODBUS(message, 0, message.Length - 2);
-            message[message.Length - 2] = (byte)(crc16 & 0xFF);
-            message[message.Length - 1] = (byte)((crc16 >> 8) & 0xFF);
+            message[message.Length - 2] = (byte)(crc16 & 0xFF);             // Lo
+            message[message.Length - 1] = (byte)((crc16 >> 8) & 0xFF);      // Hi
         }
         /// <summary>
         /// 从响应帧数据区解包位状态（每字节 8 个线圈，LSB 在前）。
@@ -129,7 +97,7 @@ namespace SpaceCG.IO
         }
         #endregion
 
-        #region ResponseFramePredicate
+        #region 数据响应的完整性
         /// <summary>
         /// 读操作（功能码 1/2/3/4/23）响应的完整性判定器（含可变长度数据区）。
         /// 判断依据：响应帧头部 3 字节已到达，且数据区字节数满足「字节数 N」字段声明，再加上 2 字节 CRC 后即为完整响应。
@@ -171,51 +139,9 @@ namespace SpaceCG.IO
             // 正常写响应固定 8 字节
             return buffer.Count >= 8 ? 8 : -1;
         }
-
-        private static int ReadBitsResponseFramePredicate(ArraySegment<byte> buffer, int numberOfPoints)
-        {
-            if (buffer.Count < 5) return -1;
-
-            var data = buffer.Array;
-            var offset = buffer.Offset;
-
-            // 异常响应
-            if ((data[offset + 1] & 0x80) != 0) return 5;
-
-            int expectedByteCount = (numberOfPoints + 7) >> 3;
-            int byteCount = data[offset + 2];
-
-            if (byteCount != expectedByteCount)
-                throw new InvalidDataException($"Modbus响应字节数错误：期望 {expectedByteCount}，实际 {byteCount}");
-
-            int totalLength = 3 + byteCount + 2;
-
-            return buffer.Count >= totalLength ? totalLength : -1;
-        }
-        private static int ReadRegistersResponseFramePredicate(ArraySegment<byte> buffer, int numberOfPoints)
-        {
-            if (buffer.Count < 5) return -1;
-
-            var data = buffer.Array;
-            var offset = buffer.Offset;
-
-            if ((data[offset + 1] & 0x80) != 0) return 5;
-
-            int expectedByteCount = numberOfPoints * 2;
-            int byteCount = data[offset + 2];
-
-            if (byteCount != expectedByteCount)
-            {
-                throw new InvalidDataException($"Modbus响应字节数错误：期望 {expectedByteCount}，实际 {byteCount}");
-            }
-
-            int totalLength = 3 + byteCount + 2;
-
-            return buffer.Count >= totalLength ? totalLength : -1;
-        }
         #endregion
 
-        #region 验证响应数据帧
+        #region 数据协议的合法性
         /// <summary>
         /// 校验一条完整的 Modbus RTU 响应帧：帧长度、CRC16 校验和、从站地址与功能码，
         /// 并识别异常响应帧（功能码 bit7 置位）。
@@ -225,30 +151,55 @@ namespace SpaceCG.IO
         /// <param name="functionCode">期望的功能码。</param>
         /// <exception cref="InvalidOperationException">帧长度不足时抛出。</exception>
         /// <exception cref="InvalidDataException">CRC16 校验失败、从站地址不匹配或功能码不匹配时抛出。</exception>
-        /// <exception cref="ModbusException">从站返回异常响应帧（功能码 bit7 置位）时抛出。</exception>
         private static void ValidateResponseFrame(byte[] response, byte slaveAddress, byte functionCode)
         {
-            // 1. 帧长度校验：从站地址(1) + 功能码(1) + 异常码(1) + CRC(2) 至少 5 字节。
-            if (response == null || response.Length < 5)
-                throw new InvalidOperationException($"响应帧长度不足（{response?.Length ?? 0} 字节），至少需要 5 字节");
+            if (response == null)
+                throw new ArgumentNullException(nameof(response));
 
-            // 2. CRC16 校验：对除末尾 2 字节外的全部字节计算 Modbus CRC16， 并与帧末尾 2 字节（低字节在前）比对。
+            // 1. 帧长度校验：从站地址(1) + 功能码(1) + 异常码(1) + CRC(2) 至少 5 字节。
+            if (response.Length < 5)
+                throw new InvalidOperationException($"响应帧长度不足（{response.Length} 字节），至少需要 5 字节");
+
+            // 2. 从站地址校验。
+            if (response[0] != slaveAddress)
+                throw new InvalidDataException($"响应从站地址不匹配：期望 {slaveAddress}，实际 {response[0]}");
+
+            var responseFunctionCode = response[1];
+            // 3. 功能码低 7 位校验：允许 bit7 置位以兼容异常响应，因此仅比较低 7 位。
+            if ((responseFunctionCode & 0x7F) != functionCode)
+                throw new InvalidDataException($"响应功能码不匹配：期望 0x{functionCode:X2}，实际 0x{responseFunctionCode:X2}");
+
+            // 4. CRC16 校验：对除末尾 2 字节外的全部字节计算 Modbus CRC16， 并与帧末尾 2 字节（低字节在前）比对。
             var expectedCrc = CRCCheckHelper.ComputeCRC16_MODBUS(response, 0, response.Length - 2);
             var actualCrc = (ushort)(response[response.Length - 2] | (response[response.Length - 1] << 8));
             if (expectedCrc != actualCrc)
                 throw new InvalidDataException($"CRC16 校验失败：期望 0x{expectedCrc:X4}，实际 0x{actualCrc:X4}");
 
-            // 3. 从站地址校验。
-            if (response[0] != slaveAddress)
-                throw new InvalidDataException($"响应从站地址不匹配：期望 {slaveAddress}，实际 {response[0]}");
+            // 5. 异常帧识别：bit7 置位说明从站返回异常响应。
+            if ((responseFunctionCode & 0x80) != 0)
+                throw new InvalidDataException($"从站 {slaveAddress} 返回 Modbus 异常：功能码 0x{functionCode:X2}，异常码 0x{response[2]:X2}。");
+        }
+        private static void ValidateResponseFrameForBits(byte[] response, byte slaveAddress, byte functionCode, ushort numberOfPoints)
+        {
+            ValidateResponseFrame(response, slaveAddress, functionCode);
 
-            // 4. 功能码低 7 位校验：允许 bit7 置位以兼容异常响应，因此仅比较低 7 位。
-            if ((response[1] & 0x7F) != functionCode)
-                throw new InvalidDataException($"响应功能码不匹配：期望 {functionCode}，实际 {response[1] & 0x7F}");
+            // 6. 数据长度校验：功能码(1) + 数据长度(1) + 数据(1) + CRC
+            var expectedByteCount = (numberOfPoints + 7) / 8;
+            if (response[2] != expectedByteCount)
+                throw new InvalidDataException($"响应 ByteCount 不匹配：期望 {expectedByteCount}，实际 {response[2]}");
+            if (response.Length != 5 + expectedByteCount)
+                throw new InvalidDataException($"响应数据长度不匹配：期望 {5 + expectedByteCount}，实际 {response.Length}");
+        }
+        private static void ValidateResponseFrameForRegisters(byte[] response, byte slaveAddress, byte functionCode, ushort numberOfPoints)
+        {
+            ValidateResponseFrame(response, slaveAddress, functionCode);
 
-            // 5. 异常帧识别：bit7 置位说明从站返回异常响应，直接抛出 ModbusException。
-            if ((response[1] & 0x80) != 0)
-                throw new ModbusException(response[0], functionCode, response[2], $"从站 {slaveAddress} 返回异常码 0x{response[2]:X2}");
+            // 6. 数据长度校验：功能码(1) + 数据长度(1) + 数据(2 * numberOfPoints) + CRC
+            var expectedByteCount = numberOfPoints * 2;
+            if (response[2] != expectedByteCount)
+                throw new InvalidDataException($"响应 ByteCount 不匹配：期望 {expectedByteCount}，实际 {response[2]}");
+            if (response.Length != 5 + expectedByteCount)
+                throw new InvalidDataException($"响应数据长度不匹配：期望 {5 + expectedByteCount}，实际 {response.Length}");
         }
         #endregion
 
@@ -259,12 +210,10 @@ namespace SpaceCG.IO
         /// <param name="slaveAddress">从站地址（8 位）。</param>
         /// <param name="startAddress">起始线圈地址（16 位）。</param>
         /// <param name="numberOfPoints">要读取的线圈数量（16 位），取值范围 [1, 2000]。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
         /// <returns>长度等于 <paramref name="numberOfPoints"/> 的 <see cref="bool"/> 数组。</returns>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="numberOfPoints"/> 不在 [1, 2000] 范围内时抛出。</exception>
-        /// <exception cref="ModbusException">从站返回异常响应时抛出。</exception>
         /// <exception cref="TimeoutException">等待响应超时时抛出。</exception>
-        public async Task<bool[]> ReadCoilsAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints, CancellationToken cancellationToken = default)
+        public async Task<bool[]> ReadCoilsAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints)
 		{
             if (slaveAddress < 1 || slaveAddress > 247)
                 throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 1-247。");
@@ -272,8 +221,8 @@ namespace SpaceCG.IO
                 throw new ArgumentOutOfRangeException(nameof(numberOfPoints), "读取线圈数量必须在 1-2000 之间");
 
             var request = BuildReadRequestMessage(slaveAddress, 0x01, startAddress, numberOfPoints);
-			var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, cancellationToken).ConfigureAwait(false);
-            ValidateResponseFrame(response, slaveAddress, 0x01);
+			var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, _cts.Token).ConfigureAwait(false);
+            ValidateResponseFrameForBits(response, slaveAddress, 0x01, numberOfPoints);
 
 			return UnpackBits(response, numberOfPoints);
 		}
@@ -283,9 +232,8 @@ namespace SpaceCG.IO
         /// <param name="slaveAddress">从站地址（8 位）。</param>
         /// <param name="startAddress">起始输入地址（16 位）。</param>
         /// <param name="numberOfPoints">要读取的输入数量（16 位），取值范围 [1, 2000]。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
         /// <returns>长度等于 <paramref name="numberOfPoints"/> 的 <see cref="bool"/> 数组。</returns>
-        public async Task<bool[]> ReadInputsAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints, CancellationToken cancellationToken = default)
+        public async Task<bool[]> ReadInputsAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints)
         {
             if (slaveAddress < 1 || slaveAddress > 247)
                 throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 1-247。");
@@ -293,8 +241,8 @@ namespace SpaceCG.IO
                 throw new ArgumentOutOfRangeException(nameof(numberOfPoints), "读取输入数量必须在 1-2000 之间");
 
             var request = BuildReadRequestMessage(slaveAddress, 0x02, startAddress, numberOfPoints);
-            var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, cancellationToken).ConfigureAwait(false);
-            ValidateResponseFrame(response, slaveAddress, 0x02);
+            var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, _cts.Token).ConfigureAwait(false);
+            ValidateResponseFrameForBits(response, slaveAddress, 0x02, numberOfPoints);
 
             return UnpackBits(response, numberOfPoints);
         }
@@ -304,23 +252,22 @@ namespace SpaceCG.IO
         /// <param name="slaveAddress">从站地址（8 位）。</param>
         /// <param name="startAddress">起始寄存器地址（16 位）。</param>
         /// <param name="numberOfPoints">要读取的寄存器数量（16 位），取值范围 [1, 125]。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
         /// <returns>长度等于 <paramref name="numberOfPoints"/> 的 <see cref="ushort"/> 数组。</returns>
-        public async Task<ushort[]> ReadHoldingRegistersAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints, CancellationToken cancellationToken = default)
+        public async Task<ushort[]> ReadHoldingRegistersAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints)
         {
-            return await ReadRegistersCoreAsync(slaveAddress, 0x03, startAddress, numberOfPoints, cancellationToken).ConfigureAwait(false);
+            return await ReadRegistersCoreAsync(slaveAddress, 0x03, startAddress, numberOfPoints).ConfigureAwait(false);
         }
         /// <summary>
         /// 读取从站的输入寄存器（AI）值（功能码 0x04）。
         /// </summary>
-        public async Task<ushort[]> ReadInputRegistersAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints, CancellationToken cancellationToken = default)
+        public async Task<ushort[]> ReadInputRegistersAsync(byte slaveAddress, ushort startAddress, ushort numberOfPoints)
         {
-            return await ReadRegistersCoreAsync(slaveAddress, 0x04, startAddress, numberOfPoints, cancellationToken).ConfigureAwait(false);
+            return await ReadRegistersCoreAsync(slaveAddress, 0x04, startAddress, numberOfPoints).ConfigureAwait(false);
         }
         /// <summary>
         /// 读取寄存器的核心实现（功能码 3/4 共用）。
         /// </summary>
-        private async Task<ushort[]> ReadRegistersCoreAsync(byte slaveAddress, byte functionCode, ushort startAddress, ushort numberOfPoints, CancellationToken cancellationToken)
+        private async Task<ushort[]> ReadRegistersCoreAsync(byte slaveAddress, byte functionCode, ushort startAddress, ushort numberOfPoints)
         {
             if (slaveAddress < 1 || slaveAddress > 247)
                 throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 1-247。");
@@ -328,8 +275,8 @@ namespace SpaceCG.IO
                 throw new ArgumentOutOfRangeException(nameof(numberOfPoints), "读取寄存器数量必须在 1-125 之间");
 
             var request = BuildReadRequestMessage(slaveAddress, functionCode, startAddress, numberOfPoints);
-            var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, cancellationToken).ConfigureAwait(false);
-            ValidateResponseFrame(response, slaveAddress, functionCode);
+            var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, _cts.Token).ConfigureAwait(false);
+            ValidateResponseFrameForRegisters(response, slaveAddress, functionCode, numberOfPoints);
 
             return UnpackRegisters(response, numberOfPoints);
         }
@@ -342,11 +289,10 @@ namespace SpaceCG.IO
         /// <param name="slaveAddress">从站地址（8 位）。</param>
         /// <param name="coilAddress">线圈地址（16 位）。</param>
         /// <param name="value">写入值（true=ON，false=OFF）。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
-        public async Task WriteSingleCoilAsync(byte slaveAddress, ushort coilAddress, bool value, CancellationToken cancellationToken = default)
+        public async Task WriteSingleCoilAsync(byte slaveAddress, ushort coilAddress, bool value)
         {
-            //if (slaveAddress < 1 || slaveAddress > 247)
-            //    throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 1-247。");
+            if (slaveAddress > 247)
+                throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 0-247。");
 
             // 功能码 5 请求：从站(1) + 0x05(1) + 线圈地址(2) + 写入值(2: 0xFF00=ON, 0x0000=OFF) + CRC(2)
             var request = new byte[8];
@@ -355,13 +301,20 @@ namespace SpaceCG.IO
             request[2] = (byte)(coilAddress >> 8);
             request[3] = (byte)coilAddress;
             // 功能码 5 的写入值：ON = 0xFF00，OFF = 0x0000（高字节在前）
-            request[4] = value ? (byte)0xFF : (byte)0x00;
+            request[4] = (byte)(value ? 0xFF : 0x00);
             request[5] = 0x00;
 
             AppendCrc16(request);
 
-            var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, cancellationToken).ConfigureAwait(false);
-            ValidateResponseFrame(response, slaveAddress, 0x05);
+            if (slaveAddress != 0)
+            {
+                var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, _cts.Token).ConfigureAwait(false);
+                ValidateResponseFrame(response, slaveAddress, 0x05);
+            }
+            else
+            {
+                await _session.WriteAsync(request, 0, request.Length, _cts.Token).ConfigureAwait(false);
+            }
         }
         /// <summary>
         /// 写入值到从站单个保持寄存器（功能码 0x06）。
@@ -369,9 +322,11 @@ namespace SpaceCG.IO
         /// <param name="slaveAddress">从站地址（8 位）。</param>
         /// <param name="registerAddress">寄存器地址（16 位）。</param>
         /// <param name="value">写入值（16 位）。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
-        public async Task WriteSingleRegisterAsync(byte slaveAddress, ushort registerAddress, ushort value, CancellationToken cancellationToken = default)
+        public async Task WriteSingleRegisterAsync(byte slaveAddress, ushort registerAddress, ushort value)
         {
+            if (slaveAddress > 247)
+                throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 0-247。");
+
             // 功能码 6 请求：从站(1) + 0x06(1) + 寄存器地址(2) + 写入值(2) + CRC(2)
             var request = new byte[8];
             request[0] = slaveAddress;
@@ -383,8 +338,15 @@ namespace SpaceCG.IO
 
             AppendCrc16(request);
 
-            var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, cancellationToken).ConfigureAwait(false);
-            ValidateResponseFrame(response, slaveAddress, 0x06);
+            if (slaveAddress != 0)
+            {
+                var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, _cts.Token).ConfigureAwait(false);
+                ValidateResponseFrame(response, slaveAddress, 0x06);
+            }
+            else
+            {
+                await _session.WriteAsync(request, 0, request.Length, _cts.Token).ConfigureAwait(false);
+            }
         }
         /// <summary>
         /// 写入多个线圈（功能码 0x0F）。
@@ -392,9 +354,11 @@ namespace SpaceCG.IO
         /// <param name="slaveAddress">从站地址（8 位）。</param>
         /// <param name="startAddress">起始线圈地址（16 位）。</param>
         /// <param name="values">写入值（布尔数组）。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
-        public async Task WriteMultipleCoilsAsync(byte slaveAddress, ushort startAddress, bool[] values, CancellationToken cancellationToken = default)
+        public async Task WriteMultipleCoilsAsync(byte slaveAddress, ushort startAddress, bool[] values)
         {
+            if (slaveAddress > 247)
+                throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 0-247。");
+
             if (values == null || values.Length == 0)
                 throw new ArgumentNullException(nameof(values), "线圈值数组不能为空");
             if (values.Length > 1968)
@@ -422,9 +386,15 @@ namespace SpaceCG.IO
             Array.Copy(packed, 0, request, 7, byteCount);
             AppendCrc16(request);
 
-            var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, cancellationToken).ConfigureAwait(false);
-
-            ValidateResponseFrame(response, slaveAddress, 0x0F);
+            if (slaveAddress != 0)
+            {
+                var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, _cts.Token).ConfigureAwait(false);
+                ValidateResponseFrame(response, slaveAddress, 0x0F);
+            }
+            else
+            {
+                await _session.WriteAsync(request, 0, request.Length, _cts.Token).ConfigureAwait(false);
+            }
         }
         /// <summary>
         /// 写入多个保持寄存器（功能码 0x10）。
@@ -432,9 +402,11 @@ namespace SpaceCG.IO
         /// <param name="slaveAddress">从站地址（8 位）。</param>
         /// <param name="startAddress">起始寄存器地址（16 位）。</param>
         /// <param name="values">写入值（16 位整型数组）。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
-        public async Task WriteMultipleRegistersAsync(byte slaveAddress, ushort startAddress, ushort[] values, CancellationToken cancellationToken = default)
+        public async Task WriteMultipleRegistersAsync(byte slaveAddress, ushort startAddress, ushort[] values)
         {
+            if (slaveAddress > 247)
+                throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 0-247。");
+
             if (values == null || values.Length == 0)
                 throw new ArgumentNullException(nameof(values), "寄存器值数组不能为空");
             if (values.Length > 123)
@@ -458,8 +430,15 @@ namespace SpaceCG.IO
 
             AppendCrc16(request);
 
-            var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, cancellationToken).ConfigureAwait(false);
-            ValidateResponseFrame(response, slaveAddress, 0x10);
+            if (slaveAddress != 0)
+            {
+                var response = await _session.TransceiveAsync(request, 0, request.Length, WriteResponseFramePredicate, _cts.Token).ConfigureAwait(false);
+                ValidateResponseFrame(response, slaveAddress, 0x10);
+            }
+            else
+            {
+                await _session.WriteAsync(request, 0, request.Length, _cts.Token).ConfigureAwait(false);
+            }
         }
         #endregion
 
@@ -472,10 +451,11 @@ namespace SpaceCG.IO
         /// <param name="numberOfPointsToRead">读取数量（16 位），取值范围 [1, 125]。</param>
         /// <param name="startWriteAddress">写入起始地址（16 位）。</param>
         /// <param name="writeData">写入值（16 位整型数组）。</param>
-        /// <param name="cancellationToken">取消操作的通知。</param>
         /// <returns>读回的寄存器值数组。</returns>
-        public async Task<ushort[]> ReadWriteMultipleRegistersAsync(byte slaveAddress, ushort startReadAddress, ushort numberOfPointsToRead, ushort startWriteAddress, ushort[] writeData, CancellationToken cancellationToken = default)
+        public async Task<ushort[]> ReadWriteMultipleRegistersAsync(byte slaveAddress, ushort startReadAddress, ushort numberOfPointsToRead, ushort startWriteAddress, ushort[] writeData)
         {
+            if (slaveAddress < 1 || slaveAddress > 247)
+                throw new ArgumentOutOfRangeException(nameof(slaveAddress), "Modbus RTU 从站地址必须为 1-247。");
             if (numberOfPointsToRead < 1 || numberOfPointsToRead > 125)
                 throw new ArgumentOutOfRangeException(nameof(numberOfPointsToRead), "读取寄存器数量必须在 1-125 之间");
             if (writeData == null || writeData.Length == 0)
@@ -506,15 +486,27 @@ namespace SpaceCG.IO
 
             AppendCrc16(request);
 
-            var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, cancellationToken).ConfigureAwait(false);
-            ValidateResponseFrame(response, slaveAddress, 0x17);
+            var response = await _session.TransceiveAsync(request, 0, request.Length, ReadDataFramePredicate, _cts.Token).ConfigureAwait(false);
+            ValidateResponseFrameForRegisters(response, slaveAddress, 0x17, numberOfPointsToRead);
 
             return UnpackRegisters(response, numberOfPointsToRead);
         }
         #endregion
 
         /// <inheritdoc /> 
-        public void Dispose() => _session.Dispose();
-        
+        public void Dispose()
+        {
+            try
+            {
+                _cts?.Cancel();
+                _cts?.Dispose();
+            }
+            finally
+            {
+            }
+
+            _session.Dispose();
+        }
+
     }
 }

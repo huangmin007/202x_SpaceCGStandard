@@ -42,9 +42,12 @@ namespace Z_TestWpfApp
             Trace.Listeners.Add(new LoggerTraceListener(true));
          
         }
-        protected override void OnClosing(CancelEventArgs e)
+        protected override async void OnClosing(CancelEventArgs e)
         {
             base.OnClosing(e);
+
+            await modbusRtu.WriteMultipleCoilsAsync(0x01, 0x00, new bool[] { false, false, false, false, false, false, false, false });
+
 
             rpcServer?.Dispose();
             _ledRenderBus?.Dispose();
@@ -158,7 +161,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.Q:
-                    var response = await modbusRtu.ReadHoldingRegistersAsync(0x02, 0x0000, 0x0002, CancellationToken.None);
+                    var response = await modbusRtu.ReadHoldingRegistersAsync(0x02, 0x0000, 0x0002);
                     Trace.WriteLine($"Result::{string.Join(" ", response.Select(x => x.ToString("X2")))}");
                     var lo = response[0];
                     var hi = response[1];
@@ -167,9 +170,12 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.S:
-                    await modbusRtu.WriteMultipleCoilsAsync(0x01, 0x00, new bool[] { false, false, false, false, false, false, false, false }, CancellationToken.None);
-                    var r0 = await modbusRtu.ReadCoilsAsync(0x01, 0x00, 8, CancellationToken.None);
+                    await modbusRtu.WriteMultipleCoilsAsync(0x01, 0x00, new bool[] { false, true, false, false, false, false, false, true });
+                    var r0 = await modbusRtu.ReadCoilsAsync(0x01, 0x00, 16);
                     Trace.WriteLine($"Result::{string.Join(" ", r0)}");
+
+                    var r1 = await modbusRtu.ReadInputsAsync(0x01, 0x00, 16);
+                    Trace.WriteLine($"Result::{string.Join(" ", r1)}");
                     break;
             }
         }
@@ -250,7 +256,7 @@ namespace Z_TestWpfApp
             //rfidDevice.Open();
             //rfidDevice.StartSync();
 
-            modbusRtu = new ModbusRtu(ChannelType.Serial, "CH343,38400");
+            modbusRtu = new ModbusRtu(ChannelType.Serial, "CH340,19200");
 
             //requestResponse = new RequestResponseBase(ChannelType.SERIAL, "COM34,19200");
 

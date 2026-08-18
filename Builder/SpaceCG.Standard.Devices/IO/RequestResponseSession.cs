@@ -258,7 +258,7 @@ namespace SpaceCG.IO
                 stopwatch.Restart();
                 var responseTimeout = Math.Max(0, request.ResponseTimeout);
                 if (responseTimeout <= 0) responseTimeout = readTimeout > 0 ? readTimeout : 200;
-
+                
                 while (true)
                 {                
                     if (stopwatch.ElapsedMilliseconds >= responseTimeout)
@@ -306,25 +306,32 @@ namespace SpaceCG.IO
         }
 
         /// <summary>
-        /// 只写模式：将数据入队并异步发送，发送后即返回，不等待设备响应（发射后即忘）。
+        /// 只写模式：将数据入队并异步发送，数据发送后，等待 <paramref name="writeDelay"/> 后返回任务完成。
         /// </summary>
         /// <param name="data">待发送的数据缓冲区。</param>
         /// <param name="offset"><paramref name="data"/> 中开始发送的字节偏移量。</param>
         /// <param name="length">从 <paramref name="data"/> 中发送的字节数。</param>
+        /// <param name="writeDelay">发送帧之间的延迟时间，单位：毫秒。</param>
         /// <param name="cancellationToken">取消操作的通知。</param>
         /// <returns>表示异步入队操作的任务；注意该方法仅将数据写入队列，
         /// 实际发送由后台处理线程执行，返回的 Task 不代表底层通道已完成写入。</returns>
         /// <exception cref="ArgumentNullException"><paramref name="data"/> 为 null 或长度为 0。</exception>
-        public async Task WriteAsync(byte[] data, int offset, int length, CancellationToken cancellationToken)
+        public async Task WriteAsync(byte[] data, int offset, int length, int writeDelay, CancellationToken cancellationToken)
         {
             if (_transportChannel == null || !_transportChannel.IsConnected)
                 throw new InvalidOperationException($"传输通道 {_transportChannel?.Name} 未连接。");
+
+            if (data == null || data.Length == 0) throw new ArgumentNullException(nameof(data));
+            if (offset < 0 || offset >= data.Length) throw new ArgumentOutOfRangeException(nameof(offset));
+            if (length <= 0 || offset + length > data.Length) throw new ArgumentOutOfRangeException(nameof(length));
+
+            if (writeDelay < 0) throw new ArgumentOutOfRangeException(nameof(writeDelay));
 
             var pending = new Pending(InteractionMode.WriteOnly);
             pending.Data = data;
             pending.Offset = offset;
             pending.Length = length;
-            pending.WriteFrameDelay = WriteFrameDelay;
+            pending.WriteFrameDelay = writeDelay;
             pending.CancellationToken = cancellationToken;
 
             var completionSource = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -334,6 +341,11 @@ namespace SpaceCG.IO
 
             await completionSource.Task.ConfigureAwait(false);
         }
+        /// <summary>
+        /// 只写模式：将数据入队并异步发送，数据发送后，等待 <see cref="WriteFrameDelay"/> 后返回任务完成。
+        /// </summary>
+        /// <inheritdoc cref="WriteAsync(byte[], int, int, int, CancellationToken)"/>
+        public async Task WriteAsync(byte[] data, int offset, int length, CancellationToken cancellationToken) => await WriteAsync(data, offset, length, WriteFrameDelay, cancellationToken);
 
         /// <summary>
         /// 发送请求数据，并异步等待由 <paramref name="framePredicate"/> 判定边界的响应。
@@ -341,12 +353,13 @@ namespace SpaceCG.IO
         /// <param name="data">请求数据缓冲区。</param>
         /// <param name="offset"><paramref name="data"/> 中开始发送的字节偏移量。</param>
         /// <param name="length">从 <paramref name="data"/> 中发送的字节数。</param>
+        /// <param name="responseTimeout">响应超时时间，单位：毫秒。</param>
         /// <param name="framePredicate">响应完整性判定器。</param>
         /// <param name="cancellationToken">取消操作的通知。</param>
         /// <returns>接收到的完整响应数据。</returns>
         /// <exception cref="ArgumentNullException"><paramref name="data"/> 或 <paramref name="framePredicate"/> 为 <c>null</c>。</exception>
         /// <exception cref="ArgumentException"><paramref name="offset"/> 或 <paramref name="length"/> 越界。</exception>
-        public async Task<byte[]> TransceiveAsync(byte[] data, int offset, int length, ResponseFramePredicate framePredicate, CancellationToken cancellationToken)
+        public async Task<byte[]> TransceiveAsync(byte[] data, int offset, int length, int responseTimeout, ResponseFramePredicate framePredicate, CancellationToken cancellationToken)
         {
             if (_transportChannel == null || !_transportChannel.IsConnected)
                 throw new InvalidOperationException($"传输通道 {_transportChannel?.Name} 未连接。");
@@ -354,6 +367,8 @@ namespace SpaceCG.IO
             if (data == null || data.Length == 0) throw new ArgumentNullException(nameof(data));
             if (offset < 0 || offset >= data.Length) throw new ArgumentOutOfRangeException(nameof(offset));
             if (length <= 0 || offset + length > data.Length) throw new ArgumentOutOfRangeException(nameof(length));
+
+            if (responseTimeout < 0) throw new ArgumentOutOfRangeException(nameof(responseTimeout));
             if (framePredicate == null) throw new ArgumentNullException(nameof(framePredicate));
             
             var pending = new Pending(InteractionMode.RequestResponse);
@@ -361,6 +376,7 @@ namespace SpaceCG.IO
             pending.Offset = offset;
             pending.Length = length;
             pending.FramePredicate = framePredicate;
+            pending.ResponseTimeout = responseTimeout;
             pending.CancellationToken = cancellationToken;
 
             var completionSource = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -370,10 +386,12 @@ namespace SpaceCG.IO
 
             return await completionSource.Task.ConfigureAwait(false);
         }
-
-        /// <inheritdoc cref="TransceiveAsync(byte[], int, int, ResponseFramePredicate, CancellationToken)"/>
+        /// <inheritdoc cref="TransceiveAsync(byte[], int, int, int, ResponseFramePredicate, CancellationToken)"/> 
+        public async Task<byte[]> TransceiveAsync(byte[] data, int offset, int length, ResponseFramePredicate framePredicate, CancellationToken cancellationToken)
+            => await TransceiveAsync(data, offset, length, ResponseTimeout, framePredicate, cancellationToken);        
+        /// <inheritdoc cref="TransceiveAsync(byte[], int, int, int, ResponseFramePredicate, CancellationToken)"/>
         public async Task<byte[]> TransceiveAsync(byte[] data, ResponseFramePredicate framePredicate, CancellationToken cancellationToken)
-            => await TransceiveAsync(data, 0, data.Length, framePredicate, cancellationToken);
+            => await TransceiveAsync(data, 0, data.Length, ResponseTimeout, framePredicate, cancellationToken);
 
         /// <summary>
         /// 发送请求数据，并异步等待固定长度 <paramref name="fixedLength"/> 字节的响应。
