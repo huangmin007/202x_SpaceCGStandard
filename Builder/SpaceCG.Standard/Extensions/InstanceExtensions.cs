@@ -344,11 +344,14 @@ namespace SpaceCG.Extensions
                 return false;
             }
 
-            if (isExtensionMethod && convertedParameters?.Length > 0)
+            if (isExtensionMethod)
             {
-                convertedParameters[0] = instance;
+                if (convertedParameters?.Length > 0)
+                    convertedParameters[0] = instance;
+                else
+                    convertedParameters = new object[] { instance };
             }
-
+            
             try
             {
                 returnResult = methodInfo.Invoke(instance, convertedParameters);
@@ -378,6 +381,7 @@ namespace SpaceCG.Extensions
             if (instance == null || string.IsNullOrWhiteSpace(methodName)) return false;
 
             var instanceType = instance.GetType();
+            var paramLength = parameters?.Length ?? 0;
             var paramSignature = parameters?.Select(p => p.GetType()).GetSignature();
             var instanceMethodKey = $"{instanceType.FullName}.{methodName}({paramSignature})";
 
@@ -390,7 +394,7 @@ namespace SpaceCG.Extensions
                     if (method.Name != methodName) continue;
 
                     var methodParameters = method.GetParameters();
-                    if (methodParameters.Length != parameters.Length) continue;
+                    if (methodParameters.Length != paramLength) continue;
                     if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;   // ref out 参数不支持
 
                     var tempSignature = methodParameters.Select(p => p.ParameterType).GetSignature();
@@ -430,7 +434,7 @@ namespace SpaceCG.Extensions
 
                             var methodParameters = method.GetParameters();
                             if (methodParameters == null || methodParameters.Length == 0) continue;
-                            if (methodParameters.Length - 1 != parameters.Length) continue;
+                            if (methodParameters.Length - 1 != paramLength) continue;
                             if (methodParameters.Any(p => p.ParameterType.IsByRef)) continue;
 
                             // 使用 IsAssignableFrom 支持基类和接口类型的扩展方法
@@ -449,7 +453,7 @@ namespace SpaceCG.Extensions
 
                 return null;
             });
-
+            
             if (methodInfo == null)
             {
                 Trace.TraceWarning($"未找到实例对象 ({instance}) 的方法 ({methodName})");
@@ -466,7 +470,7 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <param name="instance">目标实例对象。<b>不可为 null</b>。</param>
         /// <param name="methodName">要调用的方法的名称。必须是 实例方法 或 实例扩展方法 的名称，不可为 <c>null</c>。</param>
-        /// <param name="paramText">传递给方法的业务参数数组的字符串形式（不包含扩展方法的 this 参数）。
+        /// <param name="textParams">传递给方法的业务参数数组的字符串形式（不包含扩展方法的 this 参数）。
         /// <list type="bullet">
         /// <item>多个参数使用 ',' 隔开</item>
         /// <item>基本元素只支持，String &amp; Value Type</item>
@@ -476,12 +480,12 @@ namespace SpaceCG.Extensions
         /// </param>
         /// <param name="returnResult">当方法返回 <c>true</c> 时，包含方法的返回值，方法无返回值时为 <c>null</c>。</param>
         /// <returns>如果成功执行方法，则为 <c>true</c>；否则为 <c>false</c>。</returns>
-        public static bool TryInvokeMethod(object instance, string methodName, string paramText, out object returnResult)
+        public static bool TryInvokeMethod(object instance, string methodName, string textParams, out object returnResult)
         {
             returnResult = null;
             if (instance == null || string.IsNullOrWhiteSpace(methodName)) return false;
 
-            if (paramText.TryParseParameters(out var paramArray))
+            if (textParams.TryParseParameters(out var paramArray))
             {
                 return TryInvokeMethod(instance, methodName, paramArray, out returnResult);
             }

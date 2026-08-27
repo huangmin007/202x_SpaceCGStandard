@@ -69,6 +69,7 @@ namespace Z_TestWpfApp
             {
                 case Key.D0:
                     //ledRenderControl.RenderSceneId(0);
+                    InstanceExtensions.TryInvokeMethod(this, "HomeItem", string.Empty, out var resultReturn);
                     break;
                 case Key.D1:
                     //ledRenderControl.RenderSceneId(1);
@@ -267,6 +268,16 @@ namespace Z_TestWpfApp
         {
             Trace.WriteLine(b.Count);
             return b.Count.ToString();
+        }
+
+        public void HomeItem()
+        {
+            Trace.WriteLine("HomeItem");
+        }
+
+        public void HomeItem(string msg)
+        {
+            Trace.WriteLine($"HomeItem::{msg}");
         }
 
         public void Echo(string msg, string msg2)

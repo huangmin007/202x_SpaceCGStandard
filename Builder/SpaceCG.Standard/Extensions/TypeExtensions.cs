@@ -240,20 +240,21 @@ namespace SpaceCG.Extensions
         public static bool TryConvertParameters(object[] parameters, MethodInfo methodInfo, out object[] convertedParameters)
         {
             convertedParameters = null;
-            if (methodInfo == null || parameters == null) return false;
+            if (methodInfo == null) return false;
 
+            var paramsLength = parameters?.Length ?? 0;
             var methodParams = methodInfo.GetParameters();
             var isExtension = methodInfo.IsDefined(typeof(ExtensionAttribute), false);
             var offsetParams = isExtension ? 1 : 0;
 
-            if (methodParams.Length - offsetParams != parameters.Length) return false;
+            if (methodParams.Length - offsetParams != paramsLength) return false;
 
             convertedParameters = new object[methodParams.Length];
             // 扩展方法：首个参数（this）以 null 占位，调用方负责在 Invoke 前替换为实例
             if (isExtension)
                 convertedParameters[0] = null;
 
-            for (int i = 0; i < parameters.Length; i++)
+            for (int i = 0; i < paramsLength; i++)
             {
                 if (!TryConvertParameter(parameters[i], methodParams[i + offsetParams].ParameterType, out var converted))
                     return false;

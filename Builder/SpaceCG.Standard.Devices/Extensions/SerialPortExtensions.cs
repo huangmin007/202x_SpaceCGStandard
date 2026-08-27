@@ -1,9 +1,13 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Ports;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using SpaceCG.Generic;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {
@@ -249,7 +253,108 @@ namespace SpaceCG.Extensions
         /// </summary>
         /// <inheritdoc cref="TransceiveAsync(SerialPort, byte[], int, int, int, CancellationToken)"/>
         public static Task<byte[]> TransceiveAsync(this SerialPort serialPort, byte[] data, int responseLength, CancellationToken cancellationToken)
-            => serialPort.TransceiveAsync(data, 0, data.Length, responseLength, cancellationToken);        
+            => serialPort.TransceiveAsync(data, 0, data.Length, responseLength, cancellationToken);
         #endregion
+
+        #region 创建串口实例对象
+        /// <summary>
+        /// 创建串口实例对象
+        /// <para>按基本属性顺序排列：PortName、BaudRate、DataBits、StopBits、Parity，其中 PortName、BaudRate 为必填参数，其余可选不配置</para>
+        /// </summary>
+        /// <param name="config"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public static SerialPort CreateInstance(string config) => CreateInstance(config?.Split(','));
+        /// <summary>
+        /// 创建串口实例对象
+        /// <para>按基本属性顺序排列：PortName、BaudRate、DataBits、StopBits、Parity，其中 PortName、BaudRate 为必填参数，其余可选不配置</para>
+        /// </summary>
+        /// <param name="config"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public static SerialPort CreateInstance(IEnumerable<string> config)
+        {
+            if (config == null) throw new ArgumentNullException("config");
+            if (config.Count() < 2) throw new ArgumentException("配置串口参数错误，至少需要配置两个参数： PortName 和 BaudRate 参数");
+
+            string[] propertyNames = { nameof(SerialPort.PortName), nameof(SerialPort.BaudRate), nameof(SerialPort.DataBits), nameof(SerialPort.StopBits), nameof(SerialPort.Parity) };
+
+            var count = Math.Min(config.Count(), propertyNames.Length);
+            var dictionary = new Dictionary<string, string>(count);
+
+            for (int i = 0; i < count; i++)
+            {
+                dictionary.Add(propertyNames[i], config.ElementAt(i));
+            }
+
+            return CreateInstance(dictionary);
+        }
+        /// <summary>
+        /// 创建串口实例对象
+        /// </summary>
+        /// <param name="config"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public static SerialPort CreateInstance(IReadOnlyDictionary<string, string> config)
+        {
+            if (config == null) throw new ArgumentNullException("config");
+            if (config.Count < 2 || !config.ContainsKey(nameof(SerialPort.PortName)) || !config.ContainsKey(nameof(SerialPort.BaudRate)))
+                throw new ArgumentException("配置串口参数错误，至少需要配置两个参数： PortName 和 BaudRate 参数");
+
+            SerialPort serialPort = new SerialPort();
+            foreach (var attribute in config)
+            {
+                var propertyName = attribute.Key;
+                var propertyValue = attribute.Value;
+
+                if (propertyName == nameof(SerialPort.PortName))
+                {
+                    propertyValue = GetPortName(propertyValue);
+                }
+
+                if (!InstanceExtensions.TrySetPropertyValue(serialPort, propertyName, propertyValue))
+                {
+                    Trace.TraceWarning($"配置串口属性 {propertyName} 值 {propertyValue} 错误，参数无效");
+                }
+            }
+
+            return serialPort;
+        }
+        /// <summary>
+        /// 跟据 XElement 节点属性，创建串口实例对象
+        /// </summary>
+        /// <param name="config"></param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public static SerialPort CreateInstance(XElement config)
+        {
+            if (config == null) throw new ArgumentNullException("config");
+            if (!config.HasAttributes) throw new ArgumentException("配置串口参数错误，至少需要配置两个属性：PortName、BaudRate 属性");
+
+            SerialPort serialPort = new SerialPort();
+            foreach (var attribute in config.Attributes())
+            {
+                string propertyName = attribute.Name.LocalName;
+                string propertyValue = attribute.Value;
+
+                if (propertyName == nameof(SerialPort.PortName))
+                {
+                    propertyValue = GetPortName(propertyValue);
+                }
+
+                if (!InstanceExtensions.TrySetPropertyValue(serialPort, propertyName, propertyValue))
+                {
+                    Trace.TraceWarning($"配置串口属性 {propertyName} 值 {propertyValue} 错误，参数无效");
+                }
+            }
+
+            return serialPort;
+        }
+        #endregion
+
     }
 }
