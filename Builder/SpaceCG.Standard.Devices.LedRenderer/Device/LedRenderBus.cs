@@ -36,6 +36,8 @@ namespace SpaceCG.Device
         internal const int DefaultResponseTimeout = 300;
         /// <summary> 默认设备响应轮询间隔时间，单位：毫秒 </summary>
         internal const int DefaultResponsePollInterval = 1;
+
+        internal const string WriteException = nameof(WriteException);
         #endregion
 
 
@@ -203,6 +205,7 @@ namespace SpaceCG.Device
             { "DERR", "数据长度与颜色数据字节数不符" },
             { "Timeout", "数据帧接收不完整或接收超时" },
             { "SaveInsErr", "设置上电 显示(0x9B)/关闭(0x9C) 颜色保存失败" },
+            { nameof(WriteException), "自定义，设备写入异常" },
             { nameof(ResponseTimeout), "自定义，设备响应超时" },
         };
         #endregion
@@ -788,7 +791,7 @@ namespace SpaceCG.Device
             catch (Exception ex)
             {
                 Trace.TraceWarning($"RenderBus ({Name}) Channel.Write Frame Exception: {ex.Message}");
-                return string.Empty;
+                return nameof(WriteException);
             }
 
             var funCode = frame[8];
