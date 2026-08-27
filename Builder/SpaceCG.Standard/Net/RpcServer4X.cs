@@ -32,7 +32,7 @@ namespace SpaceCG.Net
         /// 使用指定的端口创建 <see cref="RpcServer4X"/> 实例。
         /// </summary>
         /// <inheritdoc cref="RpcServer4X(IPAddress, int, bool)"/>
-        public RpcServer4X(int localPort, bool useLegacyDelimiter) : this(IPAddress.Any, localPort, useLegacyDelimiter)
+        public RpcServer4X(int localPort, bool useLegacyDelimiter = true) : this(IPAddress.Any, localPort, useLegacyDelimiter)
         {            
         }
         /// <summary>

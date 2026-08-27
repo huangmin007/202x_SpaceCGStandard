@@ -32,8 +32,8 @@ namespace SpaceCG.Net
     {
         /// <summary> 使用 CRLF（0x0D, 0x0A）的消息分隔符。 </summary>
         public static readonly byte[] NewLine = new byte[] { 0x0D, 0x0A };
-        /// <summary> 对象名称或方法名称的命名规则正则表达式，允许字母开头后跟字母、数字、下划线。 </summary>
-        public static readonly Regex IdentifierPattern = new Regex(@"^[a-zA-Z_][a-zA-Z0-9_]*$", RegexOptions.Compiled);
+        /// <summary> 对象名称或方法名称的命名规则正则表达式，允许字母开头后跟字母、数字、下划线，长度为 32 个字符。 </summary>
+        public static readonly Regex IdentifierPattern = new Regex(@"^[a-zA-Z_][a-zA-Z0-9_]{0,31}$", RegexOptions.Compiled);
 
         private bool _isDisposed;
         private Task _acceptConnectTask;

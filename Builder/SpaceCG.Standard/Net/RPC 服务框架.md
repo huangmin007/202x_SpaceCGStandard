@@ -25,7 +25,7 @@
 |------|------|
 | **使用场景** | 局域网内 DEMO 交互控制，PC 端应用程序远程操控 |
 | **数据特征** | 数据量小，传输频率低（< 100 fps），指令/控制类型数据 |
-| **协议理念** | 格式可读性高，可编辑，可调试；默认以 CRLF 作为分隔符，分隔字节数据块 |
+| **协议理念** | 格式可读性高，可编辑，可调试；默认以 `CRLF`（`0x0D 0x0A`）作为分隔符，分隔字节数据块 |
 | **性能目标** | 支持每秒 60~100 次/秒的方法调用，延迟稳定（< 16ms），*实际取决于程序性能* |
 | **线程安全** | 服务端通过 `SynchronizationContext.Send` 将方法调用封送到 UI 线程或服务线程，保证注册对象的线程安全 |
 
@@ -38,7 +38,7 @@
 
 ### 1.3 字节数据与消息
 
-基类 `RpcServerBase` 默认以 **CRLF** 作为字节数据分隔符，对应一条数据消息：
+基类 `RpcServerBase` 默认以 `CRLF` 作为字节数据分隔符，对应一条数据消息：
 
 ```
 ┌────── 一条数据消息 (默认以 CRLF 结尾) ──────┐
@@ -197,8 +197,8 @@
 
 | 属性 | 类型 | 必须 | 说明 |
 |------|------|:--:|------|
-| `ObjectName` | `string` | ✅ 必须 | 已注册目标对象的名称 |
-| `MethodName` | `string` | ✅ 必须 | 目标方法名称 |
+| `ObjectName` | `string` | ✅ 必须 | 已注册目标对象的名称，需符合命名规则 `^[a-zA-Z_][a-zA-Z0-9_]{0,31}$` |
+| `MethodName` | `string` | ✅ 必须 | 目标对象方法的名称，需符合命名规则 `^[a-zA-Z_][a-zA-Z0-9_]{0,31}$` |
 | `Id` | `int` | 可选 | 消息唯一标识，用于请求-响应匹配，默认 0；<br />当 `Id < 0` 时（如 0、-1）表示不进行 Id 匹配跟踪，即忽略请求消息的 Id 属性 |
 | `Parameters` | `object[]` | 可选 | 方法参数列表，无参调用为 `null` |
 | `ResponseMode` | `int` | 可选 | 消息的响应模式：<br />-1 表示不响应；<br />0 默认，调用异常响应、方法有返回值响应，其它(`void`、`Task`)不响应；<br />1 需要响应，不关心是否有返回值 |
@@ -227,7 +227,7 @@ InvokeMessage.Create("Video", "Seek", new object[] { 5.6 });         // 强类�
 | `Description` | `string` | 可选 |  结果描述或错误信息 |
 | `ReturnType` | `Type` | 可选 | 返回值类型 |
 | `ReturnValue` | `object` | 可选 | 返回值 |
-| `Timestamp` | `DateTimeOffset` | 可选 | 响应时间戳 |
+| `Timestamp` | `DateTimeOffset` | 可选 | 响应时间戳（ISO8601），默认 UtcNow，字符解析为 O 格式 |
 | `Version` | `Version` | 可选 | 协议版本 2.0.0 |
 
 **状态码约定**：
@@ -253,7 +253,7 @@ InvokeMessage.Create("Video", "Seek", new object[] { 5.6 });         // 强类�
 基于 XML 协议的 `RpcServerBase` 实现，可直接使用的子类。
 
 **协议要点**：
-- 默认以 XML 元素结束标记 `/>` 为消息分隔符（兼容早期版本），可通过构造函数参数 `useLegacyDelimiter=false` 切换为 CRLF
+- 默认以 XML 元素结束标记 `/>` 为消息分隔符（兼容早期版本），可通过构造函数参数 `useLegacyDelimiter=false` 切换为 `CRLF`
 - `DeserializeInvokeMessage` 将字节数据解码为 UTF-8 字符串，通过 `XElement.Parse` 解析为单条 `InvokeMessage`
 - 请求格式：`<InvokeMessage ObjectName="xx" MethodName="xx" Parameters="xx" Id="xx" ResponseMode="xx" />\r\n`
 - 响应格式：`<ResponseMessage Id="xx" Code="xx" ObjectMethod="xx" ReturnValue="xx" ... />\r\n`
@@ -272,7 +272,8 @@ var server = new RpcServer4X(IPAddress.Loopback, 8080, useLegacyDelimiter: false
 
 ### 3.6 `RpcClientBase`
 
-客户端抽象基类，与 `RpcServerBase` 镜像对称设计。提供连接管理（`Connect()` / `Close()`）、环形缓冲 CRLF 数据拆分、请求/响应 Id 匹配、超时控制、自动重连等能力。<br />公共 API 包括 `InvokeFuncAsync()`（请求-响应，Func 语义）和 `InvokeActionAsync()`（单向通知，Action 语义）。
+客户端抽象基类，与 `RpcServerBase` 镜像对称设计。提供连接管理（`Connect()` / `Close()`）、环形缓冲 `CRLF` 数据拆分、请求/响应 `Id` 匹配、超时控制、自动重连等能力。<br />
+公共 API 包括 `InvokeFuncAsync()`（请求-响应，`Func` 语义）和 `InvokeActionAsync()`（单向通知，`Action` 语义）。
 
 ### 3.7 `RpcClient4X`
 
@@ -285,7 +286,7 @@ var server = new RpcServer4X(IPAddress.Loopback, 8080, useLegacyDelimiter: false
 ### 4.1 传输层
 
 - **传输层**：TCP（可靠字节流）
-- **数据层**：默认以 CRLF（`0x0D 0x0A`）分割数据字节
+- **数据层**：默认以 `CRLF`（`0x0D 0x0A`）分割数据字节
 - **字符编码**：UTF-8
 
 ### 4.2 消息层协议（子类定义）

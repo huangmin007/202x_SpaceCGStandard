@@ -190,6 +190,9 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            var test = "tABCDABCDABCDABCDABCDABCDABCDABC";
+            var res = RpcServerBase.IdentifierPattern.IsMatch(test);
+
             var array = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0D, 0x0A };
             var index = array.LastIndexOf(new byte[] { 0x0D, 0x0A });
             Trace.WriteLine($"Index:{index}");
