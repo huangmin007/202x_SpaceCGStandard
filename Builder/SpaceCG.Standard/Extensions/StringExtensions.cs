@@ -109,6 +109,33 @@ namespace SpaceCG.Extensions
 
             return false;
         }
+        /// <summary>
+        /// 判断文件名（或路径）的扩展名是否为常见音频频格式。
+        /// <para>扩展名比较忽略大小写，支持：mp3, wav。</para>
+        /// </summary>
+        /// <param name="fileName">文件名或文件路径</param>
+        /// <returns>是音频文件扩展名返回 <c>true</c>；null/空白/无扩展名返回 <c>false</c></returns>
+        public static bool IsAudioExtensions(this string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return false;
+
+            var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(extension)) return false;
+
+            switch (extension)
+            {
+                case ".ape":
+                case ".mp3":
+                case ".wav":
+                case ".aac":
+                case ".ogg":
+                case ".flac":
+                case ".alac":
+                    return true;
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// 判断字符串是否仅包含十六进制字符（0-9, A-F, a-f）。
