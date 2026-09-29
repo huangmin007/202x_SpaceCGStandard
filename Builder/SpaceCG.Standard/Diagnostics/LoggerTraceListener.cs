@@ -10,7 +10,7 @@ using System.Linq;
 using System.Diagnostics;
 using Trace = SpaceCG.Diagnostics.Trace;
 
-namespace SpaceCG.Generic
+namespace SpaceCG.Diagnostics
 {
     /// <summary>
     /// 异步日志跟踪侦听器，将 <see cref="System.Diagnostics.Trace"/> 输出写入文件和控制台。
@@ -35,7 +35,7 @@ namespace SpaceCG.Generic
     /// var listener2 = new LoggerTraceListener("D:/logs/myapp.log", "MyLogger");
     /// </code>
     /// </example>
-    public class LoggerTraceListener : System.Diagnostics.TraceListener
+    public class LoggerTraceListener : TraceListener
     {
         #region 公共属性
         /// <summary>
@@ -222,7 +222,7 @@ namespace SpaceCG.Generic
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void Initialize()
         {
-            base.Filter = new EventTypeFilter(SourceLevels.Information);
+            Filter = new EventTypeFilter(SourceLevels.Information);
 
             _syncContext = SynchronizationContext.Current;
             _cancelTokenSource = new CancellationTokenSource();
@@ -466,7 +466,7 @@ namespace SpaceCG.Generic
                 if (!string.IsNullOrWhiteSpace(moduleFileName))
                 {
                     var info = new FileInfo(moduleFileName);
-                    var versionInfo = System.Diagnostics.FileVersionInfo.GetVersionInfo(moduleFileName);
+                    var versionInfo = FileVersionInfo.GetVersionInfo(moduleFileName);
                     _writer.Write(versionInfo.ToString());
 
                     if (!string.IsNullOrWhiteSpace(info.Extension))

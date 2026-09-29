@@ -47,7 +47,7 @@ namespace SpaceCG.Extensions
 
         /// <summary>
         /// TCP 自动重连方法。循环检查连接状态，断开时自动清理旧连接并重连。
-        /// <para>连接正常时每 200 毫秒检查一次，连接断开后等待 3 秒后重试。注意：<paramref name="cancellationToken"/> 不能能空，或是默认值，否则无法取消自动重连。</para>
+        /// <para>连接正常时每 500 毫秒检查一次，连接断开后等待 3 秒后重试。注意：<paramref name="cancellationToken"/> 不能能空，或是默认值，否则无法取消自动重连。</para>
         /// </summary>
         /// <param name="tcpClient">初始 TCP 客户端实例。方法内部会替换此引用，调用方需在 onConnected 回调中更新外部引用。</param>
         /// <param name="address">远程 IP 地址或主机名。</param>
@@ -87,15 +87,13 @@ namespace SpaceCG.Extensions
             if (!cancellationToken.CanBeCanceled) throw new ArgumentNullException(nameof(cancellationToken), "不能为空，否则无法取消自动重连。");
 
             var delay = TimeSpan.FromSeconds(3.0);
-            var sendBufferSize = tcpClient.SendBufferSize;
-            var receiveBufferSize = tcpClient.ReceiveBufferSize;
 
             while (!cancellationToken.IsCancellationRequested)
             {
                 // 连接状态检查
-                if (tcpClient.IsConnected())
+                if (tcpClient != null && tcpClient.IsConnected())
                 {
-                    try { await Task.Delay(200, cancellationToken).ConfigureAwait(false); }
+                    try { await Task.Delay(500, cancellationToken).ConfigureAwait(false); }
                     catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException) { break; }
                     catch (Exception) { if (cancellationToken.IsCancellationRequested) break; }
                     continue;
@@ -106,25 +104,35 @@ namespace SpaceCG.Extensions
                 finally { tcpClient = null; }
 
                 // 创建新的连接对象
+                TcpClient newClient = null;
                 try
                 {
-                    var newClient = new TcpClient();
+                    newClient = new TcpClient();
                     await newClient.ConnectAsync(address, port).ConfigureAwait(false);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        newClient.Dispose();
+                        break;
+                    }
 
                     tcpClient = newClient;
-                    newClient.SendBufferSize = sendBufferSize;
-                    newClient.ReceiveBufferSize = receiveBufferSize;
                     Trace.TraceInformation($"客户端连接成功 {newClient.Client.LocalEndPoint} -> {newClient.Client.RemoteEndPoint}");
 
                     try { onConnected.Invoke(newClient); }
                     catch (Exception ex) { Trace.TraceWarning($"onConnected 回调异常: {ex.Message}"); }
                 }
-                catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException) { break; }
+                catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException) 
+                {
+                    newClient?.Dispose();
+                    break; 
+                }
                 catch (Exception ex)
                 {
+                    newClient?.Dispose();
                     if (cancellationToken.IsCancellationRequested) break;
                     Trace.TraceWarning($"客户端连接失败: {ex.Message}，重试中 .....");
 
+                    // 等待下次重连
                     try
                     {
                         await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
@@ -132,6 +140,7 @@ namespace SpaceCG.Extensions
                     }
                     catch (Exception ex0) when (ex0 is OperationCanceledException || ex0 is ObjectDisposedException) { break; }
                 }
+
             }
         }
 

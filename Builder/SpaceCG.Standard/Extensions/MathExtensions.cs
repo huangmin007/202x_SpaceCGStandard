@@ -153,134 +153,226 @@ namespace SpaceCG.Extensions
         #region GetBit/GetBits
         /// <summary>
         /// 从整数中读取指定位置的单个位。
-        /// <para>位编号：<c>index = 0</c> 为最低位（LSB），即二进制书写时的最右位，向高位递增。</para>
+        /// <para>位索引：<c>index = 0</c> 为最低位（LSB），即二进制书写时的最右位，向高位递增。</para>
         /// <para>例如：0xB4 (1011 0100)，GetBit(7) → true，GetBit(0) → false。</para>
         /// </summary>
-        /// <param name="value">源数据</param>
+        /// <param name="value">源数值</param>
         /// <param name="index">位索引位置（0 = LSB）</param>
         /// <returns>指定位为 1 时返回 <c>true</c>，否则返回 <c>false</c></returns>
         /// <exception cref="ArgumentOutOfRangeException"></exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte value, int index)
         {
             if (index < 0 || index >= 8)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 7] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 7] 之间");
             return (value & (1 << index)) != 0;
         }
         /// <inheritdoc cref="GetBit(byte, int)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this ushort value, int index)
         {
             if (index < 0 || index >= 16)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 15] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 15] 之间");
             return (value & (1 << index)) != 0;
         }
         /// <inheritdoc cref="GetBit(byte, int)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this uint value, int index)
         {
             if (index < 0 || index >= 32)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 31] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 31] 之间");
             return (value & (1U << index)) != 0;
         }
         /// <inheritdoc cref="GetBit(byte, int)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this ulong value, int index)
         {
             if (index < 0 || index >= 64)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 63] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 63] 之间");
             return (value & (1UL << index)) != 0;
         }
 
         /// <summary>
         /// 设置单个位并返回新值，原值不变。
-        /// <para>位编号：<c>index = 0</c> 为最低位（LSB），向高位递增。</para>
+        /// <para>位索引：<c>index = 0</c> 为最低位（LSB），向高位递增。</para>
         /// <para>例如：0xB4 (1011 0100)，SetBit(0, true) → 0xB5 (1011 0101)。</para>
         /// </summary>
-        /// <param name="value">源数据</param>
+        /// <param name="value">源数值</param>
         /// <param name="index">位索引位置（0 = LSB）</param>
         /// <param name="bit">要写入的位值</param>
         /// <returns>返回写入后的新值</returns>
         /// <exception cref="ArgumentOutOfRangeException"></exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte SetBit(this byte value, int index, bool bit)
         {
             if (index < 0 || index >= 8)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 7] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 7] 之间");
             return (byte)(bit ? value | (1 << index) : value & ~(1 << index));
         }
         /// <inheritdoc cref="SetBit(byte, int, bool)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort SetBit(this ushort value, int index, bool bit)
         {
             if (index < 0 || index >= 16)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 15] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 15] 之间");
             return (ushort)(bit ? value | (1 << index) : value & ~(1 << index));
         }
         /// <inheritdoc cref="SetBit(byte, int, bool)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint SetBit(this uint value, int index, bool bit)
         {
             if (index < 0 || index >= 32)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 31] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 31] 之间");
             return bit ? value | (1U << index) : value & ~(1U << index);
         }
         /// <inheritdoc cref="SetBit(byte, int, bool)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong SetBit(this ulong value, int index, bool bit)
         {
             if (index < 0 || index >= 64)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏索引应在 [0, 63] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 63] 之间");
             return bit ? value | (1UL << index) : value & ~(1UL << index);
         }
 
         /// <summary>
         /// 从整数中提取一段连续的位域（bit-field）。
-        /// <para>位偏移：<c>bit0</c> 为最低位（LSB），即二进制书写时的最右位，向高位递增。</para>
+        /// <para>位索引：<c>bit0</c> 为最低位（LSB），即二进制书写时的最右位，向高位递增。</para>
         /// <para>参数语义：<paramref name="index"/> 是位域的<b>最高位</b>位置，<paramref name="count"/>
-        /// 是从该位开始<b>向低位方向</b>连续的位数，等价于寄存器手册的区间记法 <c>Bits[offset : offset - count + 1]</c>。</para>
+        /// 是从该位开始<b>向低位方向</b>连续的位数，等价于寄存器手册的区间记法 <c>Bits[index : index - count + 1]</c>。</para>
         /// <para>例如：0x64 (0110 0100)，GetBits(5, 4) → Bits[5:2] = 1001 → 9；
         /// 0xB4 (1011 0100)，GetBits(5, 4) → Bits[5:2] = 1101 → 13（非回文，可校验方向）。</para>
         /// </summary>
-        /// <param name="value">源数据。</param>
+        /// <param name="value">源数值。</param>
         /// <param name="index">位的索引位置（0 = LSB）。</param>
-        /// <param name="count">要提取的连续位数。</param>
+        /// <param name="count">向低位连续提取的位数。</param>
         /// <returns>返回右对齐后的无符号位域值</returns>
         /// <exception cref="ArgumentOutOfRangeException"></exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte GetBits(this byte value, int index, int count)
         {
             if (index < 0 || index >= 8)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏移量应在 [0, 7] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 7] 之间");
             if (count < 1 || count > index + 1)
                 throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 8] 之间");
 
-            return (byte)((value >> (index - count + 1)) & ((1 << count) - 1));
+            var shift = index - count + 1;
+            var mask = (byte)(byte.MaxValue >> (8 - count));
+
+            return (byte)((value >> shift) & mask);
         }
         /// <inheritdoc cref="GetBits(byte, int, int)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ushort GetBits(this ushort value, int index, int count)
         {
             if (index < 0 || index >= 16)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏移量应在 [0, 15] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 15] 之间");
             if (count < 1 || count > index + 1)
                 throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 16] 之间");
 
-            return (ushort)((value >> (index - count + 1)) & ((1 << count) - 1));
+            var shift = index - count + 1;
+            var mask = (ushort)(ushort.MaxValue >> (16 - count));
+
+            return (ushort)((value >> shift) & mask);
         }
         /// <inheritdoc cref="GetBits(byte, int, int)"/>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint GetBits(this uint value, int index, int count)
         {
             if (index < 0 || index >= 32)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏移量应在 [0, 31] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 31] 之间");
             if (count < 1 || count > index + 1)
                 throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 32] 之间");
 
-            return (uint)((value >> (index - count + 1)) & ((1UL << count) - 1));
+            var shift = index - count + 1;
+            var mask = uint.MaxValue >> (32 - count);
+
+            return (value >> shift) & mask;
         }
         /// <inheritdoc cref="GetBits(byte, int, int)"/>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong GetBits(this ulong value, int index, int count)
         {
             if (index < 0 || index >= 64)
-                throw new ArgumentOutOfRangeException(nameof(index), "位偏移量应在 [0, 63] 之间");
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 63] 之间");
             if (count < 1 || count > index + 1)
                 throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 64] 之间");
 
-            return (value >> (index - count + 1)) & (ulong.MaxValue >> (64 - count));
-            //return ((value >> (index - count + 1)) & ((1UL << count) - 1));
+            var shift = index - count + 1;
+            var mask = ulong.MaxValue >> (64 - count);
+
+            return (value >> shift) & mask;
+        }
+
+        /// <summary>
+        /// 将一段位域写入无符号整数，并返回新值（原值不变）。
+        /// <para>位索引：<c>bit0</c> 为最低位（LSB），即二进制书写时的最右位，向高位递增。</para>
+        /// <para>例如：0xB4 (1011 0100)，SetBits(5, 4, 0x0D) → Bits[5:2] 写入 1101 → 0xB4。</para>
+        /// <para>注意：<paramref name="bits"/> 超出 <paramref name="count"/> 位的高位会被<b>静默丢弃</b>，
+        /// 不抛异常（与 C 位域语义一致）。</para>
+        /// </summary>
+        /// <param name="value">源数据</param>
+        /// <param name="index">位域最高位的位置（0 = LSB），取值范围 [0, 7]</param>
+        /// <param name="count">位域长度，取值范围 [1, index + 1]</param>
+        /// <param name="bits">待写入的值，仅低 <paramref name="count"/> 位有效</param>
+        /// <returns>写入位域后的新值</returns>
+        /// <exception cref="ArgumentOutOfRangeException">
+        /// <paramref name="index"/> 不在 [0, 7] 范围内，或 <paramref name="count"/> 不在 [1, index + 1] 范围内
+        /// </exception>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static byte SetBits(this byte value, int index, int count, byte bits)
+        {
+            if (index < 0 || index >= 8)
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 7] 之间");
+
+            if (count < 1 || count > index + 1)
+                throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 8] 之间");
+
+            var lsb = index - count + 1;
+            var mask = (byte)((byte.MaxValue >> (8 - count)) << lsb);
+
+            return (byte)((value & ~mask) | ((bits << lsb) & mask));
+        }
+        /// <inheritdoc cref="SetBits(byte, int, int, byte)"/> 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ushort SetBits(this ushort value, int index, int count, ushort bits)
+        {
+            if(index < 0 || index >= 16)
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 15] 之间");
+            if (count < 1 || count > index + 1)
+                throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 16] 之间");
+
+            var lsb = index - count + 1;
+            var mask = (ushort)((ushort.MaxValue >> (16 - count)) << lsb);
+
+            return (ushort)((value & ~mask) | ((bits << lsb) & mask));
+        }
+        /// <inheritdoc cref="SetBits(byte, int, int, byte)"/> 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static uint SetBits(this uint value, int index, int count, uint bits)
+        {
+            if (index < 0 || index >= 32)
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 31] 之间");
+            if (count < 1 || count > index + 1)
+                throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 32] 之间");
+
+            var lsb = index - count + 1;
+            var mask = (uint.MaxValue >> (32 - count)) << lsb;
+
+            return (value & ~mask) | ((bits << lsb) & mask);
+        }
+        /// <inheritdoc cref="SetBits(byte, int, int, byte)"/> 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong SetBits(this ulong value, int index, int count, ulong bits)
+        {
+            if (index < 0 || index >= 64)
+                throw new ArgumentOutOfRangeException(nameof(index), "位索引应在 [0, 63] 之间");
+            if (count < 1 || count > index + 1)
+                throw new ArgumentOutOfRangeException(nameof(count), "位宽应在 [1, 64] 之间");
+
+            var lsb = index - count + 1;
+            var mask = (ulong.MaxValue >> (64 - count)) << lsb;
+
+            return (value & ~mask) | ((bits << lsb) & mask);
         }
         #endregion
 
