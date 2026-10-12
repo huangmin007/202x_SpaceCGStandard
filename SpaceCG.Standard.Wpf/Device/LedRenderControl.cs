@@ -199,7 +199,7 @@ namespace SpaceCG.Device
                 {
                     foreach (var ledStripElement in ledStripElements)
                     {
-#if true // 自动计算并添加 LED 点坐标，纵坐标间隔 20 像素
+#if true                // 自动计算并添加 LED 点坐标，纵坐标间隔 20 像素
                         if (string.IsNullOrWhiteSpace(ledStripElement.Attribute("LedPoints")?.Value))
                         {
                             // 如果配置中设置了灯珠数量，则按设置数量，否则按默认数量
