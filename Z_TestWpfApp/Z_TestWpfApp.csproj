@@ -109,19 +109,23 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Builder\SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj">
-      <Project>{b42abde9-7a46-4f92-a3d0-4ac3cd732061}</Project>
+    <ProjectReference Include="..\SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj">
+      <Project>{c5f99201-bcac-401b-89eb-d8aa688aff9f}</Project>
       <Name>SpaceCG.Standard.Devices.LedRenderer</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Builder\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj">
-      <Project>{1b32f227-bfac-4443-a23e-6ebd66dbcac9}</Project>
+    <ProjectReference Include="..\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj">
+      <Project>{0d86d33b-7afa-4d6a-abcb-a2f1db404446}</Project>
       <Name>SpaceCG.Standard.Devices</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Builder\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj">
-      <Project>{ab345686-8084-4a9f-9356-dd91336afe43}</Project>
+    <ProjectReference Include="..\SpaceCG.Standard.Windows\SpaceCG.Standard.Windows.csproj">
+      <Project>{9b33db1a-7168-4b88-a397-bfc6c2142445}</Project>
+      <Name>SpaceCG.Standard.Windows</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj">
+      <Project>{502505c3-d2bf-489b-96f7-acf1dc6753ba}</Project>
       <Name>SpaceCG.Standard.Wpf</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Builder\SpaceCG.Standard\SpaceCG.Standard.csproj">
+    <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj">
       <Project>{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}</Project>
       <Name>SpaceCG.Standard</Name>
     </ProjectReference>

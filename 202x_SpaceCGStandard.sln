@@ -10,23 +10,17 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "0A_解决方案项", "0A_�
 		ReadMe.md = ReadMe.md
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Builder", "Builder", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard", "SpaceCG.Standard\SpaceCG.Standard.csproj", "{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard", "Builder\SpaceCG.Standard\SpaceCG.Standard.csproj", "{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices", "SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj", "{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SharedProjects", "SharedProjects", "{34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices.LedRenderer", "SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj", "{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Wpf", "Builder\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj", "{AB345686-8084-4A9F-9356-DD91336AFE43}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices.NModbus", "SpaceCG.Standard.Devices.NModbus\SpaceCG.Standard.Devices.NModbus.csproj", "{0B73ABCD-C313-4F35-86B2-F62CB9AB8221}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SpaceCG.Standard.Wpf", "SharedProjects\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.shproj", "{837B66E2-9B60-4626-9B4A-0E739B683993}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Windows", "SpaceCG.Standard.Windows\SpaceCG.Standard.Windows.csproj", "{9B33DB1A-7168-4B88-A397-BFC6C2142445}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices.LedRenderer", "Builder\SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj", "{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Windows", "Builder\SpaceCG.Standard.Windows\SpaceCG.Standard.Windows.csproj", "{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices", "Builder\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj", "{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices.NModbus", "Builder\SpaceCG.Standard.Devices.NModbus\SpaceCG.Standard.Devices.NModbus.csproj", "{1E9C775E-2C3D-48FB-8401-1CD0DEFDE8DF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Wpf", "SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj", "{502505C3-D2BF-489B-96F7-ACF1DC6753BA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -42,38 +36,29 @@ Global
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{AB345686-8084-4A9F-9356-DD91336AFE43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{AB345686-8084-4A9F-9356-DD91336AFE43}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{AB345686-8084-4A9F-9356-DD91336AFE43}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{AB345686-8084-4A9F-9356-DD91336AFE43}.Release|Any CPU.Build.0 = Release|Any CPU
-		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061}.Release|Any CPU.Build.0 = Release|Any CPU
-		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1E9C775E-2C3D-48FB-8401-1CD0DEFDE8DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1E9C775E-2C3D-48FB-8401-1CD0DEFDE8DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1E9C775E-2C3D-48FB-8401-1CD0DEFDE8DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1E9C775E-2C3D-48FB-8401-1CD0DEFDE8DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0B73ABCD-C313-4F35-86B2-F62CB9AB8221}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0B73ABCD-C313-4F35-86B2-F62CB9AB8221}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0B73ABCD-C313-4F35-86B2-F62CB9AB8221}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0B73ABCD-C313-4F35-86B2-F62CB9AB8221}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B33DB1A-7168-4B88-A397-BFC6C2142445}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B33DB1A-7168-4B88-A397-BFC6C2142445}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B33DB1A-7168-4B88-A397-BFC6C2142445}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B33DB1A-7168-4B88-A397-BFC6C2142445}.Release|Any CPU.Build.0 = Release|Any CPU
+		{502505C3-D2BF-489B-96F7-ACF1DC6753BA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{502505C3-D2BF-489B-96F7-ACF1DC6753BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{502505C3-D2BF-489B-96F7-ACF1DC6753BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{502505C3-D2BF-489B-96F7-ACF1DC6753BA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{AB345686-8084-4A9F-9356-DD91336AFE43} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{837B66E2-9B60-4626-9B4A-0E739B683993} = {34A1D7DA-5B37-4EFD-B172-4F9A65CFC54A}
-		{B42ABDE9-7A46-4F92-A3D0-4AC3CD732061} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{12CEC2D5-A670-4558-BE27-A04DE7E66F9B} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{1B32F227-BFAC-4443-A23E-6EBD66DBCAC9} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{1E9C775E-2C3D-48FB-8401-1CD0DEFDE8DF} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}

@@ -15,12 +15,12 @@ using System.Windows.Input;
 using System.Windows.Media;
 using SpaceCG;
 using SpaceCG.Device;
+using SpaceCG.Diagnostics;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
 using SpaceCG.IO;
 using SpaceCG.Net;
-using static System.Net.Mime.MediaTypeNames;
-using Point = System.Drawing.Point;
+using Trace = System.Diagnostics.Trace;
 
 namespace Z_TestWpfApp
 {
@@ -190,8 +190,8 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            var v0 = 12;
-            v0.GetBit(7);
+            //var v0 = 12;
+            //v0.GetBit(7);
 
             ushort v = 0x89;
             var rv = v.GetBits(7, 1);
