@@ -14,7 +14,8 @@
 | 命名空间 | 文件 | 职责 |
 |:---|:---|:---|
 | `SpaceCG.IO` | `IO/ITransportChannel.cs` | 同步传输通道抽象接口 + 通道类型枚举 |
-| `SpaceCG.IO` | `IO/IRequestResponseClient.cs` | 请求-响应通信契约 + 响应帧判定委托 |
+| `SpaceCG.IO` | `IO/RequestResponseSession.cs` | 请求-响应会话（`RequestResponseSession`）+ 响应帧判定委托 `ResponseFramePredicate` |
+| `SpaceCG.IO` | `IO/ModbusRtu.cs` | Modbus RTU 主站客户端（FC01/02/03/04/05/06/15/16/23） |
 | `SpaceCG.IO` | `IO/SerialPortTransport.cs` | 串口传输实现 |
 | `SpaceCG.IO` | `IO/TcpClientTransport.cs` | TCP 客户端传输实现 |
 | `SpaceCG.IO` | `IO/UdpClientTransport.cs` | UDP 客户端传输实现 |
@@ -28,9 +29,10 @@
 | 类型 | 类型 | 命名空间 | 说明 |
 |:---|:---|:---|:---|
 | [`ITransportChannel`](#itransportchannel) | interface | `SpaceCG.IO` | 同步传输通道抽象，与底层 I/O 无关的数据读写契约 |
-| [`ChannelType`](#itransportchannel) | enum | `SpaceCG.IO` | 通道类型：`SERIAL` / `TCP` / `UDP` |
-| [`IRequestResponseClient`](#irequestresponseclient) | interface | `SpaceCG.IO` | 请求-响应通信契约 |
-| [`ResponseFramePredicate`](#irequestresponseclient) | delegate | `SpaceCG.IO` | 响应帧完整性判定委托 |
+| [`ChannelType`](#itransportchannel) | enum | `SpaceCG.IO` | 通道类型：`Serial` / `TCP` / `UDP` |
+| [`RequestResponseSession`](#requestresponsesession) | class | `SpaceCG.IO` | 请求-响应会话（异步收发，基于 `ITransportChannel`） |
+| [`ResponseFramePredicate`](#requestresponsesession) | delegate | `SpaceCG.IO` | 响应帧完整性判定委托 |
+| [`ModbusRtu`](#modbusrtu) | class | `SpaceCG.IO` | Modbus RTU 主站客户端 |
 | [`SerialPortTransport`](#传输实现类) | sealed class | `SpaceCG.IO` | 串口传输实现 |
 | [`TcpClientTransport`](#传输实现类) | sealed class | `SpaceCG.IO` | TCP 客户端传输实现 |
 | [`UdpClientTransport`](#传输实现类) | sealed class | `SpaceCG.IO` | UDP 客户端传输实现 |
@@ -47,7 +49,7 @@
 | 成员 | 类型 | 说明 |
 |:---|:---|:---|
 | `Type` | `ChannelType` | 通道类型（串口 / TCP / UDP） |
-| `Name` | `string` | 通道标识名称，如 `"SERIAL_COM3_115200"`、`"TCP_192.168.1.100_8080"` |
+| `Name` | `string` | 通道标识名称，格式为 `{Type}_{PortName/Host}_{参数}`，如 `"Serial_COM3_115200"`、`"TCP_192.168.1.100_8080"` |
 | `IsConnected` | `bool` | 当前是否处于连接状态 |
 | `Available` | `int` | 接收缓冲区中可立即读取的字节数 |
 | `ReadTimeout` | `int` | 读取超时（毫秒） |
@@ -63,21 +65,32 @@
 
 ---
 
-## `IRequestResponseClient`
+## `RequestResponseSession`
 
-表示支持「请求-响应」通信模式的客户端对象：一次完整通信 = 发送一条请求 + 等待一条对应响应。响应边界由固定长度或 `ResponseFramePredicate` 判定器确定。
+表示支持「请求-响应」通信模式的会话对象（**类**，实现 `IDisposable`）：一次完整通信 = 发送一条请求 + 等待一条对应响应。
+响应边界由**固定长度**、**帧尾字节序列**或 `ResponseFramePredicate` 判定器确定。内部持有 `ITransportChannel`，构造即建立通道。
+
+### 构造函数
+
+```csharp
+public RequestResponseSession(ChannelType type, string arguments)
+```
 
 ### 成员
 
 | 成员 | 类型 | 说明 |
 |:---|:---|:---|
-| `ResponseTimeout` | `int` | 单次请求-响应的等待超时，超时抛 `TimeoutException` |
-| `Transceive(byte[], ResponseFramePredicate)` | `byte[]` | 发送请求，按判定器等待完整响应 |
-| `Transceive(byte[], int, int, ResponseFramePredicate)` | `byte[]` | 发送请求指定区段，按判定器等待响应 |
-| `Transceive(byte[], int)` | `byte[]` | 发送请求，等待固定长度响应 |
-| `Transceive(byte[], int, int, int)` | `byte[]` | 发送请求指定区段，等待固定长度响应 |
-| `TransceiveAsync(byte[], ResponseFramePredicate, CancellationToken)` | `Task<byte[]>` | 异步版（判定器边界） |
-| `TransceiveAsync(byte[], int, CancellationToken)` | `Task<byte[]>` | 异步版（固定长度） |
+| `ResponseTimeout` | `int` | 单次请求-响应的等待超时（毫秒） |
+| `WriteFrameDelay` | `int` | 写帧后的额外延迟（毫秒），用于慢速从站 |
+| `WriteAsync(byte[], int, int, CancellationToken)` | `Task` | 仅发送，不等响应（使用默认 `WriteFrameDelay`） |
+| `WriteAsync(byte[], int, int, int, CancellationToken)` | `Task` | 仅发送，指定写帧延迟 |
+| `TransceiveAsync(byte[], ResponseFramePredicate, CancellationToken)` | `Task<byte[]>` | 发送全部数据，按**判定器**等待完整响应 |
+| `TransceiveAsync(byte[], int, int, ResponseFramePredicate, CancellationToken)` | `Task<byte[]>` | 发送指定区段，按判定器等待响应（另有带 `responseTimeout` 的完整重载） |
+| `TransceiveAsync(byte[], int, int, int fixedLength, CancellationToken)` | `Task<byte[]>` | 发送指定区段，等待**固定长度**响应 |
+| `TransceiveAsync(byte[], int, int, byte[] footer, CancellationToken)` | `Task<byte[]>` | 发送指定区段，等待**指定帧尾**响应 |
+| `Dispose()` | `void` | 释放内部传输通道 |
+
+> 本类**只提供异步 API**；同步收发请使用 `SerialPortExtensions.Transceive`（见 [`SerialPortExtensions`](#serialportextensions)）。
 
 ### `ResponseFramePredicate` 委托
 
@@ -89,13 +102,39 @@ public delegate int ResponseFramePredicate(ArraySegment<byte> buffer);
 
 ---
 
+## `ModbusRtu`
+
+Modbus RTU 主站客户端（`SpaceCG.IO`，实现 `IDisposable`），基于 `RequestResponseSession` 实现标准功能码。
+
+### 构造函数
+
+```csharp
+public ModbusRtu(ChannelType channelType, string arguments)
+```
+
+### 主要方法
+
+| 方法 | 功能码 | 说明 |
+|:---|:---:|:---|
+| `ReadCoilsAsync(slave, start, count)` | 0x01 | 读线圈 |
+| `ReadInputsAsync(slave, start, count)` | 0x02 | 读离散输入 |
+| `ReadHoldingRegistersAsync(slave, start, count)` | 0x03 | 读保持寄存器 |
+| `ReadInputRegistersAsync(slave, start, count)` | 0x04 | 读输入寄存器 |
+| `WriteSingleCoilAsync(slave, address, value)` | 0x05 | 写单个线圈 |
+| `WriteSingleRegisterAsync(slave, address, value)` | 0x06 | 写单个寄存器 |
+| `WriteMultipleCoilsAsync(slave, start, bool[])` | 0x0F | 写多个线圈 |
+| `WriteMultipleRegistersAsync(slave, start, ushort[])` | 0x10 | 写多个寄存器 |
+| `ReadWriteMultipleRegistersAsync(...)` | 0x17 | 读写多个寄存器 |
+
+---
+
 ## 传输实现类
 
 三个实现类均实现 `ITransportChannel`，且都提供**两种构造方式**：强类型参数构造 + `params string[]` 字符串参数构造（便于从配置文件/命令行解析）。
 
 | 类 | 通道类型 | 构造参数（强类型） | 构造参数（字符串数组） |
 |:---|:---|:---|:---|
-| `SerialPortTransport` | `SERIAL` | `portName, baudRate, parity, dataBits, stopBits` | `"COM3", "115200", "None", "8", "One"` |
+| `SerialPortTransport` | `Serial` | `portName, baudRate, parity, dataBits, stopBits` | `"COM3", "115200", "None", "8", "One"` |
 | `TcpClientTransport` | `TCP` | `hostname, port` | `"192.168.1.100", "8080"` |
 | `UdpClientTransport` | `UDP` | `hostname, port` | `"192.168.1.100", "8080"` |
 
@@ -144,7 +183,7 @@ using (var channel = new SerialPortTransport("COM3", "115200", "None", "8", "One
 - **统一契约**：三种传输方式通过 `ITransportChannel` 抽象，业务层无需关心底层是串口、TCP 还是 UDP
 - **懒连接**：构造函数仅保存参数并初始化底层对象，`Open()` 才真正建立连接
 - **可重连**：`Close()` 后可再次 `Open()`；TCP/UDP 在 `Open()` 时会重建底层套接字
-- **缓冲区可调**：各实现均预分配了较大的收发缓冲区（如串口 `ReadBufferSize = 32 KB`、`WriteBufferSize = 128 KB`），适配大数据帧场景
+- **缓冲区可调**：各实现均预分配了较大的收发缓冲区（串口 `WriteBufferSize = 128 KB`；`ReadBufferSize` 强类型构造为 32 KB、`params string[]` 构造为 64 KB），适配大数据帧场景
 - **串口智能解析**：`SerialPortTransport` 构造时若传入的是友好名称（如 `"CH340"`），会通过 `SerialPortExtensions.GetPortName` 自动解析为实际串口号
 
 ---
@@ -212,13 +251,12 @@ byte[] asyncResponse = await port.TransceiveAsync(request, 6, cts.Token);
 
 ```
 SpaceCG.Standard.Devices/
-├── SpaceCG.Standard.Devices.csproj     # 项目文件（.NET Framework 4.8, AnyCPU）
+├── SpaceCG.Standard.Devices.csproj     # 项目文件（.NET Framework 4.8）
 ├── README.md
-├── Properties/
-│   └── AssemblyInfo.cs
 ├── IO/
-│   ├── ITransportChannel.cs            # 传输通道抽象接口 + ChannelType 枚举
-│   ├── IRequestResponseClient.cs       # 请求-响应契约 + ResponseFramePredicate 委托
+│   ├── ITransportChannel.cs            # 传输通道抽象接口 + ChannelType 枚举 + TransportChannel 工厂
+│   ├── RequestResponseSession.cs       # 请求-响应会话 + ResponseFramePredicate 委托
+│   ├── ModbusRtu.cs                    # Modbus RTU 主站客户端
 │   ├── SerialPortTransport.cs          # 串口传输实现
 │   ├── TcpClientTransport.cs           # TCP 客户端传输实现
 │   └── UdpClientTransport.cs           # UDP 客户端传输实现
@@ -226,6 +264,8 @@ SpaceCG.Standard.Devices/
     ├── SerialPortExtensions.cs         # 串口收发扩展方法
     └── SerialPortExtensions.GetPortName.cs  # 串口号解析扩展方法
 ```
+
+> `ChannelType` 枚举成员是 `Serial` / `TCP` / `UDP`（PascalCase），不是 `SERIAL`。
 
 ---
 

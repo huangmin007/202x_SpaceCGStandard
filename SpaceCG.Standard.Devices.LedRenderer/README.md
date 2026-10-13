@@ -28,13 +28,16 @@
 
 ### 安装依赖
 
-本项目为 **Shared Project**（共享项目），直接引用 `.shproj` 文件即可，无需 NuGet 包。
+本项目为 **SDK 风格类库**（`SpaceCG.Standard.Devices.LedRenderer.csproj`），`TargetFramework = net48`，`AllowUnsafeBlocks = True`。
+
+引用方式：直接 `ProjectReference` 本项目，或通过本仓库生成的 NuGet 包（`GeneratePackageOnBuild`）引用。
 
 依赖项：
 - .NET Framework 4.8
 - System.Drawing
-- System.IO.Ports
-- 项目内共享的 `SpaceCG.Standard` 基础库（提供 `Trace`、`Extensions` 等）
+- `System.IO.Ports`（通过 `SpaceCG.Standard.Devices` 间接使用）
+- 项目内 `SpaceCG.Standard.Devices`（提供 `SpaceCG.IO.ITransportChannel` / `TransportChannel` / `SerialPortExtensions`）
+- 项目内 `SpaceCG.Standard`（提供 `SpaceCG.Diagnostics.Trace`、`SpaceCG.Extensions` 等）
 
 ### 最小示例
 
@@ -43,30 +46,34 @@ using SpaceCG.Device;
 using SpaceCG.IO;
 
 // 1. 创建灯带对象（地址 0x0001，端口 1，WS2812B 灯珠，GRB 颜色格式）
+//    注意：灯带的 Address 与 Port 都不能为 0，否则构造时抛 ArgumentOutOfRangeException
 var ledStrip = new LedStripObject(0x0001, 0x01, LedType.WS2812B, ColorFormat.GRB);
 
 // 2. 添加灯珠坐标（灯珠在 LED 面板上的物理位置，顺序必须与实际布线一致）
+//    本例用直线点集生成 (0,0) ~ (15,0) 共 16 颗灯珠
 ledStrip.AddPoints(
     new System.Drawing.Point(0, 0),
     new System.Drawing.Point(15, 0)
 );
 
 // 3. 创建渲染总线（串口通道）
-var renderBus = new LedRenderBus(ChannelType.SERIAL, "COM3,921600");
+//    构造函数内部已尝试 Open 通道（失败静默），无需、也不能调用 OpenChannel()
+var renderBus = new LedRenderBus(ChannelType.Serial, "COM3,921600");
 renderBus.AddLedStrip(ledStrip);
 
-// 4. 启动渲染
-renderBus.OpenChannel();
+// 4. 启动渲染线程（通道未连接时，渲染线程每 3 秒自动重连）
 renderBus.StartRender();
 
-// 5. 渲染纯色（使用灯带级 AddColorFrame）
-ledStrip.AddColorFrame(0xFFFF0000, 0, 1, 10, ColorFormat.ARGB); // 红色
+// 5. 渲染纯色（灯带级 AddColorFrame：IC 起始 0、填充 1 颗、重复 16 次，覆盖全部 16 颗灯珠）
+ledStrip.AddColorFrame(0xFFFF0000, 0, 1, 16, ColorFormat.ARGB); // 红色(ARGB)
 
-// 6. 停止与清理
-renderBus.StopRender();
-renderBus.CloseChannel();
+// 6. 清理：Dispose 内部会广播黑色帧关灯 → 停止渲染线程 → 清空灯带 → 关闭并释放通道
 renderBus.Dispose();
 ```
+
+> **通道生命周期**：`OpenChannel()` / `CloseChannel()` 目前在 `LedRenderBus` 中处于 `#if false` 禁用状态（见 [7.11](#711-openchannelclosechannel-已被禁用)），
+> 通道由构造函数打开、由渲染线程维护（断线自动重连）、由 `Dispose()` 关闭。
+> 串口名支持模糊匹配（如 `"CH343,921600"`，由 `SerialPortExtensions.GetPortName` 解析为实际 COM 号）。
 
 ---
 
@@ -120,7 +127,7 @@ renderBus.Dispose();
 
 ```
 AddColorFrame() / RenderPixels()
-  → CreateColorFrame() → CreateEmptyColorFrame() → RentFrame(frameSize)
+  → CreateFillColorFrame() → CreateEmptyColorFrame() → RentFrame(frameSize)
       │                  ↑ 从空闲池租借或 new[]
       │                  └ 填充协议头尾字段
       │
@@ -227,11 +234,15 @@ AddColorFrame() / RenderPixels()
 
 #### ChannelType（传输通道类型）
 
+`namespace SpaceCG.IO`（注意：枚举成员是 PascalCase 的 `Serial`，不是 `SERIAL`）
+
 | 值 | 说明 | 参数格式 |
 |----|------|----------|
-| `SERIAL` | 串口通信 | `"COM3,921600"` 或 `"COM3,921600,None,8,One"` |
+| `Serial` | 串口通信 | `"COM3,921600"` 或 `"COM3,921600,None,8,One"`；串口名支持模糊匹配，如 `"CH343,921600"` |
 | `TCP` | TCP 客户端 | `"192.168.1.100,8080"` |
 | `UDP` | UDP 客户端 | `"192.168.1.100,8080"` |
+
+> 多个参数还可使用冒号 `:` 或分号 `;` 分隔（三种分隔符不可混用），由 `TransportChannel.Create` 解析。
 
 ---
 
@@ -332,11 +343,11 @@ AddColorFrame() / RenderPixels()
 
 | 方法 | 说明 |
 |------|------|
-| `CreateEmptyColorFrame(int fillCount, int repeatCount)` | 从空闲池租借帧并填充协议头尾（功能码=0x99，IC起始=Reserved） |
-| `CreateEmptyColorFrame(int fromPosition, int fillCount, int repeatCount)` | 同上，指定 IC 起始位置（fromPosition>1 时功能码=0x98） |
-| `CreateColorFrame(uint color, int fromPosition, int fillCount, int repeatCount, ColorFormat)` | 创建单色帧（uint→4通道输入映射到3/4通道输出） |
-| `CreateColorFrame(IReadOnlyList<byte> colors, int fromPosition, int repeatCount, ColorFormat)` | 创建多色帧（字节数组，同格式走 `Array.Copy` 快速路径） |
-| `CreateColorFrame(IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat)` | 创建多色帧（uint 数组，4通道→3/4通道映射） |
+| `CreateEmptyColorFrame(int fillCount, int repeatCount)` | 租借帧并填充协议头尾。**内部以 `Reserved` 作为 `fromPosition` 传入**，`Reserved > 1` 时功能码会变成 0x98 并写入 IC 起始位置 |
+| `CreateEmptyColorFrame(int fromPosition, int fillCount, int repeatCount)` | 同上，显式指定 IC 起始位置（fromPosition>1 时功能码=0x98） |
+| `CreateFillColorFrame(uint color, int fromPosition, int fillCount, int repeatCount, ColorFormat)` | 创建单色帧（uint 输入，必须是 4 通道；映射到 3/4 通道输出） |
+| `CreateFillColorFrame(IReadOnlyList<byte> colors, int fromPosition, int repeatCount, ColorFormat)` | 创建多色帧（字节数组，同格式走 `Array.Copy` 快速路径） |
+| `CreateFillColorFrame(IReadOnlyList<uint> colors, int fromPosition, int repeatCount, ColorFormat)` | 创建多色帧（uint 数组，必须是 4 通道） |
 
 **帧池管理（protected/public）：**
 
@@ -382,10 +393,12 @@ AddColorFrame() / RenderPixels()
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | `UID` | `uint` | 唯一标识，计算方式：`(Port &lt;&lt; 16) \| Address` |
-| `FillCount` | `int` | 渲染填充数量，≤0 时等同于 `LedCount`；配合 `RepeatCount` 实现渲染优化 |
-| `RepeatCount` | `int` | 数据重复次数，最小为 1；配合 `FillCount` 实现渲染优化 |
+| `FillCount` | `int` | 渲染填充数量，≤0 时等同于 `LedCount`；配合 `RepeatCount` 实现渲染优化。**仅在二维渲染（`RenderBitmap` / `RenderPixels`）路径生效** |
+| `RepeatCount` | `int` | 数据重复次数，最小为 1；配合 `FillCount` 实现渲染优化。**仅在二维渲染路径生效** |
 | `LedPoints` | `IReadOnlyList<Point>` | 灯珠坐标列表，顺序即为物理信号顺序（返回 `_ledPoints` 的实时只读视图） |
 | `IsRenderEnabled` | `bool` | 是否允许渲染当前灯带的颜色数据帧（默认 true），不影响指令帧 |
+
+> **构造约束**：`address` 与 `port` 都不能为 0（0 在协议中表示广播/所有端口），否则构造时抛 `ArgumentOutOfRangeException`。
 
 #### 事件
 
@@ -427,11 +440,17 @@ AddColorFrame() / RenderPixels()
 - **对称流水效果**：`FillCount=N, RepeatCount=M` → 发送 N 颗灯珠颜色，硬件重复 M 次
 
 ```csharp
-// 示例：30 颗灯珠整体呼吸效果
+// 示例：30 颗灯珠整体呼吸效果（二维渲染路径，FillCount/RepeatCount 由 RenderPixels 读取）
 ledStrip.FillCount = 1;     // 只填充 1 颗灯珠的颜色
 ledStrip.RepeatCount = 30;  // 硬件自动重复 30 次，覆盖全部灯珠
-// 此时数据帧只携带 1 颗灯珠的颜色数据，大幅减小帧大小
+renderBus.RenderBitmap(bitmap);      // 此时数据帧只携带 1 颗灯珠的颜色数据
+
+// 一维渲染路径（AddColorFrame）不使用这两个属性，需通过方法参数指定：
+ledStrip.AddColorFrame(0xFFFF0000, 0, 1, 30, ColorFormat.ARGB);   // 填充 1 颗 + 重复 30 次
 ```
+
+> **注意**：`AddColorFrame(...)` 系列方法**不读取** `FillCount` / `RepeatCount` 属性，只使用方法参数
+> `fillCount` / `repeatCount`；这两个属性仅被 `LedRenderBus.RenderBitmap` / `RenderPixels` 的二维采样路径使用。
 
 #### 从 XML 配置创建
 
@@ -470,7 +489,7 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | `Type` | `ChannelType` | 传输通道类型（只读） |
-| `Name` | `string` | 通道名称，如 `"SERIAL_COM3_921600"`（只读） |
+| `Name` | `string` | 通道名称，如 `"Serial_COM3_921600"`（只读，取自 `ITransportChannel.Name`） |
 | `IsConnected` | `bool` | 通道是否已连接（只读） |
 | `IsRendering` | `bool` | 渲染线程是否运行中（只读） |
 | `BusId` | `int` | 总线编号，按创建顺序自动分配 |
@@ -487,17 +506,21 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | `Collections` | `IReadOnlyList<LedRenderBus>` | 所有渲染总线实例的全局集合（基于 `List<T>`，非线程安全） |
-| `FunCodeDescription` | `IReadOnlyDictionary<byte, string>` | 设备功能码（0x8B~0x9D）→ 中文描述的映射字典，共 16 个功能码 |
+| `FunCodeDescription` | `IReadOnlyDictionary<byte, string>` | 设备功能码（0x8B~0x9D）→ 中文描述的映射字典，共 19 个功能码 |
 | `FrameExceptionMessages` | `IReadOnlyDictionary<string, string>` | 设备响应错误码 → 中文描述的映射字典 |
 
 #### 方法
 
-**通道管理：**
+**通道/渲染线程管理：**
 
 | 方法 | 说明 |
 |------|------|
-| `OpenChannel()` | 打开传输通道 |
-| `CloseChannel()` | 关闭传输通道 |
+| `StartRender()` | 启动渲染线程（LongRunning Task）；通道未连接时线程每 3 秒自动重连 |
+| `StopRender()` | 停止渲染线程（内部 `_renderingTask.Wait(300)` 后释放 CTS） |
+
+> **通道无需手动开关**：`LedRenderBus` 构造函数内部已执行 `Channel.Open()`（异常静默），
+> `Dispose()` 中关闭并释放通道。当前版本中 `OpenChannel()` / `CloseChannel()`（含集合扩展版）
+> 被 `#if false` 包裹，**不可用**，调用会导致编译失败。见 [7.11](#711-openchannelclosechannel-已被禁用)。
 
 **灯带管理：**
 
@@ -514,11 +537,9 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 
 | 方法 | 说明 |
 |------|------|
-| `StartRender()` | 启动渲染线程（LongRunning Task） |
-| `StopRender()` | 停止渲染线程，等待最多 1 秒后强制释放 |
-| `PauseRender(ushort address)` | 暂停指定设备的颜色帧渲染（设置 `IsRenderEnabled=false`） |
-| `ResumeRender(ushort address)` | 恢复指定设备的颜色帧渲染（设置 `IsRenderEnabled=true`） |
-| `ClearRender(ushort address, bool clear)` | 清空渲染队列；clear=true 时发送黑色帧关闭灯带 |
+| `PauseRender(ushort address)` | 暂停指定设备的颜色帧渲染（设置 `IsRenderEnabled=false`；address=0 表示所有设备） |
+| `ResumeRender(ushort address)` | 恢复指定设备的颜色帧渲染（设置 `IsRenderEnabled=true`；address=0 表示所有设备） |
+| `ClearRender(ushort address, bool turnOff)` | 清空灯带渲染队列；`turnOff=true` 时再向**总线**队列广播一帧黑色帧关闭灯带 |
 
 **二维渲染（按灯珠坐标取像素颜色）：**
 
@@ -557,16 +578,16 @@ if (LedStripObject.TryCreateInstance(xElement, out var ledStrip))
 
 ```csharp
 // XML 格式示例：
-// <LedRenderBus Type="SERIAL" Params="COM3,921600" LedType="WS2812B" ColorFormat="GRB"
+// <LedRenderBus Type="Serial" Params="COM3,921600" LedType="WS2812B" ColorFormat="GRB"
 //               InterFrameDelay="10" ResponseTimeout="300" ResponsePollInterval="1" Comment="主灯带">
 //   <LedStripObject Address="1" Port="1" LedPoints="0,0,1,0,2,0,3,0" />
 //   <LedStripObject Address="1" Port="2" LedPoints="0,1,1,1,2,1,3,1" />
 // </LedRenderBus>
+// 注意：必须包含至少一个 <LedStripObject> 子节点，否则 TryCreateInstance 返回 false
 
 if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips: true))
 {
-    renderBus.OpenChannel();
-    renderBus.StartRender();
+    renderBus.StartRender();   // 通道在构造函数中已打开
 }
 ```
 
@@ -591,19 +612,19 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `Rectangle` | `Rectangle` | 绘制区域，限制在 (0,0,1024,1024) |
-| `Interval` | `int` | 每帧绘制间隔，16~1000 ms |
-| `DrawingElement` | `object` | 要绘制的显示元素对象 |
-| `Fps` | `double` | 实时绘制帧率 |
+| `Rectangle` | `Rectangle` | 绘制区域，限制在 (0,0,1024,1024)；`DrawingDesktop` 默认 `(0, 0, 600, 32)` |
+| `Interval` | `int` | 每帧绘制间隔，16~1000 ms；`DrawingDesktop` 默认 40ms（约 25 FPS） |
+| `Fps` | `double` | 实时绘制帧率（`DrawingDesktop` 采用 1 秒滑动窗口统计） |
 | `IsDrawing` | `bool` | 是否正在绘制 |
+| `DrawingElement` | `TUIElement` | **仅泛型接口 `IDrawingDisplay<TUIElement>` 提供**：要绘制的 UI 元素。`DrawingDesktop` 只实现非泛型 `IDrawingDisplay`，无此属性 |
 
 #### 方法
 
 | 方法 | 说明 |
 |------|------|
-| `StartDrawing()` | 启动实时绘制线程 |
-| `StartDrawing(Rectangle, int interval)` | 指定区域和间隔启动 |
-| `StopDrawing()` | 停止实时绘制线程 |
+| `StartDrawing()` | 启动实时绘制线程（LongRunning Task） |
+| `StartDrawing(Rectangle, int interval)` | 指定区域和间隔启动（**仅在未启动时生效**，已启动时会静默返回且不更新参数） |
+| `StopDrawing()` | 停止实时绘制线程（`Wait(500)`）；`Dispose()` 等价于本方法 |
 
 #### 事件
 
@@ -623,12 +644,16 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 | `PixelFormat` | `ColorFormat` | 像素颜色格式 |
 | `ElapsedMilliseconds` | `long` | 当前帧绘制耗时（ms） |
 
+> **事件参数复用**：`DrawingDesktop` 在绘制线程内复用同一个 `DrawingEventArgs` 实例与 `Bitmap`，
+> `Pixels` 指针在 `UnlockBits` 后即失效。订阅者应在事件回调内**同步消费**像素数据（例如直接调用
+> `RenderPixels`），禁止缓存该实例或指针到事件处理之外。
+
 #### 实现类
 
 | 类 | 说明 |
 |----|------|
-| `DrawingDesktop` | 实时捕获桌面指定区域（`Graphics.CopyFromScreen`），输出 BGR 格式 |
-| `DrawingWpfElement` | 渲染 WPF 元素内容（在 `Builder` 项目中实现） |
+| `DrawingDesktop` | 实时捕获桌面指定区域（`Graphics.CopyFromScreen` + `LockBits`），输出 BGR 格式 |
+| `DrawingWpfElement` | 渲染 WPF 元素内容（位于 `SpaceCG.Standard.Wpf` 项目，命名空间 `SpaceCG.Drawing`） |
 | 自定义 | 实现 `IDrawingDisplay` 接口即可扩展 |
 
 ---
@@ -644,12 +669,11 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 | 属性 | 类型 | 说明 |
 |------|------|------|
 | `Type` | `ChannelType` | 通道类型 |
-| `Name` | `string` | 通道标识名，如 `"SERIAL_COM3_921600"` |
+| `Name` | `string` | 通道标识名，格式为 `{Type}_{PortName}_{BaudRate}`，如 `"Serial_COM3_921600"` |
 | `IsConnected` | `bool` | 是否已连接 |
 | `Available` | `int` | 接收缓冲区可读字节数 |
-| `ReadTimeout` | `int` | 读取超时（ms） |
-| `WriteTimeout` | `int` | 写入超时（ms） |
-| `Tag` | `object` | 自定义数据 |
+| `ReadTimeout` | `int` | 读取超时（ms）；`LedRenderBus` 构造时设为 300 |
+| `WriteTimeout` | `int` | 写入超时（ms）；`LedRenderBus` 构造时设为 300 |
 
 #### 方法
 
@@ -666,9 +690,12 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 
 | 类 | 说明 |
 |----|------|
-| `SerialPortTransport` | 串口通道（内部使用 `System.IO.Ports.SerialPort`），支持自动匹配串口号 |
+| `SerialPortTransport` | 串口通道（内部使用 `System.IO.Ports.SerialPort`），支持串口名模糊匹配（如 `"CH343"`） |
 | `TcpClientTransport` | TCP 客户端通道（内部使用 `System.Net.Sockets.TcpClient`），含连接状态即时检测 |
 | `UdpClientTransport` | UDP 客户端通道（内部使用 `System.Net.Sockets.UdpClient`） |
+
+> 实现类均为 `internal`，只能通过 `TransportChannel.Create(ChannelType, string)` 工厂创建。
+> `SerialPortTransport` 额外提供 `Tag` 属性（接口未声明）。
 
 ---
 
@@ -682,12 +709,15 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 |------|------|
 | `GetChannelCount(this ColorFormat)` | 获取通道数量（3 或 4） |
 | `GetMaxLedCount(this ColorFormat)` | 获取最大灯珠数（1024 或 768） |
-| `GetChannelIndices(this ColorFormat)` | 获取通道索引表 |
-| `ConvertColor(byte[], ColorFormat, ColorFormat, byte)` | 颜色格式转换（分配新数组） |
-| `ConvertColor(byte[], ColorFormat, ref byte[], int, ColorFormat, byte)` | 颜色格式转换（写入引用数组，减少分配） |
-| `ConvertColor(uint[], ColorFormat, ColorFormat)` | uint 颜色格式转换（分配新数组） |
-| `ConvertColor(uint[], ColorFormat, ref byte[], int, ColorFormat)` | uint 颜色格式转换（写入引用数组） |
+| `GetChannelIndices(this ColorFormat)` | 获取通道索引表（`IReadOnlyList<byte>`） |
+| `ConvertColor(IReadOnlyList<byte>, ColorFormat, ColorFormat, byte)` | 颜色格式转换（分配新数组） |
+| `ConvertColor(IReadOnlyList<byte>, ColorFormat, ref byte[], int, ColorFormat, byte)` | 颜色格式转换（写入引用数组，减少分配） |
+| `ConvertColor(IReadOnlyList<uint>, ColorFormat, ColorFormat)` | uint 颜色格式转换（分配新数组） |
+| `ConvertColor(IReadOnlyList<uint>, ColorFormat, ref byte[], int, ColorFormat)` | uint 颜色格式转换（写入引用数组） |
 | `ConvertColor(byte*, ColorFormat, int, int, int, ColorFormat, Rectangle, byte)` | unsafe 指针版本颜色格式转换 |
+| `ConvertColor(IntPtr, ColorFormat, int, int, int, ColorFormat, Rectangle, byte)` | IntPtr 版本（内部转 `byte*`） |
+
+> 输入参数的声明类型是 `IReadOnlyList<byte>` / `IReadOnlyList<uint>`，`byte[]` / `uint[]` 可直接传入。
 
 #### DrawingExtensions
 
@@ -702,46 +732,54 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 
 | 方法 | 说明 |
 |------|------|
-| `IsValidColorFrame(this byte[])` | 验证是否为有效颜色帧（帧头尾、地址范围、长度一致性，功能码含 0x98/0x99/0x9A） |
-| `IsColorFrame(this byte[])` | 判断是否为颜色帧（功能码为 0x98/0x99/0x9A） |
-| `GetGroup(this byte[])` / `SetGroup(this byte[], ushort)` | 获取/设置组地址 |
-| `GetAddress(this byte[])` / `SetAddress(this byte[], ushort)` | 获取/设置设备地址 |
-| `GetPort(this byte[])` / `SetPort(this byte[], byte)` | 获取/设置端口号 |
-| `GetFunCode(this byte[])` / `SetFunCode(this byte[], byte)` | 获取/设置功能码 |
-| `GetLedType(this byte[])` / `SetLedType(this byte[], LedType)` | 获取/设置灯带类型 |
-| `GetReserved(this byte[])` / `SetReserved(this byte[], ushort)` | 获取/设置保留字段 |
-| `GetDataLength(this byte[])` / `SetDataLength(this byte[], ushort)` | 获取/设置颜色数据长度 |
-| `GetRepeatCount(this byte[])` / `SetRepeatCount(this byte[], int)` | 获取/设置扩展次数 |
+| `IsValidColorFrame(this IReadOnlyList<byte>)` | 验证是否为有效颜色帧（帧头尾、地址范围、长度一致性，功能码含 0x98/0x99/0x9A） |
+| `IsColorFrame(this IReadOnlyList<byte>)` | 判断是否为颜色帧（功能码为 0x98/0x99/0x9A） |
+| `IsBroadcastFrame(this IReadOnlyList<byte>)` | 判断是否为广播帧（组地址非 0 或设备地址为 0） |
+| `GetGroup(this IReadOnlyList<byte>)` / `SetGroup(this IList<byte>, int)` | 获取/设置组地址（返回 `int`） |
+| `GetAddress(this IReadOnlyList<byte>)` / `SetAddress(this IList<byte>, int)` | 获取/设置设备地址（返回 `int`） |
+| `GetPort(this IReadOnlyList<byte>)` / `SetPort(this IList<byte>, byte)` | 获取/设置端口号 |
+| `GetFunCode(this IReadOnlyList<byte>)` / `SetFunCode(this IList<byte>, byte)` | 获取/设置功能码 |
+| `GetLedType(this IReadOnlyList<byte>)` / `SetLedType(this IList<byte>, LedType)` | 获取/设置灯带类型 |
+| `GetReserved(this IReadOnlyList<byte>)` / `SetReserved(this IList<byte>, int)` | 获取/设置保留字段 |
+| `GetDataLength(this IReadOnlyList<byte>)` / `SetDataLength(this IList<byte>, int)` | 获取/设置颜色数据长度 |
+| `GetRepeatCount(this IReadOnlyList<byte>)` / `SetRepeatCount(this IList<byte>, int)` | 获取/设置扩展次数 |
+
+> 读取类方法声明在 `IReadOnlyList<byte>` 上、写入类方法声明在 `IList<byte>` 上，`byte[]` 可直接传入。
 
 #### ArrayExtensions
 
 | 方法 | 说明 |
 |------|------|
-| `FastSequenceEqual(this byte[], byte[])` | 快速字节数组相等比较（P/Invoke `memcmp`） |
-| `IndexOf(this byte[], byte)` | 在一维字节数组中查找指定元素位置 |
+| `memcmp(byte*, byte*, int)` | P/Invoke 原生内存比较（ucrtbase.dll，`SuppressUnmanagedCodeSecurity`） |
+| `FastSequenceEqual(this byte[], byte[])` | 快速字节数组相等比较（内部 `fixed` + `memcmp`） |
+| `FastSequenceEqual(this ArraySegment<byte>, ArraySegment<byte>)` | ArraySegment 版本相等比较 |
+| `IndexOf(this IReadOnlyList<byte>, byte)` | 查找指定字节的位置；`byte[]` 走 `Array.IndexOf` 快速路径 |
 
 #### LedRenderBusExtensions
 
 | 方法 | 说明 |
 |------|------|
-| `Dispose(this IEnumerable<LedRenderBus>)` | 批量释放总线集合 |
-| `GetDevices(this IEnumerable<LedRenderBus>)` | 获取所有设备地址集合 |
+| `Dispose(this IEnumerable<LedRenderBus>)` | 批量释放总线集合（**会修改源集合**：逐个取 `ElementAt(0)` 释放） |
+| `GetRenderBus(this IEnumerable<LedRenderBus>, int busId)` | 按总线编号查找总线 |
+| `GetDevices(this IEnumerable<LedRenderBus>)` | 获取所有总线上非重复的设备地址集合 |
 | `GetLedStrip(this IEnumerable<LedRenderBus>, uint uid)` | 按 UID 查找灯带 |
-| `GetLedStrip(this IEnumerable<LedRenderBus>, int address, int port)` | 按地址和端口查找灯带 |
-| `GetLedStrips(this IEnumerable<LedRenderBus>)` | 获取所有灯带集合 |
+| `GetLedStrip(this IEnumerable<LedRenderBus>, int address, int port)` | 按地址和端口查找灯带（参数类型为 `int`） |
+| `GetLedStrips(this IEnumerable<LedRenderBus>)` | 获取所有灯带的扁平化集合 |
 | `StartRender(this IEnumerable<LedRenderBus>)` | 批量启动渲染 |
 | `StopRender(this IEnumerable<LedRenderBus>)` | 批量停止渲染 |
-| `PauseRender(this IEnumerable<LedRenderBus>)` | 批量暂停渲染 |
-| `ResumeRender(this IEnumerable<LedRenderBus>)` | 批量恢复渲染 |
-| `ClearRender(this IEnumerable<LedRenderBus>, bool)` | 批量清空渲染队列 |
-| `CheckChannelConnection(this IEnumerable<LedRenderBus>)` | 批量检查并重连通道 |
+| `PauseRender(this IEnumerable<LedRenderBus>)` | 批量暂停渲染（内部 `PauseRender(0)`） |
+| `ResumeRender(this IEnumerable<LedRenderBus>)` | 批量恢复渲染（内部 `ResumeRender(0)`） |
+| `ClearRender(this IEnumerable<LedRenderBus>, bool turnOff)` | 批量清空渲染队列（内部 `ClearRender(0, turnOff)`） |
 
-#### SystemExtensions
+> `OpenChannel()` / `CloseChannel()` 集合扩展方法同样被 `#if false` 禁用，**不可用**（见 [7.11](#711-openchannelclosechannel-已被禁用)）。
 
-| 方法 | 说明 |
-|------|------|
-| `GetSerialDevices()` | 枚举系统中所有可用串口设备（SetupAPI + CfgMgr32） |
-| `GetPortName(string searchPattern)` | 根据模糊名称匹配串口号（如 `"CH340"` → `"COM3"`） |
+#### 串口辅助（非本库实现，来自依赖项目）
+
+| 方法 | 位置 | 说明 |
+|------|------|------|
+| `SystemExtensions.GetSerialDevices()` | `SpaceCG.Standard.Windows`（命名空间 `SpaceCG.Extensions`） | 枚举系统中所有可用串口设备（SetupAPI + CfgMgr32），返回 `IReadOnlyList<SerialDeviceInfo>` |
+| `SystemExtensions.GetPortName(string)` | `SpaceCG.Standard.Windows` | 根据模糊名称匹配串口号（如 `"CH340"` → `"COM3"`） |
+| `SerialPortExtensions.GetPortName(string)` | `SpaceCG.Standard.Devices` | 同上，`SerialPortTransport` 构造时调用它解析 `Params` 中的串口名 |
 
 ---
 
@@ -811,8 +849,8 @@ var ledStrip = new LedStripObject(0x0001, 0x01, LedType.WS2812B, ColorFormat.GRB
 // 添加 32 颗灯珠，水平排列，映射到桌面 (0,0) 到 (31,0) 的像素区域
 ledStrip.AddPoints(new System.Drawing.Point(0, 0), new System.Drawing.Point(31, 0));
 
-// 2. 创建渲染总线
-var renderBus = new LedRenderBus(ChannelType.SERIAL, "COM3,921600");
+// 2. 创建渲染总线（构造函数内部已打开通道）
+var renderBus = new LedRenderBus(ChannelType.Serial, "COM3,921600");
 renderBus.AddLedStrip(ledStrip);
 
 // 3. 创建桌面实时绘制对象（捕获 32x1 的桌面区域，每 40ms 一帧）
@@ -822,27 +860,25 @@ var drawingDesktop = new DrawingDesktop(
 );
 
 // 4. 订阅绘制事件，将像素数据送入渲染总线
+//    注意：DrawingEventArgs 为复用实例，Pixels 指针在事件返回后失效，必须在回调内同步消费
 drawingDesktop.NewDrawingFrame += (sender, e) =>
 {
     renderBus.RenderPixels(e.Pixels, e.Width, e.Height, e.Stride, e.PixelFormat);
 };
 
-// 5. 启动
-renderBus.OpenChannel();
+// 5. 启动（先启动渲染线程，再启动截屏）
 renderBus.StartRender();
 drawingDesktop.StartDrawing();
 
-// 6. 停止
-drawingDesktop.StopDrawing();
-renderBus.StopRender();
-renderBus.CloseChannel();
-renderBus.Dispose();
+// 6. 停止与清理
+drawingDesktop.StopDrawing();   // 或 drawingDesktop.Dispose()
+renderBus.Dispose();            // 内部已 StopRender() + 广播黑帧 + 关闭通道
 ```
 
 ### 示例 2：多条灯带 + 二维面板布局
 
 ```csharp
-// 创建 4 条灯带，组成 16x16 的 LED 面板
+// 创建 4 条灯带，组成 16x4 的 LED 面板
 var strips = new List<LedStripObject>();
 for (byte port = 1; port <= 4; port++)
 {
@@ -867,13 +903,15 @@ for (int y = 0; y < 4; y++)
 }
 
 // 创建渲染总线并添加所有灯带
-var renderBus = new LedRenderBus(ChannelType.SERIAL, "COM3,921600");
+var renderBus = new LedRenderBus(ChannelType.Serial, "COM3,921600");
 foreach (var strip in strips)
 {
     renderBus.AddLedStrip(strip);
 }
 
-// 渲染 GDI+ 位图
+renderBus.StartRender();    // 必须先启动渲染线程，否则帧只入队不发送
+
+// 渲染 GDI+ 位图（内部按 Format24bppRgb 锁定，逐灯珠按坐标采样）
 using (var bitmap = new System.Drawing.Bitmap(16, 4))
 {
     using (var g = System.Drawing.Graphics.FromImage(bitmap))
@@ -883,51 +921,50 @@ using (var bitmap = new System.Drawing.Bitmap(16, 4))
     }
     renderBus.RenderBitmap(bitmap);
 }
+
+// 清理
+renderBus.Dispose();
 ```
 
 ### 示例 3：动态纯色 + 暂停/恢复渲染
 
 ```csharp
-var renderBus = new LedRenderBus(ChannelType.SERIAL, "COM3,921600");
-var ledStrip = new LedStripObject(0x0001, 0x01);
+var renderBus = new LedRenderBus(ChannelType.Serial, "COM3,921600");
+var ledStrip = new LedStripObject(0x0001, 0x01);     // 默认 WS2812B + GRB
 ledStrip.AddPoints(new System.Drawing.Point(0, 0), new System.Drawing.Point(29, 0)); // 30 颗灯珠
 renderBus.AddLedStrip(ledStrip);
 
-renderBus.OpenChannel();
 renderBus.StartRender();
 
-// 渲染优化：呼吸灯效果（FillCount=1, RepeatCount=30）
-ledStrip.FillCount = 1;
-ledStrip.RepeatCount = 30;
-
-// 颜色渐变循环（使用灯带级 AddColorFrame）
+// 颜色渐变循环（灯带级 AddColorFrame）
+// 呼吸/整条同色：填充 1 颗 + 重复 30 次，只发送 1 颗灯珠的数据，由硬件重复点亮全部 30 颗
 var colors = new uint[] { 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00 }; // ARGB
 int colorIndex = 0;
 
 var timer = new System.Timers.Timer(1000);
 timer.Elapsed += (s, e) =>
 {
-    ledStrip.AddColorFrame(colors[colorIndex], 0, 1, 1, ColorFormat.ARGB);
+    ledStrip.AddColorFrame(colors[colorIndex], 0, 1, 30, ColorFormat.ARGB);
     colorIndex = (colorIndex + 1) % colors.Length;
 };
 timer.Start();
 
-// 暂停/恢复渲染
-renderBus.PauseRender(0);   // 暂停所有设备（队列仍消费，但不发送颜色帧）
-renderBus.ResumeRender(0);  // 恢复所有设备
+// 暂停/恢复渲染（address = 0 表示所有设备）
+renderBus.PauseRender(0);   // 暂停：队列仍消费，但不发送颜色帧
+renderBus.ResumeRender(0);  // 恢复
 
 // 清理
 timer.Stop();
-renderBus.StopRender();
-renderBus.CloseChannel();
 renderBus.Dispose();
 ```
+
+> 若改用二维渲染（`RenderBitmap` / `RenderPixels`），则通过属性设置：`ledStrip.FillCount = 1; ledStrip.RepeatCount = 30;`。
 
 ### 示例 4：多条总线 + 全局管理
 
 ```csharp
 // 创建多条总线
-var bus1 = new LedRenderBus(ChannelType.SERIAL, "COM3,921600");
+var bus1 = new LedRenderBus(ChannelType.Serial, "COM3,921600");
 var bus2 = new LedRenderBus(ChannelType.TCP, "192.168.1.100,8080");
 
 // ... 添加灯带、配置 ...
@@ -938,14 +975,14 @@ var allBuses = LedRenderBus.Collections;
 allBuses.StartRender();        // 批量启动
 allBuses.PauseRender();        // 批量暂停
 allBuses.ResumeRender();       // 批量恢复
-allBuses.ClearRender(clear: true);  // 批量清空并关闭灯带
+allBuses.ClearRender(true);    // 批量清空并关闭灯带（参数名是 turnOff，不是 clear）
 allBuses.StopRender();         // 批量停止
 
 // 查找指定灯带
-var strip = allBuses.GetLedStrip(uid: 0x00010001);
-var strip2 = allBuses.GetLedStrip(address: 1, port: 1);
+var strip = allBuses.GetLedStrip(uid: 0x00010001);      // UID = (Port << 16) | Address
+var strip2 = allBuses.GetLedStrip(address: 1, port: 1); // 参数类型为 int
 
-// 批量释放
+// 批量释放（会修改源集合：逐个取 ElementAt(0).Dispose()，直到集合为空）
 allBuses.Dispose();
 ```
 
@@ -953,24 +990,27 @@ allBuses.Dispose();
 
 ```xml
 <!-- led_config.xml -->
-<LedRenderBus Type="SERIAL" Params="COM3,921600" LedType="WS2812B" ColorFormat="GRB"
+<LedRenderBus Type="Serial" Params="COM3,921600" LedType="WS2812B" ColorFormat="GRB"
               InterFrameDelay="10" ResponseTimeout="300" ResponsePollInterval="1" Comment="主灯带面板">
   <LedStripObject Address="1" Port="1" LedPoints="0,0,1,0,2,0,3,0,4,0,5,0,6,0,7,0"
                   Group="0" FillCount="0" RepeatCount="1" Comment="第1行" />
   <LedStripObject Address="1" Port="2" Comment="第2行" >
     <LedPoints>0,0,1,0,2,0,3,0,4,0,5,0,6,0,7,0</LedPoints>
     <LedPoints>0,1,1,1,2,1,3,1,4,1,5,1,6,1,7,1</LedPoints>
-    <LedPoints>10,10, ... ,30,10</LedPoints>
+    <LedPoints>10,10,...,30,10</LedPoints>
   </LedStripObject>
 </LedRenderBus>
 ```
+
+> - `Type` 解析使用 `Enum.TryParse(..., ignoreCase: true)`，写 `SERIAL` / `Serial` 都可以。
+> - `LedPoints` 支持 `...` 插值语法（由 `DrawingExtensions.TryParsePoints` 解析），但正则不允许空格，请写 `10,10,...,30,10`。
+> - 必须包含至少一个 `<LedStripObject>` 子节点，否则 `TryCreateInstance` 返回 `false`。
 
 ```csharp
 var doc = System.Xml.Linq.XDocument.Load("led_config.xml");
 if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips: true))
 {
-    renderBus.OpenChannel();
-    renderBus.StartRender();
+    renderBus.StartRender();   // 通道在构造函数中已打开
 }
 ```
 
@@ -1030,8 +1070,33 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 
 - 项目使用 `#define UseQueue` 在文件顶部切换 `Queue<T> + lock` 与 `ConcurrentQueue<T>` 两种队列实现。
 - 默认启用 `UseQueue`（Queue + lock 模式），在 24~64 实例场景下 lock 竞争开销可接受。
+- 另有 `#if true` / `#if false` 包裹的功能开关（如 `ResponsePollInterval`、`OpenChannel/CloseChannel`），改动前需确认条件编译分支。
+
+### 7.11 OpenChannel/CloseChannel 已被禁用
+
+- `LedRenderBus.OpenChannel()` / `CloseChannel()` 及其集合扩展 `LedRenderBusExtensions.OpenChannel()` / `CloseChannel()`
+  当前均被 `#if false` 包裹，**编译期不存在**，调用会直接报 CS1061。
+- 替代方案：通道在 `LedRenderBus` 构造函数中自动 `Open()`（异常静默，不抛给调用方）；
+  断开后由渲染线程每 3 秒重连；最终由 `Dispose()` 关闭并释放。
+- 如需恢复手动控制，可将 `LedRenderBus.cs` 中该 `#if false` 改为 `#if true`（扩展方法侧同样处理）。
+
+### 7.12 FillCount/RepeatCount 的作用域
+
+- 这两个属性**只被二维渲染路径**（`RenderBitmap` / `RenderPixels`）读取；
+  `AddColorFrame(...)` 系列方法只使用自身的 `fillCount` / `repeatCount` 参数，不读属性。
+- 因此「设置了 `FillCount=1, RepeatCount=30` 但 `AddColorFrame(color, 0, 1, 1, ...)`」不会产生压缩效果，
+  需写成 `AddColorFrame(color, 0, 1, 30, ColorFormat.ARGB)`。
+
+### 7.13 CreateEmptyColorFrame 的 Reserved 陷阱
+
+- 两参数重载 `CreateEmptyColorFrame(fillCount, repeatCount)` 内部实现是
+  `CreateEmptyColorFrame(Reserved, fillCount, repeatCount)`，即把 `Reserved` 当作 `fromPosition` 传入。
+- 当配置中 `Reserved > 1` 时，功能码会从 0x99 变成 0x98，并且 [10-11] 字节写入 IC 起始位置，
+  导致 `RenderPixels` 生成的每帧都带 IC 偏移。默认 `Reserved = 0` 时不受影响。
+- 建议：不要用 `Reserved` 承载业务数据；需要指定起始位置时显式调用三参数重载。
 
 ---
 
-*项目路径：`SharedProjects/SpaceCG.Standard.LedRenderer`*
+*项目路径：`SpaceCG.Standard.Devices.LedRenderer`*
 *目标框架：.NET Framework 4.8 | C# 7.3*
+*主要命名空间：`SpaceCG.Device`、`SpaceCG.Drawing`、`SpaceCG.Extensions`、`SpaceCG.IO`（依赖项目）*

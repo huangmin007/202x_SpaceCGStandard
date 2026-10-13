@@ -2,7 +2,7 @@
 
 `SpaceCG.Generic` 命名空间提供通用基础设施类，涵盖数据校验、环形缓冲区、CRC 校验计算、异步日志记录、对象池和协议解析。
 
-- **目标框架**：.NET Framework 4.8（C# 7.3）
+- **目标框架**：.NET Standard 2.0（C# 7.3，零第三方依赖）
 - **设计原则**：高性能、低分配、线程安全
 
 ---
@@ -14,10 +14,10 @@
 | [`ChecksumHelper`](#checksumhelper) | static class | Sum/XOR/BCC/LRC 等常用校验和算法 |
 | [`CircularBuffer<T>`](#circularbuffert) | class | 环形缓冲区（循环缓冲区），双端添加/移除 |
 | [`CRCCheckHelper`](#crccheckhelper) | static class | CRC8/16/32/64 循环冗余校验（Rocksoft 通用模型） |
-| [`LoggerTraceListener`](#loggertracelistener) | class | 异步日志跟踪侦听器（文件+控制台） |
 | [`ObjectPool<T>`](#objectpoolt) | class | 泛型对象池，减少 GC 压力 |
 | [`ProtocolParser`](#protocolparser) | abstract class | 数据协议解析器基类（生产者-消费者模式） |
-| [`TraceMessage`](#tracemessage) | class | 日志消息实体 |
+| [`LoggerTraceListener`](#loggertracelistener) | class | 异步日志跟踪侦听器（文件+控制台）。**注意**：源码位于 `Diagnostics/LoggerTraceListener.cs`、命名空间为 `SpaceCG.Diagnostics`，不属于 `SpaceCG.Generic` |
+| [`TraceMessage`](#tracemessage) | class | 日志消息实体，同属 `SpaceCG.Diagnostics` |
 
 ---
 
@@ -47,7 +47,7 @@ byte sum8 = data.Sum8();           // 累加和（8位）
 ushort sum16 = data.Sum16();       // 累加和（16位）
 byte xor = data.XOR8();            // 异或校验
 byte bcc = data.BCC8();            // 块校验
-byte lrc = data.LRC8();            // LRC 纵向冗余校验
+byte lrc = data.LRC8(0, data.Length);  // LRC 纵向冗余校验（无参重载暂缺 this 修饰符，见已知问题）
 
 // 指定范围
 byte partial = data.Sum8(1, 3);    // 从索引1开始，计算3个字节
@@ -209,7 +209,7 @@ ushort partial = data.ComputeCRC16_MODBUS(1, 3); // 从索引1开始计算3个�
 ### 使用示例
 
 ```csharp
-using SpaceCG.Generic;
+using SpaceCG.Diagnostics;   // LoggerTraceListener / TraceMessage 实际在此命名空间
 using System.Diagnostics;
 
 // 简单示例：默认配置
@@ -320,12 +320,33 @@ pool.Return(buffer);
 
 ### 核心方法
 
-| 方法 | 说明 |
+| 成员 | 说明 |
 |------|------|
-| `Write(byte[], int, int)` | 同步写入字节数据，返回实际写入字节数 |
-| `ReadFromAsync(Stream, CancellationToken)` | 从流中异步循环读取并解析 |
-| `Clear()` / `ClearAsync(CancellationToken)` | 清空缓冲区 |
-| `Dispose()` | 释放资源 |
+| `Write(byte[], int, int)` / `Write(ArraySegment<byte>)` | 写入字节并**立即解析**，返回实际写入字节数 |
+| `ProcessBuffer()` | 显式触发一次解析循环并整理缓冲区（`Write` 内部已调用，通常无需手动调用） |
+| `FrameReceived` 事件 | 解析出完整帧时触发，`FrameEventArgs.FrameView` 为内部缓冲区的零拷贝视图 |
+| `Capacity` / `Buffer` | 缓冲容量与内部缓冲区 |
+| `ReadPosition` / `WritePosition` / `ReadableBytes` / `WritableBytes` | 读写指针与可用空间 |
+| `protected abstract ArraySegment<byte> TryParseFrame(ArraySegment<byte>)` | 子类实现帧匹配逻辑，返回 `default` 表示数据不完整 |
+| `ProtocolParser()` / `ProtocolParser(int bufferSize)` | 构造，默认缓冲 1024 字节 |
+
+> **当前版本没有** `ReadFromAsync` / `Clear` / `ClearAsync` / `Dispose`（基类不持有非托管资源，也未实现 `IDisposable`）。
+> 如需从流持续读取，请在业务层自行循环：
+
+```csharp
+static async Task PumpAsync(Stream stream, ProtocolParser parser, CancellationToken token)
+{
+    var buffer = new byte[4096];
+    while (!token.IsCancellationRequested)
+    {
+        int n = await stream.ReadAsync(buffer, 0, buffer.Length, token);
+        if (n <= 0) break;
+
+        int written = parser.Write(buffer, 0, n);   // 尾部空间不足时会截断，需处理剩余数据
+        if (written < n) { /* 记录或等待缓冲区消费后再重试 */ }
+    }
+}
+```
 
 ### 使用示例
 
@@ -364,4 +385,19 @@ public class MyProtocolParser : ProtocolParser
 ```
 ---
 
-> 文档版本：v1.0  |  最后更新：2026-07-19  |  维护：SpaceCG 团队
+---
+
+## 已知问题与建议
+
+| # | 问题 | 说明 |
+|:---:|:---|:---|
+| 1 | **`LRC8()` 无参重载不是扩展方法** | `ChecksumHelper.LRC8(IReadOnlyList<byte>)` 漏写了 `this` 修饰符，`data.LRC8()` 会报 CS1061。可用 `data.LRC8(0, data.Length)` 或 `ChecksumHelper.LRC8(data)`；建议源码补 `this` |
+| 2 | **`LoggerTraceListener` 不属于 `SpaceCG.Generic`** | 类型位于 `Diagnostics/LoggerTraceListener.cs`、命名空间 `SpaceCG.Diagnostics`，本文仅为归类方便而收录。使用时请 `using SpaceCG.Diagnostics;` |
+| 3 | **`ProtocolParser` 无异步读取与清空 API** | 基类未提供 `ReadFromAsync` / `Clear` / `ClearAsync` / `Dispose`，需在上层自行循环 `Stream.ReadAsync` + `Write` |
+| 4 | **`ProtocolParser` 满载丢数据** | 缓冲区写满且未解析出完整帧时整体清空并输出 Warning 日志，超大帧需调大 `bufferSize` |
+| 5 | **`CircularBuffer<T>` / `ProtocolParser` 非线程安全** | 多线程场景需外部加锁或收敛到单一读写线程 |
+| 6 | **`ObjectPool<T>.Count` 为近似值** | 基于 `Interlocked`，高并发下可能略微超出 `MaxCount`，仅作监控用 |
+
+---
+
+> 文档版本：v1.1  |  最后更新：2026-10-13  |  维护：SpaceCG 团队

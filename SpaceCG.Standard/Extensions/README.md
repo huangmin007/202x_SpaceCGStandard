@@ -1,8 +1,8 @@
 # SpaceCG.Extensions
 
-`SpaceCG.Extensions` 命名空间提供对 .NET 标准类型的一系列扩展方法，涵盖数组操作、文件管理、HTTP 客户端、反射调用、数学计算、网络工具、路径处理、字符串解析、TCP 连接检测、类型转换、XML 配置等领域。
+`SpaceCG.Extensions` 命名空间提供对 .NET 标准类型的一系列扩展方法，涵盖数组操作、集合/并发队列、文件管理、HTTP 客户端、反射调用、数学计算、网络工具、路径处理、字符串解析、TCP 连接检测、类型转换、XML 配置等领域。
 
-- **目标框架**：.NET Framework 4.8（C# 7.3）
+- **目标框架**：.NET Standard 2.0（C# 7.3，零第三方依赖）
 - **设计原则**：无状态纯函数、零分配高性能路径、Try 模式错误处理
 
 ---
@@ -11,7 +11,8 @@
 
 | 类 | 类型 | 说明 |
 |------|------|------|
-| [`ArrayExtensions`](#arrayextensions) | static partial class | 字节数组与泛型数组的模式搜索扩展 |
+| [`ArrayExtensions`](#arrayextensions) | static partial class | 字节数组与泛型数组的正向/反向模式搜索与内存比较扩展 |
+| [`EnumerableExtensions`](#enumerableextensions) | static partial class | `ConcurrentQueue<T>` 清空并释放 `IDisposable` 元素 |
 | [`FileExtensions`](#fileextensions) | static partial class | 文件数量保留、正则/扩展名搜索、系列文件分组 |
 | [`HttpClientExtensions`](#httpclientextensions) | static partial class | 带进度的文件上传/下载、MIME 类型查询 |
 | [`InstanceExtensions`](#instanceextensions) | static partial class | 反射：动态获取/设置字段属性、事件清理、方法调用 |
@@ -27,7 +28,7 @@
 
 ## `ArrayExtensions`
 
-字节数组的**模式搜索**（Pattern Search / IndexOf）与**高效内存比较**（SequenceEqual）扩展。
+字节数组的**模式搜索**（Pattern Search：`IndexOf` 正向 / `LastIndexOf` 反向）与**高效内存比较**（`SequenceEqual`）扩展。
 
 ### 核心方法
 
@@ -43,6 +44,12 @@
 | `SequenceEqual(this byte[], int, int, byte[], int, int)` | 比较两个字节数组中指定区域的内容是否相等 |
 | `SequenceEqual(byte*, int, int, byte*, int, int)` | unsafe 指针版本，带偏移和长度的内存区域比较 |
 | `SequenceEqual(byte*, byte*, int)` | unsafe 指针版本，直接比较两块内存区域 |
+| `SequenceEqual(this ArraySegment<byte>, ArraySegment<byte>)` | ArraySegment 版本，按视图偏移与长度比较 |
+| `LastIndexOf(this byte[], byte[], int, int)` | 在字节数组中**向后**查找模式最后一次出现位置（搜索区间 `[startIndex-count+1, startIndex]`） |
+| `LastIndexOf(this byte[], byte[])` | 简化重载，从数组末尾向前搜索整个数组 |
+| `LastIndexOf(this ArraySegment<byte>, byte[], int, int)` | ArraySegment 版本，返回相对于视图起始的偏移索引 |
+| `LastIndexOf(this ArraySegment<byte>, byte[])` | 简化重载 |
+| `LastIndexOf<T>(this T[], T[], int, int) where T : IEquatable<T>` | 泛型版本，向后搜索 |
 
 ### 使用示例
 
@@ -86,6 +93,37 @@ unsafe
 - 头尾双过滤策略：先同时比对首尾字节，随机数据下误入内循环概率约 1/65536
 - SequenceEqual 采用 32 字节展开比较策略（4 个 ulong 一组），充分利用 64 位寄存器与指令级并行
 - 时间复杂度 O(n)，空间复杂度 O(1)
+
+---
+
+## `EnumerableExtensions`
+
+集合与可枚举类型的扩展方法，当前提供 `ConcurrentQueue<T>` 的**清空并释放**能力（出队时自动释放实现了 `IDisposable` 的元素）。
+
+### 核心方法
+
+| 方法 | 说明 |
+|------|------|
+| `Clear<T>(this ConcurrentQueue<T>)` | 逐一 `TryDequeue` 清空队列；元素运行时类型实现 `IDisposable` 时自动 `Dispose`（释放异常被忽略） |
+| `Clear<T>(this ConcurrentQueue<T>, Action<T> itemHandler)` | 同上，并在释放前对每个出队元素执行一次回调（回调可为 `null`） |
+
+### 使用示例
+
+```csharp
+using System.Collections.Concurrent;
+using SpaceCG.Extensions;
+
+var queue = new ConcurrentQueue<System.IO.Stream>();
+queue.Enqueue(System.IO.File.OpenRead(@"D:\a.txt"));
+
+// 清空队列并释放其中的 IDisposable 元素
+queue.Clear();
+
+// 或：释放前先对每个元素执行自定义处理
+queue.Clear(item => Trace.WriteLine($"释放：{item}"));
+```
+
+> 注意：`queue` 为 `null` 时抛 `ArgumentNullException`；清空过程**非原子操作**，清空期间不要并发入队。
 
 ---
 
@@ -645,4 +683,4 @@ if (config.TryGetValue<string>("Title", out string title))
 ---
 
 
-> 文档版本：v1.1  |  最后更新：2026-08-06  |  维护：SpaceCG 团队
+> 文档版本：v1.2  |  最后更新：2026-10-13  |  维护：SpaceCG 团队

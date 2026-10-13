@@ -990,7 +990,7 @@ namespace SpaceCG.Device
                 if (ledStrips.Count != ledStripsCount)
                     ledStrips = renderBus.LedStrips.OrderBy(x => x.Port).ToList();
 
-                var hasWrittenFrame = false;
+                //var hasWrittenFrame = false;
                 var interFrameDelay = renderBus.InterFrameDelay;
 
                 #region 总线上的帧队列数据 （指令帧、广播帧优先）
@@ -1001,7 +1001,7 @@ namespace SpaceCG.Device
                     try
                     {
                         writeFrameCount++;
-                        hasWrittenFrame = true;
+                        //hasWrittenFrame = true;
                         var message = renderBus.WriteFrame(frame, cancellationToken);
                         if (string.IsNullOrEmpty(message))
                         {
@@ -1040,7 +1040,7 @@ namespace SpaceCG.Device
                     try
                     {
                         writeFrameCount++;
-                        hasWrittenFrame = true;
+                        //hasWrittenFrame = true;
                         var message = renderBus.WriteFrame(frame, cancellationToken);
                         if (string.IsNullOrEmpty(message))
                         {
@@ -1098,7 +1098,8 @@ namespace SpaceCG.Device
                 #endregion
 
                 loopCount++;
-                if (!hasWrittenFrame) Thread.Sleep(1);
+                //if (!hasWrittenFrame) Thread.Sleep(1);
+                if (loopCount % 2 == 0) Thread.Sleep(1);
             }
 
             foreach (var ledStrip in renderBus.LedStrips)

@@ -1,9 +1,12 @@
-# SpaceCG.WindowsApi
+# SpaceCG.Standard.Windows
 
-`SpaceCG.WindowsApi` 项目封装 Windows 原生 API，提供**即插即用设备枚举查询**和**设备热插拔监听**两大核心功能，基于 SetupAPI、CfgMgr32 和 Win32 消息窗口实现。
+`SpaceCG.Standard.Windows` 项目封装 Windows 原生 API，提供**即插即用设备枚举查询**和**设备热插拔监听**两大核心功能，基于 SetupAPI、CfgMgr32 和 Win32 消息窗口实现。
 
 - **目标框架**：.NET Framework 4.8（C# 7.3）
+- **依赖**：`SpaceCG.Standard`（ProjectReference）
 - **设计原则**：轻量查询与重量查询分离、基于事件的设备变更通知、优雅的线程生命周期管理
+
+> 命名说明：本项目早期曾命名为 `SpaceCG.WindowsApi`，当前项目目录与程序集均为 `SpaceCG.Standard.Windows`。
 
 ---
 
@@ -322,19 +325,24 @@ watcher.DeviceArrived += (sender, e) =>
 ## 项目结构
 
 ```
-SpaceCG.WindowsApi/
-├── SpaceCG.WindowsApi.csproj    # 项目文件（.NET Framework 4.8, AnyCPU, 允许 unsafe）
-├── Properties/
-│   └── AssemblyInfo.cs
+SpaceCG.Standard.Windows/
+├── SpaceCG.Standard.Windows.csproj  # 项目文件（.NET Framework 4.8）
+├── README.md
 ├── Interop/
-│   └── NativeMethods.cs         # P/Invoke 声明占位 partial class
+│   └── NativeMethods.cs             # P/Invoke 声明占位 partial class（实际 P/Invoke 内嵌于下列两个文件）
 ├── Extensions/
-│   └── SystemExtensions.cs      # 设备枚举查询（SetupAPI/CfgMgr32）
-├── Generic/
-│   └── DeviceWatcher.cs         # 设备热插拔监听（Win32 消息窗口 + WM_DEVICECHANGE）
-└── (Linked)
-    └── ../../SharedProjects/SpaceCG.Standard/Trace.cs  # 日志模块（链接引入）
+│   └── SystemExtensions.cs          # 设备枚举查询（SetupAPI/CfgMgr32）
+└── Generic/
+    └── DeviceWatcher.cs             # 设备热插拔监听（Win32 消息窗口 + WM_DEVICECHANGE）
 ```
+
+---
+
+## 依赖
+
+| 依赖 | 说明 |
+|:---|:---|
+| `SpaceCG.Standard` | 基础库，提供 `SpaceCG.Diagnostics.Trace`、`SpaceCG.Extensions`、`SpaceCG.Generic` 等 |
 
 ---
 

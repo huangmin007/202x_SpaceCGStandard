@@ -1,8 +1,8 @@
 # SpaceCG.Net
 
-`SpaceCG.Net` 命名空间提供轻量级网络通信框架，涵盖远程过程调用（RPC）、HTTP 服务、WebSocket 双向通信和增强型 TCP 客户端。
+`SpaceCG.Net` 命名空间提供轻量级网络通信框架，涵盖远程过程调用（RPC）、HTTP 服务与 WebSocket 双向通信。
 
-- **目标框架**：.NET Framework 4.8（C# 7.3）
+- **目标框架**：.NET Standard 2.0（C# 7.3，零第三方依赖）
 - **传输层**：TCP 字节流
 - **数据层**：CRLF（`\r\n`）按行分隔数据（默认）
 - **消息层**：由子类定义（当前支持 XML）
@@ -22,7 +22,7 @@
 | [`InvokeMessageEventArgs`](#invokemessageeventargs) | class | 消息拦截事件参数 |
 | [`HttpServerBase`](#httpserverbase) | abstract class | HTTP 服务抽象基类（HttpListener） |
 | [`HttpWebServer`](#httpwebserver) | class | 静态文件 Web 服务 |
-| [`WebSocketAPI`](#websocketapi) | abstract class | WebSocket 双向通信基类（ClientWebSocket） |
+| [`WebSocketAPI`](#websocketapi) | abstract class | WebSocket 双向通信基类（ClientWebSocket），命名空间 `SpaceCG.Net.WebSockets`（文件位于 `Net/WebSockets/`） |
 
 ---
 
@@ -53,7 +53,8 @@ server.Start();
 using SpaceCG.Net;
 
 // 使用 RpcClient4X（XML 协议实现）
-var client = new RpcClient4X(IPAddress.Loopback, 8080);
+// 注意：RpcClient4X 只有 () 与 (string address, int port) 两个构造，没有 (IPAddress, int) 重载
+var client = new RpcClient4X("127.0.0.1", 8080);
 client.Connect();
 
 // 请求-响应调用（Func 语义，有返回值，必须等待结果）
@@ -113,6 +114,7 @@ public abstract class RpcServerBase : IDisposable
     public void Start();
     public void Stop();
     public void RegisterObject(string objectName, object objectInstance);
+    public void Dispose();                          // 停止监听、断开客户端、清空注册对象
 
     // 子类实现（协议层，消息反序列化）
     protected abstract InvokeMessage DeserializeInvokeMessage(ArraySegment<byte> requestMessage, IPEndPoint clientEndPoint);
@@ -138,7 +140,8 @@ var server = new RpcServer4X(8080, useLegacyDelimiter: false);
 var server = new RpcServer4X(IPAddress.Loopback, 8080);
 
 // 指定 IP 字符串 + 使用 CRLF 分隔符
-var server = new RpcServer4X("192.168.1.100", 8080, useLegacyDelimiter: false);
+// 注意：RpcServer4X 没有 (string, int, bool) 重载，字符串地址需先解析为 IPAddress
+var server = new RpcServer4X(IPAddress.Parse("192.168.1.100"), 8080, useLegacyDelimiter: false);
 ```
 
 ### 设计要点
@@ -248,7 +251,8 @@ public abstract class RpcClientBase : IDisposable
 - 返回值反序列化通过 `ParseParameters` + `TryConvertParameter` 流水线还原强类型
 
 ```csharp
-var client = new RpcClient4X(IPAddress.Loopback, 8080);
+// RpcClient4X 构造：() 或 (string address, int port)
+var client = new RpcClient4X("127.0.0.1", 8080);
 client.Connect();
 var response = await client.InvokeFuncAsync("Demo", "GetCurrentPage");
 ```
@@ -522,4 +526,4 @@ SpaceCG.Standard/Net/
 
 ---
 
-> 文档版本：v2.0  |  最后更新：2026-07-19  |  维护：SpaceCG 团队
+> 文档版本：v2.1  |  最后更新：2026-10-13  |  维护：SpaceCG 团队
