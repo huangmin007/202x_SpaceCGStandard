@@ -63,6 +63,7 @@ namespace SpaceCG.NModbus
         /// <summary> 同步器是否是连接状态。 </summary>
         public bool IsConnected => _isConnected;
 
+        /// <summary> 使用接口类型写入寄存器值，默认为 true。 </summary>
         public bool UseInterfaceWritePoints { get; set; } = true;
 
         /// <summary> 采样频率/秒 </summary>
@@ -425,7 +426,6 @@ namespace SpaceCG.NModbus
 
                 #region Write Bool Queue
                 var writeBQueue = busSync._writeCoilQueue;
-                var writeBCount = writeBQueue.Count;
                 while (!writeBQueue.IsEmpty && !cancellationToken.IsCancellationRequested)
                 {
                     if (!writeBQueue.TryDequeue(out var regB))
@@ -447,14 +447,11 @@ namespace SpaceCG.NModbus
                         exceptionCount++;
                         Trace.TraceWarning($"{labelName} 写寄存器 {regB.PointType}/{regB.StartAddress} 异常：({ex.GetType()}){ex.Message}");
                     }
-                    Thread.Sleep(1);
                 }
-                //if (writeBCount > 0) Thread.Sleep(1);
                 #endregion
 
                 #region Write Ushort Queue
                 var writeUQueue = busSync._writeHoldingQueue;
-                var writeUCount = writeUQueue.Count;
                 while (!writeUQueue.IsEmpty && !cancellationToken.IsCancellationRequested)
                 {
                     if (!writeUQueue.TryDequeue(out var regU))
@@ -477,9 +474,7 @@ namespace SpaceCG.NModbus
                         Trace.TraceWarning($"{labelName} 写寄存器 {regU.PointType}/{regU.StartAddress} 异常：({ex.GetType()}){ex.Message}");
                         continue;
                     }
-                    Thread.Sleep(1);
                 }
-                //if (writeUCount > 0) Thread.Sleep(1);
                 #endregion
 
                 #region Read Registers Queue
@@ -539,8 +534,8 @@ namespace SpaceCG.NModbus
                 }
                 #endregion
 
-                Thread.Sleep(1);
-                //if (sampleRate % 2 == 0) Thread.Sleep(1);
+                //Thread.Sleep(1);
+                if (sampleRate % 2 == 0) Thread.Sleep(1);
             }
 
             Trace.TraceInformation($"{labelName} 退出同步线程({Thread.CurrentThread.ManagedThreadId})");
