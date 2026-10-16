@@ -20,6 +20,8 @@ using SpaceCG.Extensions;
 using SpaceCG.Generic;
 using SpaceCG.IO;
 using SpaceCG.Net;
+using SpaceCG.NModbus;
+using SpaceCG.NModbus.Data;
 using Trace = System.Diagnostics.Trace;
 
 namespace Z_TestWpfApp
@@ -35,6 +37,9 @@ namespace Z_TestWpfApp
 
         private LedRenderBus _ledRenderBus;
         RequestResponseSession requestResponse;
+
+        ModbusBusSynchronizer modbusSync;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -46,8 +51,9 @@ namespace Z_TestWpfApp
         {
             base.OnClosing(e);
 
-            await modbusRtu.WriteMultipleCoilsAsync(0x01, 0x00, new bool[] { false, false, false, false, false, false, false, false });
+            //await modbusRtu.WriteMultipleCoilsAsync(0x01, 0x00, new bool[] { false, false, false, false, false, false, false, false });
 
+            modbusSync?.Dispose();
 
             rpcServer?.Dispose();
             _ledRenderBus?.Dispose();
@@ -99,6 +105,7 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.D:
+                    Trace.WriteLine($"SampleRate:{modbusSync.SampleRate}");
                     break;
 
                 case Key.A:
@@ -192,6 +199,7 @@ namespace Z_TestWpfApp
         {
             //var v0 = 12;
             //v0.GetBit(7);
+            Trace.WriteLine($"Environment.OSVersion.Platform:{Environment.OSVersion.Platform}");
 
             ushort v = 0x89;
             var rv = v.GetBits(7, 1);
@@ -265,11 +273,22 @@ namespace Z_TestWpfApp
             //rfidDevice.Open();
             //rfidDevice.StartSync();
 
-            modbusRtu = new ModbusRtu(ChannelType.Serial, "CH340,19200");
+            //modbusRtu = new ModbusRtu(ChannelType.Serial, "CH340,19200");
 
             //requestResponse = new RequestResponseBase(ChannelType.SERIAL, "COM34,19200");
 
             Trace.WriteLine("Ready ... ");
+
+            modbusSync = new ModbusBusSynchronizer(SpaceCG.NModbus.TransportType.Serial, "CH A,38400");
+
+            modbusSync.AddRegisters(new RegisterPoint(0x01, RegisterType.CoilInputs, 0, 8, 0));
+            modbusSync.CoilInputsValueChanged += ModbusSync_CoilInputsValueChanged;
+            modbusSync.StartSync();
+        }
+
+        private void ModbusSync_CoilInputsValueChanged(object sender, RegisterPointChangedEventArgs<bool> e)
+        {
+            Trace.WriteLine($"RegisterPointChangedEventArgs::{e.NewValue}");
         }
 
         private string F2(ICollection<byte> b)

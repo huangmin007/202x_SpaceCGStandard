@@ -1,8 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Xml.Linq;
 using Trace = SpaceCG.Diagnostics.Trace;
 
@@ -32,7 +29,7 @@ namespace SpaceCG.NModbus.Data
         /// <summary>寄存器块名称，仅用于日志与配置可读性，不参与相等性比较。</summary>
         public string Name { get; set; } = string.Empty;
 
-        /// <summary>  寄存器键值  </summary>
+        /// <summary> 寄存器键值 </summary>
         public uint Key => (uint)(((byte)PointType << 24) | (SlaveAddress << 16) | StartAddress);
 
         /// <summary>目标从站地址（UnitId）。</summary>

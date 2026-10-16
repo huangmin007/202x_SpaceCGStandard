@@ -39,6 +39,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="NModbus, Version=3.0.83.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\NModbus.3.0.83\lib\net46\NModbus.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
@@ -92,6 +95,7 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
@@ -113,13 +117,13 @@
       <Project>{c5f99201-bcac-401b-89eb-d8aa688aff9f}</Project>
       <Name>SpaceCG.Standard.Devices.LedRenderer</Name>
     </ProjectReference>
+    <ProjectReference Include="..\SpaceCG.Standard.Devices.NModbus\SpaceCG.Standard.Devices.NModbus.csproj">
+      <Project>{0b73abcd-c313-4f35-86b2-f62cb9ab8221}</Project>
+      <Name>SpaceCG.Standard.Devices.NModbus</Name>
+    </ProjectReference>
     <ProjectReference Include="..\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj">
       <Project>{0d86d33b-7afa-4d6a-abcb-a2f1db404446}</Project>
       <Name>SpaceCG.Standard.Devices</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\SpaceCG.Standard.Windows\SpaceCG.Standard.Windows.csproj">
-      <Project>{9b33db1a-7168-4b88-a397-bfc6c2142445}</Project>
-      <Name>SpaceCG.Standard.Windows</Name>
     </ProjectReference>
     <ProjectReference Include="..\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj">
       <Project>{502505c3-d2bf-489b-96f7-acf1dc6753ba}</Project>

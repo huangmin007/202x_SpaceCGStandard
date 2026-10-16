@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using NModbus;
 using NModbus.Data;
-using NModbus.Serial;
 using SpaceCG.Extensions;
 using SpaceCG.NModbus.Data;
 using Trace = SpaceCG.Diagnostics.Trace;
@@ -59,12 +58,11 @@ namespace SpaceCG.NModbus
         /// <summary>待同步寄存器块，键为 (PointType, SlaveAddress, StartAddress) 打包的 32 位标识。</summary>
         private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegistersQueue;
 
-        private volatile bool _isConnected = false;
         /// <summary> 同步器是否是连接状态。 </summary>
         public bool IsConnected => _isConnected;
-
-        /// <summary> 使用接口类型写入寄存器值，默认为 true。 </summary>
-        public bool UseInterfaceWritePoints { get; set; } = true;
+        private volatile bool _isConnected = false;
+        /// <summary> 使用接口类型写入寄存器值。 </summary>
+        public bool UseInterfaceWritePoints { get; set; } = false;
 
         /// <summary> 采样频率/秒 </summary>
         public int SampleRate { get; private set; } = 0;
@@ -135,14 +133,20 @@ namespace SpaceCG.NModbus
 
                 _modbusMaster = Factory.CreateMaster(_tcpClient);
                 _modbusMaster.Transport.Retries = 0;
-                _modbusMaster.Transport.RetryOnOldResponseThreshold = 8;
+                _modbusMaster.Transport.RetryOnOldResponseThreshold = 8;    // 仅 TCP 有效
             }
             else if (type == TransportType.Serial)
             {
                 _serialPort = new SerialPort(SerialPortExtensions.GetPortName(_firstArgs), _secondArgs);
-                _serialPort.ReadTimeout = 2000;
-                _serialPort.WriteTimeout = 2000;
+                //_serialPort.ReadTimeout = 500;
+                //_serialPort.WriteTimeout = 500;
+                _serialPort.RtsEnable = true;
+                _serialPort.Handshake = Handshake.RequestToSendXOnXOff;
+
                 _modbusMaster = Factory.CreateRtuMaster(_serialPort);
+                //_modbusMaster.Transport.Retries = 0;
+                //_modbusMaster.Transport.WaitToRetryMilliseconds = 100;
+                //_modbusMaster.Transport.SlaveBusyUsesRetryCount = true;
             }
             else
             {
@@ -530,6 +534,7 @@ namespace SpaceCG.NModbus
                         Trace.TraceWarning($"{labelName}({registers}) 同步寄存器 {registers.PointType}/{registers.StartAddress} 异常：({ex.GetType()}){ex.Message}");
                         continue;
                     }
+                    
                     if (registers.Sleep > 0) Thread.Sleep(registers.Sleep);
                 }
                 #endregion

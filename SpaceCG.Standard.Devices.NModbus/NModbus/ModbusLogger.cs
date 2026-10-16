@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using NModbus;
 using Trace = SpaceCG.Diagnostics.Trace;
 
@@ -27,7 +23,7 @@ namespace SpaceCG.NModbus
         public void Log(LoggingLevel level, string message)
         {
             if (level == LoggingLevel.Information) Trace.TraceInformation(message);
-            //else if (level == LoggingLevel.Debug || level == LoggingLevel.Trace) Trace.WriteLine(message);
+            else if (level == LoggingLevel.Debug || level == LoggingLevel.Trace) Trace.WriteLine(message);
             else if (level == LoggingLevel.Warning) Trace.TraceWarning(message);
             else if (level == LoggingLevel.Error || level == LoggingLevel.Critical) Trace.TraceError(message);
         }

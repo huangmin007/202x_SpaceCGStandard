@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics;
-using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -54,28 +53,21 @@ namespace SpaceCG.NModbus.IO
             _host = host;
             _port = port;
 
-            //this._tcpClient = tcpClient;
+            this._tcpClient = new TcpClient();
             this._cts = new CancellationTokenSource();
-
             _reconnectTask = EnsureConnected(_cts.Token);
         }
 
         private async Task EnsureConnected(CancellationToken cancellationToken)
         {
             var delay = TimeSpan.FromSeconds(3.0);
-            var sendBufferSize = _tcpClient.SendBufferSize;
-            var receiveBufferSize = _tcpClient.ReceiveBufferSize;
-
-            var readTimeout = _tcpClient.GetStream()?.ReadTimeout ?? -1;
-            var writeTimeout = _tcpClient.GetStream()?.WriteTimeout ?? -1;
-            var remoteEndPoint = _tcpClient.Client.RemoteEndPoint as IPEndPoint;
 
             while (!cancellationToken.IsCancellationRequested)
             {
                 // 连接状态检查
                 if (_tcpClient.Connected)
                 {
-                    try { await Task.Delay(500, cancellationToken).ConfigureAwait(false); }
+                    try { await Task.Delay(100, cancellationToken).ConfigureAwait(false); }
                     catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException) { break; }
                     catch (Exception) { if (cancellationToken.IsCancellationRequested) break; }
                     continue;
@@ -89,17 +81,15 @@ namespace SpaceCG.NModbus.IO
                 try
                 {
                     var newClient = new TcpClient();
-                    await newClient.ConnectAsync(remoteEndPoint.Address, remoteEndPoint.Port).ConfigureAwait(false);
+                    await newClient.ConnectAsync(_host, _port).ConfigureAwait(false);
 
                     _tcpClient = newClient;
 
-                    if (readTimeout > 0)
-                        newClient.GetStream().ReadTimeout = readTimeout;
-                    if (writeTimeout > 0)
-                        newClient.GetStream().WriteTimeout = writeTimeout;
+                    if (_readTimeout > 0)
+                        newClient.GetStream().ReadTimeout = _readTimeout;
+                    if (_writeTimeout > 0)
+                        newClient.GetStream().WriteTimeout = _writeTimeout;
 
-                    newClient.SendBufferSize = sendBufferSize;
-                    newClient.ReceiveBufferSize = receiveBufferSize;
                     Trace.TraceInformation($"客户端连接成功 {newClient.Client.LocalEndPoint} -> {newClient.Client.RemoteEndPoint}");
                 }
                 catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException) { break; }
