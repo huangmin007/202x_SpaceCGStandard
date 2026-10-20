@@ -7,12 +7,11 @@ using NModbus.IO;
 
 namespace SpaceCG.NModbus.IO
 {
-    // 未完成
     public class TcpClientAdapterEx : IStreamResource, IDisposable
     {
         private TcpClient _tcpClient;
 
-        private Task _reconnectTask;
+        private Task _connectedTask;
         private CancellationTokenSource _cts;
 
         private readonly int _port;
@@ -33,7 +32,6 @@ namespace SpaceCG.NModbus.IO
                 if (stream != null) stream.ReadTimeout = value;
             }
         }
-
         public int WriteTimeout
         {
             get => _writeTimeout;
@@ -52,15 +50,18 @@ namespace SpaceCG.NModbus.IO
 
             _host = host;
             _port = port;
+            _tcpClient = new TcpClient();
 
-            this._tcpClient = new TcpClient();
-            this._cts = new CancellationTokenSource();
-            _reconnectTask = EnsureConnected(_cts.Token);
+            _cts = new CancellationTokenSource();
+            _connectedTask = Task.Factory.StartNew(EnsureConnected, this, _cts.Token);
         }
 
-        private async Task EnsureConnected(CancellationToken cancellationToken)
+        private async Task EnsureConnected(object state)
         {
+            var instance = state as TcpClientAdapterEx;
+
             var delay = TimeSpan.FromSeconds(3.0);
+            var cancellationToken = instance._cts.Token;
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -138,12 +139,12 @@ namespace SpaceCG.NModbus.IO
 
                 try 
                 {
-                    _reconnectTask?.Wait(500);
-                    _reconnectTask?.Dispose(); 
+                    _connectedTask?.Wait(300);
+                    _connectedTask?.Dispose(); 
                 }
                 finally
                 {
-                    _reconnectTask = null;
+                    _connectedTask = null;
                 }
 
                 try { _cts?.Dispose(); }

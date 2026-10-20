@@ -56,7 +56,6 @@ namespace SpaceCG.NModbus
         {
             TcpClientAdapterEx tcpClientAdapter = new TcpClientAdapterEx(host, port);
             return factory.CreateIpMaster(tcpClientAdapter);
-            //return new ModbusIpMaster(new ModbusIpTransport(tcpClientAdapter, factory, factory.Logger));
         }
     }
 }

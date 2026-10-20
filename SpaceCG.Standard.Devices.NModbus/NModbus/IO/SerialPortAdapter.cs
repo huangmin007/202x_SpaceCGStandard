@@ -2,7 +2,9 @@
 using System.Diagnostics;
 using System.IO.Ports;
 using System.Threading;
+using System.Threading.Tasks;
 using NModbus.IO;
+using SpaceCG.Extensions;
 
 namespace SpaceCG.NModbus.IO
 {
@@ -15,8 +17,7 @@ namespace SpaceCG.NModbus.IO
 
         private Stopwatch _stopwatch;
         private SerialPort _serialPort;
-
-        public int InfiniteTimeout => -1;
+        public int InfiniteTimeout => Timeout.Infinite;
 
         public int ReadTimeout
         {
@@ -29,7 +30,6 @@ namespace SpaceCG.NModbus.IO
                 _serialPort.ReadTimeout = value;
             }
         }
-
         public int WriteTimeout
         {
             get
@@ -42,12 +42,68 @@ namespace SpaceCG.NModbus.IO
             }
         }
 
+        private Task _connectedTask;
+        private CancellationTokenSource _cts;
+
+        private readonly string _portName;
+
         public SerialPortAdapter(SerialPort serialPort)
         {
             _serialPort = serialPort;
             _serialPort.NewLine = "\r\n";
 
+            _portName = serialPort.PortName;
             _stopwatch = Stopwatch.StartNew();
+
+            _cts = new CancellationTokenSource();
+            _connectedTask = Task.Factory.StartNew(EnsureConnected, this, _cts.Token);
+        }
+        private async Task EnsureConnected(object state)
+        {
+            var instance = (state as SerialPortAdapter);
+            if (instance == null) return;
+
+            var portName = instance._portName;
+            var serialPort = instance._serialPort;
+            var cancellationToken = instance._cts.Token;
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                if (serialPort == null) break;
+
+                try
+                {
+                    if (serialPort.IsOpen)
+                    {
+                        await Task.Delay(100, cancellationToken);
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning($"EnsureConnected: {ex.Message}");
+                    break;
+                }
+
+                try
+                {
+                    // 等待 1 秒后，重新尝试打开串口
+                    for (int i = 0; i < 10; i++)
+                    {
+                        if (serialPort == null || cancellationToken.IsCancellationRequested) break;
+                        await Task.Delay(100, cancellationToken);
+                    }
+
+                    if (cancellationToken.IsCancellationRequested) break;
+
+                    serialPort.PortName = SerialPortExtensions.GetPortName(portName);
+                    serialPort.Open();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning($"EnsureConnected Open Exception: {ex.Message}");
+                }
+            }
         }
 
         public void DiscardInBuffer()
@@ -94,7 +150,20 @@ namespace SpaceCG.NModbus.IO
         protected virtual void Dispose(bool disposing)
         {
             if (disposing)
-            {                
+            {
+                try { _cts?.Cancel(); }
+                catch { }
+
+                try 
+                { 
+                    _connectedTask?.Wait(300);
+                    _connectedTask?.Dispose();
+                }
+                finally { _connectedTask = null; }
+
+                try { _cts?.Dispose(); }
+                finally { _cts = null; }
+
                 SerialPort serialPort = _serialPort;
                 if (serialPort != null)
                 {
