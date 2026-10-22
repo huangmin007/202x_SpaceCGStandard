@@ -1,8 +1,6 @@
 ﻿using System;
 using System.IO.Ports;
 using NModbus;
-using NModbus.Device;
-using NModbus.IO;
 using SpaceCG.NModbus.IO;
 
 namespace SpaceCG.NModbus

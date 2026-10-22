@@ -55,6 +55,8 @@ namespace SpaceCG.NModbus.IO
             _portName = serialPort.PortName;
             _stopwatch = Stopwatch.StartNew();
 
+            serialPort.PortName = SerialPortExtensions.GetPortName(_portName);
+
             _cts = new CancellationTokenSource();
             _connectedTask = Task.Factory.StartNew(EnsureConnected, this, _cts.Token);
         }
@@ -84,7 +86,7 @@ namespace SpaceCG.NModbus.IO
                     Trace.TraceWarning($"EnsureConnected: {ex.Message}");
                     break;
                 }
-
+                
                 try
                 {
                     // 等待 1 秒后，重新尝试打开串口
@@ -94,6 +96,7 @@ namespace SpaceCG.NModbus.IO
                         await Task.Delay(100, cancellationToken);
                     }
 
+                    if (serialPort.IsOpen) continue;
                     if (cancellationToken.IsCancellationRequested) break;
 
                     serialPort.PortName = SerialPortExtensions.GetPortName(portName);

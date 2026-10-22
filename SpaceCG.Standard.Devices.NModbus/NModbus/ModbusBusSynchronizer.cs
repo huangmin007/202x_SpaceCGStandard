@@ -137,16 +137,11 @@ namespace SpaceCG.NModbus
             }
             else if (type == TransportType.Serial)
             {
-                _serialPort = new SerialPort(SerialPortExtensions.GetPortName(_firstArgs), _secondArgs);
-                //_serialPort.ReadTimeout = 500;
-                //_serialPort.WriteTimeout = 500;
-                _serialPort.RtsEnable = true;
-                _serialPort.Handshake = Handshake.RequestToSendXOnXOff;
+                _serialPort = new SerialPort(_firstArgs, _secondArgs);
+                _serialPort.ReadTimeout = 1000;
+                _serialPort.WriteTimeout = 1000;
 
                 _modbusMaster = Factory.CreateRtuMaster(_serialPort);
-                //_modbusMaster.Transport.Retries = 0;
-                //_modbusMaster.Transport.WaitToRetryMilliseconds = 100;
-                //_modbusMaster.Transport.SlaveBusyUsesRetryCount = true;
             }
             else
             {

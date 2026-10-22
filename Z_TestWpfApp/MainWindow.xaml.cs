@@ -59,7 +59,6 @@ namespace Z_TestWpfApp
             _ledRenderBus?.Dispose();
             _cts?.Cancel();
 
-            modbusRtu?.Dispose();
             rfidDevice?.Dispose();
             requestResponse?.Dispose();
         }
@@ -169,31 +168,19 @@ namespace Z_TestWpfApp
                     break;
 
                 case Key.Q:
-                    var response = await modbusRtu.ReadHoldingRegistersAsync(0x02, 0x0000, 0x0002);
-                    Trace.WriteLine($"Result::{string.Join(" ", response.Select(x => x.ToString("X2")))}");
-                    var lo = response[0];
-                    var hi = response[1];
-                    var cardId = ((hi << 16) | lo);
-                    Trace.WriteLine($"CardId: {cardId}");
                     break;
 
                 case Key.S:
-                    await modbusRtu.WriteMultipleCoilsAsync(0x01, 0x00, new bool[] { false, true, false, false, false, false, false, true });
-                    var r0 = await modbusRtu.ReadCoilsAsync(0x01, 0x00, 16);
-                    Trace.WriteLine($"Result::{string.Join(" ", r0)}");
-
-                    var r1 = await modbusRtu.ReadInputsAsync(0x01, 0x00, 16);
-                    Trace.WriteLine($"Result::{string.Join(" ", r1)}");
+                    modbusSync.WriteSingleCoil(0x01, 0x04, true);
                     break;
             }
         }
 
-        Stopwatch stopwatch = new Stopwatch();
         Task connectTask;
         CancellationTokenSource _cts;
+        Stopwatch stopwatch = new Stopwatch();
 
         RfidDevice rfidDevice;
-        ModbusRtu modbusRtu;
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {

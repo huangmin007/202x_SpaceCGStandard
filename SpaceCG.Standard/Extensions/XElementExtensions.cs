@@ -358,7 +358,7 @@ namespace SpaceCG.Extensions
         /// <returns>预处理后的 XML 元素树。</returns>
         /// <exception cref="ArgumentException">文件路径为 null 或空白。</exception>
         /// <exception cref="FileNotFoundException">文件不存在。</exception>
-        public static XElement LoadConfig(string configFile)
+        public static XElement Load(string configFile)
         {
             if (string.IsNullOrWhiteSpace(configFile))
                 throw new ArgumentException("文件路径不能为空！", nameof(configFile));

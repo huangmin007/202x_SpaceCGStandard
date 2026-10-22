@@ -2,20 +2,14 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO.Ports;
 using System.IO;
-using System.Linq;
-using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 using NModbus;
 using NModbus.Data;
 using SpaceCG.Extensions;
 using SpaceCG.NModbus.Data;
 using Trace = SpaceCG.Diagnostics.Trace;
-
 
 namespace SpaceCG.NModbus
 {
@@ -36,6 +30,8 @@ namespace SpaceCG.NModbus
         private readonly ConcurrentQueue<RegisterPoint<ushort>> _writeHoldingQueue;
         /// <summary>待同步寄存器块，键为 (PointType, SlaveAddress, StartAddress) 打包的 32 位标识。</summary>
         private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegistersQueue;
+
+        private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegisterBlockQueue;
 
         /// <summary>离散输入值变化时触发。</summary>
         public event EventHandler<RegisterPointChangedEventArgs<bool>> CoilInputsValueChanged;
@@ -88,7 +84,6 @@ namespace SpaceCG.NModbus
                 Trace.TraceInformation($"{this} 添加寄存器块：{registers}");
             }
         }
-
 
         #region Start & Stop Sync
         /// <summary>启动同步线程（每设备一个长任务）；已启动时直接返回。</summary>
@@ -193,7 +188,6 @@ namespace SpaceCG.NModbus
 
             context.Post(state => eventHandler.Invoke(this, state as RegisterPointChangedEventArgs<T>), eventArgs);
         }
-
 
         /// <summary>
         /// 设备同步线程主体（每设备一个）：先下发写入队列中的请求，再轮询读取已注册的寄存器块并回写本地数据存储，直到收到取消信号。
@@ -375,6 +369,11 @@ namespace SpaceCG.NModbus
         /// <param name="value">待写入值。</param>
         public void WriteSingleRegister(byte slaveAddress, ushort registerAddress, ushort value)
         {
+            if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
+            {
+                throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
+            }
+
             _writeHoldingQueue.Enqueue(new RegisterPoint<ushort>(slaveAddress, RegisterType.HoldingRegisters, registerAddress, new ushort[] { value }, 0));
         }
         /// <summary>写多个保持寄存器（FC16）到写入队列。</summary>
@@ -383,6 +382,10 @@ namespace SpaceCG.NModbus
         /// <param name="data">待写入值，顺序与连续地址一一对应。</param>
         public void WriteMultipleRegisters(byte slaveAddress, ushort startAddress, ushort[] data)
         {
+            if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
+            {
+                throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
+            }
             Trace.TraceInformation($"{this} > WriteMultipleRegisters SlaveAddress:{slaveAddress} StartAddress:{startAddress} NumberOfPoints:{data.Length}");
             _writeHoldingQueue.Enqueue(new RegisterPoint<ushort>(slaveAddress, RegisterType.HoldingRegisters, startAddress, data, 0));
         }
@@ -392,6 +395,10 @@ namespace SpaceCG.NModbus
         /// <param name="value">待写入值。</param>
         public void WriteSingleCoil(byte slaveAddress, ushort coilAddress, bool value)
         {
+            if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
+            {
+                throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
+            }
             Trace.TraceInformation($"{this} > WriteSingleCoil SlaveAddress:{slaveAddress} CoilAddress:{coilAddress}");
             _writeCoilQueue.Enqueue(new RegisterPoint<bool>(slaveAddress, RegisterType.CoilDiscretes, coilAddress, new bool[] { value }, 0));
         }
@@ -401,6 +408,10 @@ namespace SpaceCG.NModbus
         /// <param name="data">待写入值，顺序与连续地址一一对应。</param>
         public void WriteMultipleCoils(byte slaveAddress, ushort startAddress, bool[] data)
         {
+            if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
+            {
+                throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
+            }
             Trace.TraceInformation($"{this} > WriteMultipleCoils SlaveAddress:{slaveAddress} StartAddress:{startAddress}");
             _writeCoilQueue.Enqueue(new RegisterPoint<bool>(slaveAddress, RegisterType.CoilDiscretes, startAddress, data, 0));
         }
