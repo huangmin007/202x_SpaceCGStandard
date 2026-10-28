@@ -31,7 +31,7 @@ namespace SpaceCG.NModbus
         /// <summary>待同步寄存器块，键为 (PointType, SlaveAddress, StartAddress) 打包的 32 位标识。</summary>
         private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegistersQueue;
 
-        private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegisterBlockQueue;
+        //private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegisterBlockQueue;
 
         /// <summary>离散输入值变化时触发。</summary>
         public event EventHandler<RegisterPointChangedEventArgs<bool>> CoilInputsValueChanged;
@@ -431,7 +431,6 @@ namespace SpaceCG.NModbus
 
             try { _modbusMaster?.Dispose(); }
             finally { _modbusMaster = null; }
-
         }
 
         /// <inheritdoc /> 

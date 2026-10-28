@@ -57,6 +57,12 @@ namespace SpaceCG.NModbus.IO
 
             serialPort.PortName = SerialPortExtensions.GetPortName(_portName);
 
+            try
+            {
+                if (!serialPort.IsOpen) serialPort.Open();
+            }
+            catch { }
+
             _cts = new CancellationTokenSource();
             _connectedTask = Task.Factory.StartNew(EnsureConnected, this, _cts.Token);
         }

@@ -48,7 +48,6 @@ namespace SpaceCG.Extensions
         /// <param name="max">区间上界（必须 &gt;= <paramref name="min"/>）</param>
         /// <returns>限制在 [min, max] 内的值</returns>
         /// <exception cref="ArgumentException"><paramref name="min"/> &gt; <paramref name="max"/></exception>
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte Clamp(this byte value, byte min, byte max)
         {

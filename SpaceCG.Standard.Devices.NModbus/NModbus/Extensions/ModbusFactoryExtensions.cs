@@ -44,6 +44,23 @@ namespace SpaceCG.NModbus
         }
 
         /// <summary>
+        /// Create Serial Port Rtu Master
+        /// </summary>
+        /// <param name="factory"></param>
+        /// <param name="portName"></param>
+        /// <param name="baudRate"></param>
+        /// <param name="parity"></param>
+        /// <param name="dataBits"></param>
+        /// <param name="stopBits"></param>
+        /// <returns></returns>
+        public static IModbusSerialMaster CreateRtuMaster(this IModbusFactory factory, string portName, int baudRate, Parity parity = Parity.None, int dataBits = 8, StopBits stopBits = StopBits.One)
+        {
+            var serialPort = new SerialPort(portName, baudRate, parity, dataBits, stopBits);
+            var serialPortAdapter = new SerialPortAdapter(serialPort);
+            return factory.CreateRtuMaster(serialPortAdapter);
+        }
+
+        /// <summary>
         /// CreateIpMasterEx->TcpClientAdapterEx
         /// </summary>
         /// <param name="factory"></param>

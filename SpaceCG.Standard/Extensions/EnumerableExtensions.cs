@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
 {
@@ -36,7 +37,7 @@ namespace SpaceCG.Extensions
                 // item 运行时类型实现 IDisposable 时，释放其持有的资源
                 if (item is IDisposable disposable)
                 {
-                    try { disposable.Dispose(); }
+                    try { disposable?.Dispose(); }
                     catch { }
                 }
             }
@@ -67,15 +68,23 @@ namespace SpaceCG.Extensions
             {
                 if (!queue.TryDequeue(out var item)) continue;
 
-                itemHandler?.Invoke(item);
+                try
+                {
+                    itemHandler?.Invoke(item);
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning($"清空队列时处理元素时发生异常：{ex.Message}");
+                }
 
                 // item 运行时类型实现 IDisposable 时，释放其持有的资源
                 if (item is IDisposable disposable)
                 {
-                    try { disposable.Dispose(); }
+                    try { disposable?.Dispose(); }
                     catch { }
                 }
             }
         }
+
     }
 }
