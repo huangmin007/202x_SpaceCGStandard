@@ -51,14 +51,16 @@ namespace SpaceCG.NModbus.IO
         {
             _serialPort = serialPort;
             _serialPort.NewLine = "\r\n";
-
             _portName = serialPort.PortName;
             _stopwatch = Stopwatch.StartNew();
-
-            serialPort.PortName = SerialPortExtensions.GetPortName(_portName);
-
+            
             try
             {
+                if (!SerialPortExtensions.PortNameRegexForWindows.IsMatch(serialPort.PortName))
+                {
+                    serialPort.PortName = SerialPortExtensions.GetPortName(_portName);
+                }
+
                 if (!serialPort.IsOpen) serialPort.Open();
             }
             catch { }
@@ -66,6 +68,31 @@ namespace SpaceCG.NModbus.IO
             _cts = new CancellationTokenSource();
             _connectedTask = Task.Factory.StartNew(EnsureConnected, this, _cts.Token);
         }
+
+        public SerialPortAdapter(string portName, int baudRate) : this(portName, baudRate, Parity.None, 8, StopBits.One)
+        {
+        }
+
+        public SerialPortAdapter(string portName, int baudRate, Parity parity, int dataBits, StopBits stopBits)
+        {
+            if (baudRate < 0) throw new ArgumentOutOfRangeException(nameof(baudRate));
+            if (string.IsNullOrWhiteSpace(portName)) throw new ArgumentNullException(nameof(portName));
+
+            _portName = portName;
+            _stopwatch = Stopwatch.StartNew();
+            _serialPort = new SerialPort(SerialPortExtensions.GetPortName(_portName), baudRate, parity, dataBits, stopBits);
+            _serialPort.NewLine = "\r\n";
+
+            try
+            {
+                if (!_serialPort.IsOpen) _serialPort.Open();
+            }
+            catch { }
+
+            _cts = new CancellationTokenSource();
+            _connectedTask = Task.Factory.StartNew(EnsureConnected, this, _cts.Token);
+        }
+
         private async Task EnsureConnected(object state)
         {
             var instance = (state as SerialPortAdapter);

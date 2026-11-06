@@ -356,7 +356,5 @@ namespace SpaceCG.Extensions
         }
         #endregion
 
-
-
     }
 }

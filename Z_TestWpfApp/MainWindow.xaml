@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Z_TestWpfApp"
+        xmlns:sc ="clr-namespace:SpaceCG.Control;assembly=SpaceCG.Standard.Wpf"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800" Loaded="Window_Loaded" >
     <Grid>
@@ -34,6 +35,12 @@
 
             <TextBox Text="Hello...." Name="TextBox_0" Width="100" Height="60" />
         </Grid>
-        
+
+        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_Gif_Test\bin\Debug\net8.0-windows\gif -->
+        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\出场序列帧 循环序列帧 -->
+        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs -->
+        <!-- D:\SpaceCG\0A_Projects\202x\202x_SpaceCGStandard\Z_TestWpfApp\bin\Debug\Resources\bear -->
+        <sc:ImageSeq x:Name="imageSeq" FilePath="D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs" AutoPlay="True" />
+
     </Grid>
 </Window>
