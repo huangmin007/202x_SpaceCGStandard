@@ -40,7 +40,8 @@
         <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\出场序列帧 循环序列帧 -->
         <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs -->
         <!-- D:\SpaceCG\0A_Projects\202x\202x_SpaceCGStandard\Z_TestWpfApp\bin\Debug\Resources\bear -->
-        <sc:ImageSeq x:Name="imageSeq" FilePath="D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs" AutoPlay="True" />
+        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WPF_Animations\bin\Debug\net6.0-windows\Resources\KeyFrames -->
+        <sc:ImageSeq x:Name="imageSeq" FilePath="D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs.zip" UseCache="False" AutoPlay="True" />
 
     </Grid>
 </Window>

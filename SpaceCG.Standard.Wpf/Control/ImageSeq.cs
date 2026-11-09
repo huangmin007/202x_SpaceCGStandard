@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.ComponentModel;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -173,16 +174,21 @@ namespace SpaceCG.Control
         private Int32Rect dirtyRect;
         private WriteableBitmap writeableBitmap;
 
+        private ZipArchive zipArchive;
+
         private Task decoderTask;
         private CancellationTokenSource cancellationTokenSource;
         private readonly Stopwatch renderStopwatch = new Stopwatch();
 
         /// <summary> 文件路径字典 </summary>
-        private readonly ConcurrentDictionary<int, string> BitmapFiles = new ConcurrentDictionary<int, string>();
+        private readonly ConcurrentDictionary<int, string> BitmapFileNames = new ConcurrentDictionary<int, string>();
         /// <summary> 缓存的帧字典 </summary>
         private readonly ConcurrentDictionary<int, BitmapFrame> CacheFrames = new ConcurrentDictionary<int, BitmapFrame>();
         /// <summary> 待渲染的帧队列 </summary>
         private readonly ConcurrentQueue<(int Index, BitmapFrame Frame)> RenderFrames = new ConcurrentQueue<(int, BitmapFrame)>();
+
+        /// <summary> 序列图像文件名称 </summary>
+        public IEnumerable<string> FileNames => BitmapFileNames.Values;
 
         /// <summary>
         /// 格式转换字典
@@ -247,6 +253,7 @@ namespace SpaceCG.Control
                 //Trace.WriteLine($"Render Frame Index: {bitmap.Index}");
             }            
         }
+        /// <summary> 等待下一帧渲染 </summary>
         private void AwaitRenderNextFrame()
         {
             Task.Run(async () =>
@@ -297,7 +304,7 @@ namespace SpaceCG.Control
 
             while (!cancellationToken.IsCancellationRequested)
             {
-                if (BitmapFiles.IsEmpty)
+                if (BitmapFileNames.IsEmpty)
                 {
                     decoderIndex = 0;
                     try { await Task.Delay(10, cancellationToken); }
@@ -321,7 +328,7 @@ namespace SpaceCG.Control
 
                 var position = decoderIndex;
                 var useCache = useCacheFrames;
-                if (!BitmapFiles.ContainsKey(position))
+                if (!BitmapFileNames.ContainsKey(position))
                 {
                     try { await Task.Delay(2, cancellationToken); }
                     catch { }
@@ -339,28 +346,14 @@ namespace SpaceCG.Control
                     }
                     else
                     {
-                        var filePath = BitmapFiles[position];
-                        using (var fs = File.OpenRead(filePath))
-                        {
-                            var decoder = BitmapDecoder.Create(fs, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-                            bitmapFrame = decoder.Frames[0];
-
-                            if (FormatConvertedDict.TryGetValue(bitmapFrame.Format, out var target))
-                            {
-                                BitmapSource bitmatSource = new FormatConvertedBitmap(bitmapFrame, target.Format, target.Palette, 0);
-                                bitmatSource = new CachedBitmap(bitmatSource, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
-                                //bitmatSource.Freeze();
-                                bitmapFrame = BitmapFrame.Create(bitmatSource);
-                            }
-
-                            bitmapFrame.Freeze();
-                        }
+                        var filePath = BitmapFileNames[position];
+                        bitmapFrame = DecoderBitmapFrame(filePath);
 
                         RenderFrames.Enqueue((position, bitmapFrame));
                         if (useCache) CacheFrames.AddOrUpdate(position, bitmapFrame, (k, v) => bitmapFrame);
                     }
                     var elapsed = stopwatch.ElapsedMilliseconds;
-                    //Trace.WriteLine($"DecodeBitmap: {position}  DecodeUseTime:{elapsed}ms  QueueCount:{RenderFrames.Count}");
+                    Trace.WriteLine($"DecodeBitmap: {position}  DecodeUseTime:{elapsed}ms  QueueCount:{RenderFrames.Count}");
                 }
                 catch (Exception ex)
                 {
@@ -381,59 +374,118 @@ namespace SpaceCG.Control
             //Trace.WriteLine($"FilePath Changed ... {FilePath}");
             if (string.IsNullOrWhiteSpace(FilePath)) return;
 
-            var folder = Path.IsPathRooted(FilePath) ? FilePath : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FilePath);
-            if (!Directory.Exists(folder)) return;
+            var fileNames = Array.Empty<string>();
+            var fileFullPath = Path.IsPathRooted(FilePath) ? FilePath : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FilePath);
 
-            var files = GetImageFiles(folder);
-            if (files.Length == 0) return;
-
-            BitmapFrame bitmapFrame;
-            var firstPath = files.FirstOrDefault();
-            using (var fs = File.OpenRead(firstPath))
+            if (File.Exists(fileFullPath))
             {
-                var decoder = BitmapDecoder.Create(new Uri(firstPath), BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-                bitmapFrame = decoder.Frames[0];
-
-                if (DesignerProperties.GetIsInDesignMode(this))
+                var ext = Path.GetExtension(fileFullPath).ToLower();
+                if (ext == ".zip")
                 {
-                    base.Source = bitmapFrame;
-                    return;
+                    zipArchive?.Dispose();
+                    zipArchive = null;
+
+                    zipArchive = ZipFile.OpenRead(fileFullPath);
+                    //Trace.TraceInformation($"ZipFile.OpenRead Mode:{zipArchive.Mode} Count:{zipArchive.Entries.Count}");
+                    fileNames = GetImageFileNames(zipArchive, SupportImageExtensions);
                 }
             }
+            else if (Directory.Exists(fileFullPath))
+            {
+                zipArchive?.Dispose();
+                zipArchive = null;
 
-            BitmapFiles.Clear();
+                fileNames = GetImageFileNames(fileFullPath, SupportImageExtensions);
+            }
+            else
+            {
+                throw new FileNotFoundException($"File Not Found: {fileFullPath}");
+            }
+
+            if (fileNames.Length == 0) return;
+            var firstFrame = DecoderBitmapFrame(fileNames.FirstOrDefault());
+#if false
+            if (DesignerProperties.GetIsInDesignMode(this))
+            {
+                base.Source = firstFrame;
+                return;
+            }
+#endif
+
             CacheFrames.Clear();
             RenderFrames.Clear();
+            BitmapFileNames.Clear();
 
             FrameIndex = -1;
             IsPlaying = AutoPlay;
-            FrameCount = files.Length;
+            FrameCount = fileNames.Length;
 
             decoderIndex = 0;
             seekFrameIndex = -1;
             writeableBitmap = null;
 
-            var w = bitmapFrame.PixelWidth;
-            var h = bitmapFrame.PixelHeight;
+            var w = firstFrame.PixelWidth;
+            var h = firstFrame.PixelHeight;
             dirtyRect = new Int32Rect(0, 0, w, h);
 
-            var pixelFormat = bitmapFrame.Format;
-            var bitmapPalette = bitmapFrame.Palette;
+            var pixelFormat = firstFrame.Format;
+            var bitmapPalette = firstFrame.Palette;
             Trace.TraceInformation($"{FilePath} FrameCount:{frameCount} PixelFormat: {pixelFormat} Size:{w}x{h}");
 
-            if (FormatConvertedDict.TryGetValue(pixelFormat, out var target))
-            {
-                pixelFormat = target.Format;
-                bitmapPalette = target.Palette;
-            }
-            writeableBitmap = new WriteableBitmap(w, h, bitmapFrame.DpiX, bitmapFrame.DpiY, pixelFormat, bitmapPalette);
+            writeableBitmap = new WriteableBitmap(w, h, firstFrame.DpiX, firstFrame.DpiY, pixelFormat, bitmapPalette);
             this.Source = writeableBitmap;
             
-            for (var i = 0; i < files.Length; i++)
+            for (var i = 0; i < fileNames.Length; i++)
             {
-                BitmapFiles.TryAdd(i, files[i]);
+                BitmapFileNames.TryAdd(i, fileNames[i]);
             }
             if (!IsPlaying) AwaitRenderNextFrame();
+        }
+
+        /// <summary>
+        /// 解码一个 BitmapFrame 对象
+        /// </summary>
+        /// <param name="fileName"></param>
+        /// <returns></returns>
+        protected BitmapFrame DecoderBitmapFrame(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName)) return null;
+
+            Stream bitmapStream = null;
+            BitmapFrame bitmapFrame = null;
+
+            if (zipArchive == null)
+            {
+                bitmapStream = File.OpenRead(fileName);
+            }
+            else
+            {
+                var zipArchiveEntry = zipArchive.GetEntry(fileName);
+                //Trace.WriteLine($"ZipFileEntry: {fileName}  {zipArchiveEntry.CompressedLength}/{zipArchiveEntry.Length}");
+                using (var zipStream = zipArchiveEntry.Open())
+                {
+                    bitmapStream = new MemoryStream();
+                    zipStream.CopyTo(bitmapStream);
+                    bitmapStream.Position = 0;
+                }
+            }
+
+            using (bitmapStream)
+            {
+                var decoder = BitmapDecoder.Create(bitmapStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                bitmapFrame = decoder.Frames[0];
+
+                if (FormatConvertedDict.TryGetValue(bitmapFrame.Format, out var target))
+                {
+                    BitmapSource bitmatSource = new FormatConvertedBitmap(bitmapFrame, target.Format, target.Palette, 0);
+                    bitmatSource = new CachedBitmap(bitmatSource, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+                    bitmapFrame = BitmapFrame.Create(bitmatSource);
+                }
+
+                bitmapFrame.Freeze();
+            }
+
+            return bitmapFrame;
         }
 
         /// <inheritdoc />
@@ -449,9 +501,13 @@ namespace SpaceCG.Control
             Unloaded -= ImageSeq_Unloaded;
             CompositionTarget.Rendering -= CompositionTarget_Rendering;
 
-            BitmapFiles.Clear();
+            BitmapFileNames.Clear();
+            CacheFrames.Clear();
             RenderFrames.Clear();
             renderStopwatch.Stop();
+
+            zipArchive?.Dispose();
+            zipArchive = null;
 
             try
             {
@@ -499,19 +555,22 @@ namespace SpaceCG.Control
             if (!IsPlaying) AwaitRenderNextFrame();
         }
 
+        private static readonly string[] SupportImageExtensions = new string[]{ ".png", ".jpg", ".jpeg", ".bmp" };
+
         /// <summary>
-        /// 获取图像文件列表，并按文件名序号(文件名中的第一组数字)排列
+        /// 获取文件夹内图像文件列表，按文件名中的第一组数字排序，返回 (顺序帧下标, 文件路径) 序列
         /// </summary>
-        /// <param name="folder"></param>
-        /// <returns></returns>
-        public static string[] GetImageFiles(string folder)
+        /// <param name="folder">图像文件夹路径</param>
+        /// <param name="extensions">扩展名过滤列表，如 { ".png", ".jpg", ".jpeg", ".bmp" }，不区分大小写</param>
+        /// <returns>Key 为从 0 开始的连续帧序号，Value 为完整文件路径；参数无效时抛出异常</returns>
+        /// <exception cref="ArgumentException">folder 为空或目录不存在</exception>
+        /// <exception cref="ArgumentNullException">extensions 为 null</exception>
+        public static string[] GetImageFileNames(string folder, IEnumerable<string> extensions)
         {
-            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder) || extensions == null) 
                 return Array.Empty<string>();
 
             var regex = new Regex(@"\d+");
-            var extensions = new string[] { ".png", ".jpg", ".jpeg", ".bmp" };
-
             var files = from fpath in Directory.GetFiles(folder, "*.*", SearchOption.TopDirectoryOnly)
                         let fextn = Path.GetExtension(fpath)?.ToLower()
                         where extensions.Contains(fextn, StringComparer.OrdinalIgnoreCase)
@@ -519,6 +578,28 @@ namespace SpaceCG.Control
                         where match.Success && int.TryParse(match.Value, out int number)
                         orderby int.Parse(match.Value)
                         select fpath;
+
+            return files.ToArray();
+        }
+        /// <summary>
+        /// 获取压缩包内图像文件列表，按文件名中的第一组数字排序，返回 (顺序帧下标, 条目全名) 序列
+        /// </summary>
+        /// <param name="zipArchive">已打开的 ZipArchive，生命周期由调用方管理</param>
+        /// <param name="extensions">扩展名过滤列表，如 { ".png", ".jpg", ".jpeg", ".bmp" }，不区分大小写</param>
+        /// <returns>Key 为从 0 开始的连续帧序号，Value 为 ZipArchiveEntry.FullName；参数无效时抛出异常</returns>
+        /// <exception cref="ArgumentNullException">zipArchive 或 extensions 为 null</exception>
+        public static string[] GetImageFileNames(ZipArchive zipArchive, IEnumerable<string> extensions)
+        {
+            if (zipArchive == null || extensions == null) return Array.Empty<string>();
+
+            var regex = new Regex(@"\d+");
+            var files = from entry in zipArchive.Entries
+                        let fextn = Path.GetExtension(entry.FullName)?.ToLower()
+                        where extensions.Contains(fextn, StringComparer.OrdinalIgnoreCase)
+                        let match = regex.Match(Path.GetFileNameWithoutExtension(entry.FullName))
+                        where match.Success && int.TryParse(match.Value, out int number)
+                        orderby int.Parse(match.Value)
+                        select entry.FullName;
 
             return files.ToArray();
         }
