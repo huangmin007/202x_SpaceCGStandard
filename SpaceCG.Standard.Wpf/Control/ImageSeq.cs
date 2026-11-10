@@ -19,9 +19,18 @@ namespace SpaceCG.Control
 {
     public sealed class ImageSeq : Image
     {
-        /// <summary> 待渲染队列默认长度</summary>
+        /// <summary> 待渲染队列默认长度 </summary>
         private const int DefaultRenderFrameCount = 8;
+        /// <summary> 支持的图像扩展类型 </summary>
         private static readonly string[] SupportImageExtensions = new string[] { ".png", ".jpg", ".jpeg", ".bmp" };
+        /// <summary> 位图帧格式转换字典，需要转换的帧格式。(原格式)=(目标格式，目标调色板) </summary>
+        private static readonly ConcurrentDictionary<PixelFormat, (PixelFormat Format, BitmapPalette Palette)> FormatConvertedDict = new ConcurrentDictionary<PixelFormat, (PixelFormat, BitmapPalette)>()
+        {
+            [PixelFormats.Indexed1] = (PixelFormats.Bgra32, null),
+            [PixelFormats.Indexed2] = (PixelFormats.Bgra32, null),
+            [PixelFormats.Indexed4] = (PixelFormats.Bgra32, null),
+            [PixelFormats.Indexed8] = (PixelFormats.Bgra32, null),
+        };
 
         /// <summary> Frame Render Changed Event  </summary>
         public event EventHandler<EventArgs> RenderChanged;
@@ -127,7 +136,7 @@ namespace SpaceCG.Control
         }
         #endregion
 
-        #region 只读依赖属性
+        #region ReadOnly Dependency Properties
         private static readonly DependencyPropertyKey IsPlayingPropertyKey = DependencyProperty.RegisterReadOnly(nameof(IsPlaying), typeof(bool), typeof(ImageSeq), new PropertyMetadata(false));
         /// <summary> <see cref="IsPlaying"/> 的只读依赖属性标识 </summary>
         public static readonly DependencyProperty IsPlayingProperty = IsPlayingPropertyKey.DependencyProperty;
@@ -176,18 +185,18 @@ namespace SpaceCG.Control
         private volatile int abEndIndex = -1;
         private volatile int abStartIndex = 0;
 
-        private volatile int decoderIndex = -1;
         private volatile int seekFrameIndex = -1;
+        private volatile int decodeFrameIndex = -1;
 
         private volatile int fps = 25;
         private volatile int renderInterval = 40;
         private volatile int avgDecodeTimeMs = 0;
-        private double nextRenderMilliseconds = 0.0;
+        private double nextRenderTime = 0.0;
 
         private Int32Rect dirtyRect;
         private WriteableBitmap writeableBitmap;
 
-        private Task decoderTask;
+        private Task decodeTask;
         private ZipArchive zipArchive;
         private CancellationTokenSource cancellationTokenSource;
         private readonly Stopwatch renderStopwatch = new Stopwatch();
@@ -204,14 +213,13 @@ namespace SpaceCG.Control
 
         /// <summary>
         /// 缓存帧条件代理：输入帧索引（0-based），返回 true 表示缓存该帧的解码结果。
-        /// <para>代理在后台解码线程被调用（每帧一次，O(1) 期望），实现必须线程安全，
-        /// 禁止直接访问 UI 元素或依赖属性（需要 UI 数据时应在赋值前捕获快照）。</para>
+        /// <para>代理在后台解码线程被调用（每帧一次，O(1) 期望），实现必须线程安全，禁止直接访问 UI 元素或依赖属性（需要 UI 数据时应在赋值前捕获快照）。</para>
         /// </summary>
+        /// <param name="frameIndex">帧索引（0-based）</param>
         public delegate bool CacheFramePredicate(int frameIndex);
         /// <summary>
         /// 缓存条件代理，控制哪些帧的解码结果进入内存缓存，降低长序列的内存占用。默认 null = 不缓存。
-        /// <para>变更只影响后续解码的帧，不清空既有缓存；需要清空缓存时调用 <see cref="ClearCache"/>。</para>
-        /// <para>内存量级：每缓存一帧 ≈ 宽 × 高 × 4 字节（Bgra32）。</para>
+        /// <para>变更只影响后续解码的帧，不清空既有缓存帧；需要清空缓存时调用 <see cref="ClearCache"/>。</para>
         /// </summary>
         public CacheFramePredicate CacheCondition
         {
@@ -222,10 +230,8 @@ namespace SpaceCG.Control
 
         /// <summary> 全缓存条件。长序列慎用，否则内存占用过大。 </summary>
         public static readonly CacheFramePredicate CacheAll = _ => true;
-        /// <summary>
-        /// 生成 "每 step 帧缓存一帧" 的条件代理
-        /// </summary>
-        /// <param name="step">缓存步长</param>
+        /// <summary> 生成 "每 step 帧缓存一帧" 的条件代理 </summary>
+        /// <param name="step">缓存步长。0 = 不缓存；1 = 全缓存；2 = 缓存 0, 2, 4…；3 = 缓存 0, 3, 6…</param>
         /// <param name="offset">起始偏移。CacheEvery(2, 1) → 缓存 1, 3, 5…；CacheEvery(10) → 缓存 0, 10, 20…</param>
         public static CacheFramePredicate CacheEvery(int step, int offset = 0)
         {
@@ -236,17 +242,6 @@ namespace SpaceCG.Control
             return index => ((index - offset) % step + step) % step == 0;
         }
 
-        /// <summary>
-        /// 格式转换字典
-        /// </summary>
-        private static readonly ConcurrentDictionary<PixelFormat, (PixelFormat Format, BitmapPalette Palette)> FormatConvertedDict = new ConcurrentDictionary<PixelFormat, (PixelFormat, BitmapPalette)>()
-        {
-            [PixelFormats.Indexed1] = (PixelFormats.Bgra32, null),
-            [PixelFormats.Indexed2] = (PixelFormats.Bgra32, null),
-            [PixelFormats.Indexed4] = (PixelFormats.Bgra32, null),
-            [PixelFormats.Indexed8] = (PixelFormats.Bgra32, null),
-        };
-
         public ImageSeq()
         {
             abEndIndex = ABLoopEnd;
@@ -255,40 +250,37 @@ namespace SpaceCG.Control
             Loaded += ImageSeq_Loaded;
             Unloaded += ImageSeq_Unloaded;
         }
-
         private void ImageSeq_Loaded(object sender, RoutedEventArgs e)
         {
             Loaded -= ImageSeq_Loaded;
 
-            cancellationTokenSource = new CancellationTokenSource();
-            decoderTask = Task.Run(() => LoopDecodeFrameAsync(cancellationTokenSource.Token), cancellationTokenSource.Token);
-
             renderStopwatch.Restart();
             CompositionTarget.Rendering += CompositionTarget_Rendering;
+
+            cancellationTokenSource = new CancellationTokenSource();
+            decodeTask = Task.Run(() => LoopDecodeFrameAsync(cancellationTokenSource.Token), cancellationTokenSource.Token);
         }
         private void ImageSeq_Unloaded(object sender, RoutedEventArgs e) { Unload(); }
         private void CompositionTarget_Rendering(object sender, EventArgs e)
         {
             var elapsed = renderStopwatch.ElapsedMilliseconds;
-            if (elapsed < nextRenderMilliseconds || !IsPlaying) return;
+            if (elapsed < nextRenderTime || !IsPlaying) return;
 
             var interval = renderInterval;
-            nextRenderMilliseconds += interval;
+            nextRenderTime += interval;
 
             // UI 线程被长时间占用而落后太多时重新对齐，避免"追帧"连刷
-            if (nextRenderMilliseconds <= elapsed) 
-                nextRenderMilliseconds = elapsed + interval;
+            if (nextRenderTime <= elapsed) 
+                nextRenderTime = elapsed + interval;
 
-            //var ms0 = renderStopwatch.ElapsedMilliseconds;
             RenderNextFrame();
-            //var ms1 = renderStopwatch.ElapsedMilliseconds;
-            //Trace.WriteLine($"Render Use: {ms1 - ms0} ms");
 
             if (FrameIndex % 2 == 0)
             {
                 AverageDecodeTime = TimeSpan.FromMilliseconds(avgDecodeTimeMs);
             }
         }
+
         /// <summary> 从帧队列中渲染下一帧  </summary>
         private void RenderNextFrame()
         {
@@ -302,7 +294,7 @@ namespace SpaceCG.Control
                 //Trace.WriteLine($"Render Frame Index: {bitmap.Index}");
             }            
         }
-        /// <summary> 等待下一帧渲染 </summary>
+        /// <summary> 等待队列，从帧队列中渲染下一帧 </summary>
         private void AwaitRenderNextFrame()
         {
             Task.Run(async () =>
@@ -328,15 +320,11 @@ namespace SpaceCG.Control
                 return;
             }
 
-            //var w = bitmapFrame.PixelWidth;
-            //var h = bitmapFrame.PixelHeight;
-
-            // 帧与位图取交集：CopyPixels 不做缩放/ 转换，越界即异常或写穿缓冲
+            // 帧与位图取交集：CopyPixels 不做缩放 / 转换，越界即异常或写穿缓冲
             var w = Math.Min(bitmapFrame.PixelWidth, dirtyRect.Width);
             var h = Math.Min(bitmapFrame.PixelHeight, dirtyRect.Height);
 
             var stride = writeableBitmap.BackBufferStride;
-            //var bufferSize = stride * h;
             var bufferSize = stride * dirtyRect.Height;
 
             writeableBitmap.Lock();
@@ -355,6 +343,7 @@ namespace SpaceCG.Control
                 writeableBitmap.Unlock();
             }
         }
+
         /// <summary> 解码图像帧  </summary>
         /// <param name="cancellationToken"></param>
         private async Task LoopDecodeFrameAsync(CancellationToken cancellationToken)
@@ -369,7 +358,7 @@ namespace SpaceCG.Control
             {
                 if (BitmapFileNames.IsEmpty)
                 {
-                    decoderIndex = 0;
+                    decodeFrameIndex = 0;
                     try { await Task.Delay(10, cancellationToken); }
                     catch { }
                     continue;
@@ -385,11 +374,11 @@ namespace SpaceCG.Control
                 if (seekFrameIndex >= 0 && seekFrameIndex < frameCount)
                 {
                     RenderFrames.Clear();
-                    decoderIndex = seekFrameIndex;
+                    decodeFrameIndex = seekFrameIndex;
                     seekFrameIndex = -1;
                 }
 
-                var position = decoderIndex;
+                var position = decodeFrameIndex;
                 if (!BitmapFileNames.ContainsKey(position))
                 {
                     try { await Task.Delay(2, cancellationToken); }
@@ -442,7 +431,7 @@ namespace SpaceCG.Control
                 // AB Loop AB值设置错误或超出则会出现停止不解码、不渲染
                 var endIndex = abEndIndex;
                 if (endIndex < 0) endIndex = frameCount + endIndex;
-                decoderIndex = position == endIndex ? abStartIndex : position + 1;
+                decodeFrameIndex = position == endIndex ? abStartIndex : position + 1;
             }
             stopwatch.Stop();
         }
@@ -465,7 +454,6 @@ namespace SpaceCG.Control
                     zipArchive = null;
 
                     zipArchive = ZipFile.OpenRead(fileFullPath);
-                    //Trace.TraceInformation($"ZipFile.OpenRead Mode:{zipArchive.Mode} Count:{zipArchive.Entries.Count}");
                     fileNames = GetImageFileNames(zipArchive, SupportImageExtensions);
                 }
             }
@@ -497,13 +485,13 @@ namespace SpaceCG.Control
 
             FrameIndex = -1;
             IsPlaying = AutoPlay;
+            frameCount = fileNames.Length;
             FrameCount = fileNames.Length;
             AverageDecodeTime = TimeSpan.Zero;
 
-            frameCount = fileNames.Length;
-            decoderIndex = 0;
-            seekFrameIndex = -1;
             avgDecodeTimeMs = 0;
+            seekFrameIndex = -1;
+            decodeFrameIndex = 0;
             writeableBitmap = null;
 
             var w = firstFrame.PixelWidth;
@@ -512,7 +500,7 @@ namespace SpaceCG.Control
 
             var pixelFormat = firstFrame.Format;
             var bitmapPalette = firstFrame.Palette;
-            Trace.TraceInformation($"{FilePath} FrameCount:{frameCount} PixelFormat: {pixelFormat} Size:{w}x{h}");
+            Trace.TraceInformation($"{FilePath} FrameCount:{frameCount} PixelFormat:{pixelFormat} Size:{w}x{h}");
 
             writeableBitmap = new WriteableBitmap(w, h, firstFrame.DpiX, firstFrame.DpiY, pixelFormat, bitmapPalette);
             this.Source = writeableBitmap;
@@ -524,9 +512,7 @@ namespace SpaceCG.Control
             if (!IsPlaying) AwaitRenderNextFrame();
         }
 
-        /// <summary>
-        /// 解码一个 BitmapFrame 对象
-        /// </summary>
+        /// <summary> 跟据文件名解码一帧 BitmapFrame 对象 </summary>
         /// <param name="fileName"></param>
         /// <returns></returns>
         private BitmapFrame DecodeBitmapFrame(string fileName)
@@ -584,23 +570,23 @@ namespace SpaceCG.Control
             Unloaded -= ImageSeq_Unloaded;
             CompositionTarget.Rendering -= CompositionTarget_Rendering;
 
+            renderStopwatch.Stop();
             BitmapFileNames.Clear();
             CacheFrames.Clear();
             RenderFrames.Clear();
-            renderStopwatch.Stop();
 
             zipArchive?.Dispose();
             zipArchive = null;
 
             FrameIndex = -1;
+            frameCount = 0;
             FrameCount = 0;
             IsPlaying = false;
             AverageDecodeTime = TimeSpan.Zero;
 
-            frameCount = 0;
-            decoderIndex = 0;
-            seekFrameIndex = -1;
             avgDecodeTimeMs = 0;
+            seekFrameIndex = -1;
+            decodeFrameIndex = 0;
             writeableBitmap = null;
 
             try
@@ -611,12 +597,12 @@ namespace SpaceCG.Control
 
             try
             {
-                decoderTask?.Wait(100);
-                decoderTask?.Dispose();
+                decodeTask?.Wait(100);
+                decodeTask?.Dispose();
             }
             finally
             {
-                decoderTask = null;
+                decodeTask = null;
             }
 
             try
@@ -644,7 +630,7 @@ namespace SpaceCG.Control
             if (frameIndex == FrameIndex) return;
 
             RenderFrames.Clear();
-            decoderIndex = -1;
+            decodeFrameIndex = -1;
             seekFrameIndex = frameIndex;
 
             if (!IsPlaying) AwaitRenderNextFrame();
