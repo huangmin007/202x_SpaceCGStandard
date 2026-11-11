@@ -21,7 +21,8 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using SpaceCG;
-using SpaceCG.Control;
+using SpaceCG.Controls;
+using SpaceCG.Controls;
 using SpaceCG.Device;
 using SpaceCG.Diagnostics;
 using SpaceCG.Extensions;
@@ -98,7 +99,7 @@ namespace Z_TestWpfApp
 
         private void ImageSeq_RenderChanged(object sender, EventArgs e)
         {
-            var imageSeq = sender as ImageSeq;
+            var imageSeq = sender as ImageSequence;
             Trace.WriteLine($"RenderChanged: {imageSeq.FrameIndex}/{imageSeq.FrameCount}");
 
             //if (imageSeq.FrameIndex == 20) imageSeq.Pause();

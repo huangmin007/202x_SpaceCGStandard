@@ -24,15 +24,15 @@ namespace SpaceCG.Device
     /// 在这里加个使用示例：
     /// <code>
     /// var config = XElementExtensions.Load("Resources/Config.xml");
-    /// LedRenderControl ledRenderControl = new LedRenderControl(canvas);
-    /// ledRenderControl.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
-    /// ledRenderControl.StartRender();
-    /// //ledRenderControl.StopRender();
-    /// //ledRenderControl.CheckConnectStatus();
-    /// //ledRenderControl.RenderSceneId(2);
+    /// LedRenderController ledRenderController = new LedRenderControl(canvas);
+    /// ledRenderController.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
+    /// ledRenderController.StartRender();
+    /// //ledRenderController.StopRender();
+    /// //ledRenderController.CheckConnectStatus();
+    /// //ledRenderController.RenderSceneId(2);
     /// </code>
     /// </summary>
-    public class LedRenderControl
+    public class LedRenderController
     {
         private Canvas _canvas;
         private TextBlock _textBlock_info;
@@ -53,7 +53,7 @@ namespace SpaceCG.Device
         /// </summary>
         /// <param name="canvas"></param>
         /// <exception cref="ArgumentNullException"></exception>
-        public LedRenderControl(Canvas canvas)
+        public LedRenderController(Canvas canvas)
         {
             if (canvas == null) throw new ArgumentNullException(nameof(canvas));
 

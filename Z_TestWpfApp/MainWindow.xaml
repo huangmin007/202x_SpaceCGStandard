@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Z_TestWpfApp"
-        xmlns:sc ="clr-namespace:SpaceCG.Control;assembly=SpaceCG.Standard.Wpf"
+        xmlns:sg ="http://schemas.spacecg.cn/xaml"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800" Loaded="Window_Loaded" >
     <Grid>
@@ -34,6 +34,14 @@
             <Rectangle Name="Rectangle_0" Fill="Blue" Margin="100" />
 
             <TextBox Text="Hello...." Name="TextBox_0" Width="100" Height="60" />
+
+            <StackPanel Orientation="Vertical" Margin="20">
+                <sg:ImageToggleButton x:Name="button2" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                <sg:ImageRadioButton x:Name="button1" GroupName="A" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                <sg:ImageRadioButton x:Name="button0" GroupName="A" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                <sg:ImageRadioButton x:Name="button3" GroupName="B" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                <sg:ImageRadioButton x:Name="button4" GroupName="B" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+            </StackPanel>
         </Grid>
 
         <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_Gif_Test\bin\Debug\net8.0-windows\gif -->
@@ -41,7 +49,7 @@
         <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs -->
         <!-- D:\SpaceCG\0A_Projects\202x\202x_SpaceCGStandard\Z_TestWpfApp\bin\Debug\Resources\bear -->
         <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WPF_Animations\bin\Debug\net6.0-windows\Resources\KeyFrames -->
-        <sc:ImageSeq x:Name="imageSeq" FilePath="D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs.zip" AutoPlay="False" CacheStep="0" RenderChanged="ImageSeq_RenderChanged" />
+        <sg:ImageSequence x:Name="imageSeq" FilePath="D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs.zip" AutoPlay="False" CacheStep="0" RenderChanged="ImageSeq_RenderChanged" />
 
     </Grid>
 </Window>

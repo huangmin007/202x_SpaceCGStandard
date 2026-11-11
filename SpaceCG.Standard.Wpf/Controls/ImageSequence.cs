@@ -15,9 +15,9 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using SpaceCG.Extensions;
 
-namespace SpaceCG.Control
+namespace SpaceCG.Controls
 {
-    public sealed class ImageSeq : Image
+    public sealed class ImageSequence : Image
     {
         /// <summary> 待渲染队列默认长度 </summary>
         private const int DefaultRenderFrameCount = 8;
@@ -37,9 +37,9 @@ namespace SpaceCG.Control
 
         #region Dependency Properties
         /// <summary> 标识 <see cref="FilePath"/> 依赖属性。  </summary>
-        public static readonly DependencyProperty FilePathProperty = DependencyProperty.Register(nameof(FilePath), typeof(string), typeof(ImageSeq), new PropertyMetadata(null, (d, e)=>
+        public static readonly DependencyProperty FilePathProperty = DependencyProperty.Register(nameof(FilePath), typeof(string), typeof(ImageSequence), new PropertyMetadata(null, (d, e)=>
         {
-            var ctl = d as ImageSeq;
+            var ctl = d as ImageSequence;
             if (ctl != null) ctl.OnFilePathChanged();
         }));
         /// <summary>
@@ -54,9 +54,9 @@ namespace SpaceCG.Control
 
         /// <summary> 标识 <see cref="ABLoopStart"/> 依赖属性。  </summary>
         public static readonly DependencyProperty ABLoopStartProperty =
-            DependencyProperty.Register(nameof(ABLoopStart), typeof(int), typeof(ImageSeq), new PropertyMetadata(0, (d, e) =>
+            DependencyProperty.Register(nameof(ABLoopStart), typeof(int), typeof(ImageSequence), new PropertyMetadata(0, (d, e) =>
             {
-                var ctl = d as ImageSeq;
+                var ctl = d as ImageSequence;
                 if (ctl != null) ctl.abStartIndex = (int)e.NewValue;
             }));
         /// <summary> AB循环起始帧索引。默认值为 0。 </summary>
@@ -67,9 +67,9 @@ namespace SpaceCG.Control
         }
         /// <summary> 标识 <see cref="ABLoopEnd"/> 依赖属性。  </summary>
         public static readonly DependencyProperty ABLoopEndProperty =
-            DependencyProperty.Register(nameof(ABLoopEnd), typeof(int), typeof(ImageSeq), new PropertyMetadata(-1, (d, e) =>
+            DependencyProperty.Register(nameof(ABLoopEnd), typeof(int), typeof(ImageSequence), new PropertyMetadata(-1, (d, e) =>
             {
-                var ctl = d as ImageSeq;
+                var ctl = d as ImageSequence;
                 if (ctl != null) ctl.abEndIndex = (int)e.NewValue;
             }));
         /// <summary> AB循环结束帧索引。默认值为 -1 表示 <see cref="FrameCount"/> - 1 位置的帧。</summary>
@@ -81,7 +81,7 @@ namespace SpaceCG.Control
 
         /// <summary> 标识 <see cref="AutoPlay"/> 依赖属性。  </summary>
         public static readonly DependencyProperty AutoPlayProperty =
-            DependencyProperty.Register(nameof(AutoPlay), typeof(bool), typeof(ImageSeq), new PropertyMetadata(false));
+            DependencyProperty.Register(nameof(AutoPlay), typeof(bool), typeof(ImageSequence), new PropertyMetadata(false));
         /// <summary> 打开序列帧目录后是否自动播放。默认值为 false，不自动播放，暂停在第一帧位置。 </summary>
         public bool AutoPlay
         {
@@ -91,10 +91,10 @@ namespace SpaceCG.Control
 
         /// <summary> 标识 <see cref="Fps"/> 依赖属性。 </summary>
         public static readonly DependencyProperty FpsProperty =
-            DependencyProperty.Register(nameof(Fps), typeof(int), typeof(ImageSeq), new PropertyMetadata(25,
+            DependencyProperty.Register(nameof(Fps), typeof(int), typeof(ImageSequence), new PropertyMetadata(25,
             (d, e) =>
             {
-                var ctl = d as ImageSeq;
+                var ctl = d as ImageSequence;
                 if (ctl != null)
                 {
                     var fps = (int)e.NewValue;
@@ -116,10 +116,10 @@ namespace SpaceCG.Control
 
         /// <summary> 标识 <see cref="CacheStep"/> 依赖属性。 </summary>
         public static readonly DependencyProperty CacheStepProperty =
-            DependencyProperty.Register(nameof(CacheStep), typeof(int), typeof(ImageSeq), new PropertyMetadata(0, 
+            DependencyProperty.Register(nameof(CacheStep), typeof(int), typeof(ImageSequence), new PropertyMetadata(0, 
             (d, e) =>
             {
-                var ctl = (ImageSeq)d;
+                var ctl = (ImageSequence)d;
                 var step = (int)e.NewValue;
                 ctl.cacheCondition = CacheEvery(step);
             },
@@ -137,7 +137,7 @@ namespace SpaceCG.Control
         #endregion
 
         #region ReadOnly Dependency Properties
-        private static readonly DependencyPropertyKey IsPlayingPropertyKey = DependencyProperty.RegisterReadOnly(nameof(IsPlaying), typeof(bool), typeof(ImageSeq), new PropertyMetadata(false));
+        private static readonly DependencyPropertyKey IsPlayingPropertyKey = DependencyProperty.RegisterReadOnly(nameof(IsPlaying), typeof(bool), typeof(ImageSequence), new PropertyMetadata(false));
         /// <summary> <see cref="IsPlaying"/> 的只读依赖属性标识 </summary>
         public static readonly DependencyProperty IsPlayingProperty = IsPlayingPropertyKey.DependencyProperty;
         /// <summary> 序列是否正在播放  </summary>
@@ -147,7 +147,7 @@ namespace SpaceCG.Control
             private set => SetValue(IsPlayingPropertyKey, value);
         }
 
-        public static readonly DependencyPropertyKey FrameIndexPropertyKey = DependencyProperty.RegisterReadOnly(nameof(FrameIndex), typeof(int), typeof(ImageSeq), new PropertyMetadata(-1));
+        public static readonly DependencyPropertyKey FrameIndexPropertyKey = DependencyProperty.RegisterReadOnly(nameof(FrameIndex), typeof(int), typeof(ImageSequence), new PropertyMetadata(-1));
         /// <summary> <see cref="FrameIndex"/> 的只读依赖属性标识 </summary>
         public static readonly DependencyProperty FrameIndexProperty = FrameIndexPropertyKey.DependencyProperty;
         /// <summary> 序列当前播放的帧索引 </summary>
@@ -157,7 +157,7 @@ namespace SpaceCG.Control
             private set => SetValue(FrameIndexPropertyKey, value);
         }
 
-        private static readonly DependencyPropertyKey FrameCountPropertyKey = DependencyProperty.RegisterReadOnly(nameof(FrameCount), typeof(int), typeof(ImageSeq), new PropertyMetadata(0));
+        private static readonly DependencyPropertyKey FrameCountPropertyKey = DependencyProperty.RegisterReadOnly(nameof(FrameCount), typeof(int), typeof(ImageSequence), new PropertyMetadata(0));
         /// <summary> <see cref="FrameCount"/> 的只读依赖属性标识 </summary>
         public static readonly DependencyProperty FrameCountProperty = FrameCountPropertyKey.DependencyProperty;
         /// <summary> 序列总帧数  </summary>
@@ -167,7 +167,7 @@ namespace SpaceCG.Control
             private set => SetValue(FrameCountPropertyKey, value);
         }
 
-        private static readonly DependencyPropertyKey AverageDecodeTimePropertyKey = DependencyProperty.RegisterReadOnly(nameof(AverageDecodeTime), typeof(TimeSpan),typeof(ImageSeq),new PropertyMetadata(TimeSpan.Zero));        
+        private static readonly DependencyPropertyKey AverageDecodeTimePropertyKey = DependencyProperty.RegisterReadOnly(nameof(AverageDecodeTime), typeof(TimeSpan),typeof(ImageSequence),new PropertyMetadata(TimeSpan.Zero));        
         /// <summary> <see cref="AverageDecodeTime"/> 的只读依赖属性标识 </summary>
         public static readonly DependencyProperty AverageDecodeTimeProperty = AverageDecodeTimePropertyKey.DependencyProperty;        
         /// <summary>
@@ -242,7 +242,7 @@ namespace SpaceCG.Control
             return index => ((index - offset) % step + step) % step == 0;
         }
 
-        public ImageSeq()
+        public ImageSequence()
         {
             abEndIndex = ABLoopEnd;
             abStartIndex = ABLoopStart;
@@ -419,7 +419,6 @@ namespace SpaceCG.Control
                         }
                         averageElapsed = elapsedQueue.Average();
                         avgDecodeTimeMs = (int)Math.Round(averageElapsed);
-
                         //Trace.WriteLine($"DecodeBitmap: {position}  AverageDecodeTime:{averageElapsed}ms  QueueCount:{RenderFrames.Count}");
                     }
                 }

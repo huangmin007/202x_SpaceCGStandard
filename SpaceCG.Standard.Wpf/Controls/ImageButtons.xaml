@@ -1,0 +1,46 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:SpaceCG.Controls">
+
+    <!-- 共享模板：TargetType 用基类型，ToggleButton/RadioButton 通用 -->
+    <ControlTemplate x:Key="ImageButtonTemplate" TargetType="ToggleButton">
+        <!-- 使用 Border 保留原生背景/边框支持，便于后续扩展 -->
+        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+            BorderThickness="{TemplateBinding BorderThickness}" SnapsToDevicePixels="True">
+            <!-- NormalSource 是自定义 DP，不在模板 TargetType(ToggleButton) 上，必须用 Binding+TemplatedParent，不能用 TemplateBinding -->
+            <Image x:Name="Image" Source="{Binding NormalSource, RelativeSource={RelativeSource TemplatedParent}}" Stretch="Uniform"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Image" Property="Source" Value="{Binding CheckedSource, RelativeSource={RelativeSource TemplatedParent}}"/>
+            </Trigger>
+
+            <!-- 悬停/按下/禁用 视觉反馈（保留 ToggleButton 原生交互感） -->
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Image" Property="Opacity" Value="0.85"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Image" Property="Opacity" Value="0.7"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Image" Property="Opacity" Value="0.4"/>
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <Style TargetType="{x:Type local:ImageToggleButton}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template" Value="{StaticResource ImageButtonTemplate}"/>
+    </Style>
+
+    <Style TargetType="{x:Type local:ImageRadioButton}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template" Value="{StaticResource ImageButtonTemplate}"/>
+    </Style>
+
+</ResourceDictionary>

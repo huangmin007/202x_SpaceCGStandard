@@ -3,11 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Folder Include="Control\" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj" />
@@ -15,10 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="PresentationCore" />
-    <Reference Include="PresentationFramework" />
+    <Reference Include="System.Configuration" />
     <Reference Include="System.IO.Compression" />
-    <Reference Include="WindowsBase" />
   </ItemGroup>
 
   <ItemGroup>
