@@ -13,26 +13,27 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Xml.Linq;
+using SpaceCG.Device;
 using SpaceCG.Drawing;
 using SpaceCG.Extensions;
 using SpaceCG.IO;
 
-namespace SpaceCG.Device
+namespace SpaceCG.Controls
 {
     /// <summary>
-    /// LedRenderControl 类用于在 WPF 应用程序中实现 LED 灯带的渲染功能。
+    /// LedRenderManager 类用于在 WPF 应用程序中实现 LED 灯带的渲染管理功能。
     /// 在这里加个使用示例：
     /// <code>
     /// var config = XElementExtensions.Load("Resources/Config.xml");
-    /// LedRenderController ledRenderController = new LedRenderControl(canvas);
-    /// ledRenderController.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
-    /// ledRenderController.StartRender();
-    /// //ledRenderController.StopRender();
-    /// //ledRenderController.CheckConnectStatus();
-    /// //ledRenderController.RenderSceneId(2);
+    /// LedRenderManager ledRenderManager = new LedRenderManager(canvas);
+    /// ledRenderManager.InitializeComponent(config.Element("DrawingDisplay"), config.Element("LedDevices"), config.Element("Scenes"));
+    /// ledRenderManager.StartRender();
+    /// //ledRenderManager.StopRender();
+    /// //ledRenderManager.CheckConnectStatus();
+    /// //ledRenderManager.RenderSceneId(2);
     /// </code>
     /// </summary>
-    public class LedRenderController
+    public class LedRenderManager
     {
         private Canvas _canvas;
         private TextBlock _textBlock_info;
@@ -53,17 +54,17 @@ namespace SpaceCG.Device
         /// </summary>
         /// <param name="canvas"></param>
         /// <exception cref="ArgumentNullException"></exception>
-        public LedRenderController(Canvas canvas)
+        public LedRenderManager(Canvas canvas)
         {
             if (canvas == null) throw new ArgumentNullException(nameof(canvas));
 
-            this._canvas = canvas;
-            this._textBlock_info = new TextBlock();
-            this._textBlock_info.Padding = new Thickness(10);
-            this._textBlock_info.FontSize = 14;
-            this._textBlock_info.LineHeight = 18;
-            this._textBlock_info.Foreground = new SolidColorBrush(Colors.White);
-            this._textBlock_info.Background = new SolidColorBrush(Color.FromArgb(0x88, 0x00, 0x00, 0x00));
+            _canvas = canvas;
+            _textBlock_info = new TextBlock();
+            _textBlock_info.Padding = new Thickness(10);
+            _textBlock_info.FontSize = 14;
+            _textBlock_info.LineHeight = 18;
+            _textBlock_info.Foreground = new SolidColorBrush(Colors.White);
+            _textBlock_info.Background = new SolidColorBrush(Color.FromArgb(0x88, 0x00, 0x00, 0x00));
             _canvas.Children.Add(_textBlock_info);
 
             var window = Window.GetWindow(_canvas);
@@ -74,7 +75,7 @@ namespace SpaceCG.Device
         }
         private void Window_Closing(object sender, CancelEventArgs e)
         {
-            this.drawingDisplay.StopDrawing();
+            drawingDisplay.StopDrawing();
             LedRenderBus.Collections.Dispose();
         }
         /// <summary>
@@ -239,13 +240,13 @@ namespace SpaceCG.Device
                         label.Name = $"{nameof(Label)}_{ledStrip.Address}_{ledStrip.Port}";
                         label.Content = $"_{ledStrip.Comment}_0x{ledStrip.Address:00}{ledStrip.Port:00}";
                         label.SetValue(Canvas.LeftProperty, elementObject.Width + 10.0);
-                        label.SetValue(Canvas.TopProperty, (double)ledStrip.LedPoints[0].Y - 8.0);
+                        label.SetValue(Canvas.TopProperty, ledStrip.LedPoints[0].Y - 8.0);
 
                         _canvas.Children.Add(label);
                         _canvas.RegisterName(label.Name, label);
                         #endregion
 
-                        _textBlock_info.SetValue(Canvas.TopProperty, (double)ledStrip.LedPoints[0].Y + 40.0);
+                        _textBlock_info.SetValue(Canvas.TopProperty, ledStrip.LedPoints[0].Y + 40.0);
 
                         if (!string.IsNullOrWhiteSpace(ledStripElement.Attribute("Action")?.Value))
                         {
@@ -544,15 +545,15 @@ namespace SpaceCG.Device
 
                     var actionValue = ledStripElement.Attribute("Action")?.Value;
                     if (string.IsNullOrWhiteSpace(actionValue)) continue;
-                    if (!StringExtensions.TryParseParameters(ledStripElement.Attribute("Params")?.Value, out var paramArray)) continue;
+                    if (!(ledStripElement.Attribute("Params")?.Value).TryParseParameters(out var paramArray)) continue;
 
                     var ledStripObject = LedRenderBus.Collections.GetLedStrip(address, port);
                     if (ledStripObject == null) continue;
 
                     // 优化渲染参数
                     var element = ledStripObject.Tag as XElement;
-                    var fillCount = ledStripElement.Attribute("FillCount") != null ? ledStripElement.Attribute("FillCount").Value : (element?.Attribute("FillCount") != null ? element.Attribute("FillCount").Value : "0");
-                    var repeatCount = ledStripElement.Attribute("RepeatCount") != null ? ledStripElement.Attribute("RepeatCount").Value : (element?.Attribute("RepeatCount") != null ? element.Attribute("RepeatCount").Value : "1");
+                    var fillCount = ledStripElement.Attribute("FillCount") != null ? ledStripElement.Attribute("FillCount").Value : element?.Attribute("FillCount") != null ? element.Attribute("FillCount").Value : "0";
+                    var repeatCount = ledStripElement.Attribute("RepeatCount") != null ? ledStripElement.Attribute("RepeatCount").Value : element?.Attribute("RepeatCount") != null ? element.Attribute("RepeatCount").Value : "1";
                     if (fillCount.TryConvertTo(out int _fillCount)) ledStripObject.FillCount = _fillCount;
                     if (repeatCount.TryConvertTo(out int _repeatCount)) ledStripObject.RepeatCount = _repeatCount;
                     

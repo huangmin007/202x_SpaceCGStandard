@@ -162,7 +162,7 @@ namespace SpaceCG.Controls
             Trace.WriteLine("OnInitialized");
             this.InitializeStandard();
 
-            this.LoadItemTags();
+            this.ReadItemTags();
         }
         /// <inheritdoc />
         protected override void OnSourceInitialized(EventArgs e)
@@ -200,7 +200,7 @@ namespace SpaceCG.Controls
         /// <summary>
         /// 读取 ItemTags.txt 文件，更新 <see cref="ItemTagsDictionary"/> 对象。
         /// </summary>
-        protected void LoadItemTags()
+        protected void ReadItemTags()
         {
             try
             {
@@ -220,7 +220,7 @@ namespace SpaceCG.Controls
 
                     if (int.TryParse(parts[0], out var parentTag))
                     {
-                        var childTags = ParseTags(parts[1]);
+                        var childTags = WindowExtensions.ParseIntRanges(parts[1]);
                         if (childTags.Any()) itemTagsDictionary.Add(parentTag, childTags.ToList());
                     }
                 }
@@ -256,7 +256,6 @@ namespace SpaceCG.Controls
         }
         /// <summary>
         /// 【可重写】当前资源 Tag 属性发生变化时触发的事件。
-        /// <para>默认处理历史记录数据 <see cref="HistoryItemTags"/>，用于判断是否存在后退项的资源，可重写此函数。</para>
         /// </summary>
         /// <param name="e"></param>
         protected virtual void OnItemTagChanged(DependencyPropertyChangedEventArgs e)
@@ -538,46 +537,5 @@ namespace SpaceCG.Controls
         #endregion
 
 
-        /// <summary>
-        /// 解析 Tags 字符串，返回 Tag 列表。
-        /// <para>例如："1,2,5~9,20"</para>
-        /// </summary>
-        /// <param name="tags"></param>
-        /// <returns></returns>
-        public static IEnumerable<int> ParseTags(string tags)
-        {
-            if (string.IsNullOrWhiteSpace(tags)) yield break;
-
-            var commaSeparator = new char[] { ',' };
-            var rangeSeparator = new char[] { '~' };
-            var parts = tags.Split(commaSeparator, StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var part in parts)
-            {
-                var trimmed = part.Trim();
-                if (string.IsNullOrWhiteSpace(trimmed)) continue;
-
-                if (trimmed.Contains("~"))
-                {
-                    var rangeParts = trimmed.Split(rangeSeparator, StringSplitOptions.RemoveEmptyEntries);
-                    if (rangeParts.Length == 2 && int.TryParse(rangeParts[0], out var start) && int.TryParse(rangeParts[1], out var end))
-                    {
-                        var from = Math.Min(start, end);
-                        var to = Math.Max(start, end);
-                        for (var i = from; i <= to; i++)
-                        {
-                            yield return i;
-                        }
-                    }
-                }
-                else
-                {
-                    if (int.TryParse(trimmed, out var value))
-                    {
-                        yield return value;
-                    }
-                }
-            }
-        }
     }
 }

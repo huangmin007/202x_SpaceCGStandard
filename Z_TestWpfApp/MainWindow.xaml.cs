@@ -7,30 +7,20 @@ using System.IO;
 using System.IO.Compression;
 using System.IO.Ports;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using System.Security;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
-using System.Windows.Media.Imaging;
 using SpaceCG;
-using SpaceCG.Controls;
 using SpaceCG.Controls;
 using SpaceCG.Device;
 using SpaceCG.Diagnostics;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
 using SpaceCG.IO;
-using SpaceCG.Net;
-using SpaceCG.NModbus;
-using SpaceCG.NModbus.Data;
 using Trace = System.Diagnostics.Trace;
 
 namespace Z_TestWpfApp
@@ -45,16 +35,19 @@ namespace Z_TestWpfApp
         ZipArchive zipArchive;
         private readonly ConcurrentDictionary<int, string> BitmapFiles = new ConcurrentDictionary<int, string>();
 
+        private DemoControlManager demoControlManager;
+
         public MainWindow()
         {
             InitializeComponent();            
-            Trace.Listeners.Add(new LoggerTraceListener(true));         
+            Trace.Listeners.Add(new LoggerTraceListener(true));
+
+            demoControlManager = new DemoControlManager(this);
         }
 
         protected override void OnClosing(CancelEventArgs e)
         {
             base.OnClosing(e);
-
             zipArchive?.Dispose();
         }
 
@@ -88,6 +81,10 @@ namespace Z_TestWpfApp
                         imageSeq.Pause();
                     else
                         imageSeq.Play();
+                    break;
+
+                case Key.D5:
+                    this.Language = System.Windows.Markup.XmlLanguage.GetLanguage("zh-CN");
                     break;
             }
         }

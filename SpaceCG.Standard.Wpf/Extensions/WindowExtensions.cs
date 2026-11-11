@@ -6,9 +6,10 @@ using System.Windows.Input;
 using System.Configuration;
 using System.Windows.Controls;
 using System.Linq;
+using System.Collections.Generic;
 
 namespace SpaceCG.Extensions
-{
+{    
     /// <summary>
     /// Window 扩展方法
     /// </summary>
@@ -24,7 +25,8 @@ namespace SpaceCG.Extensions
         /// <para>6. 添加隐藏的关闭按钮</para>
         /// </summary>
         /// <param name="window"></param>
-        public static void InitializeStandard(this Window window)
+        /// <param name="instance">反射调用实例</param>
+        public static void InitializeStandard(this Window window, object instance)
         {
             // 默认属性值
             window.Language = XmlLanguage.GetLanguage("zh-CN");
@@ -44,6 +46,12 @@ namespace SpaceCG.Extensions
                     Trace.TraceInformation($"ConfigurationManager.AppSettings Instance Property: {key}={value}");
                 }
             }
+
+            // 鼠标右键切换鼠标指针隐藏/显示
+            window.PreviewMouseRightButtonDown += (sender, e) =>
+            {
+                window.Cursor = window.Cursor == Cursors.None ? Cursors.Arrow : Cursors.None;
+            };
 
             // 基本键盘快捷键操作
             window.PreviewKeyDown += (sender, e) =>
@@ -66,6 +74,7 @@ namespace SpaceCG.Extensions
                     case Key.D7:
                     case Key.D8:
                     case Key.D9:
+                        if (instance != null)
                         {
                             var index = key - Key.D0;
 
@@ -77,7 +86,7 @@ namespace SpaceCG.Extensions
                             if (isShift) index += 10;
                             if (isControl) index += 10;
 
-                            InstanceExtensions.TryInvokeMethod(window, "LoadItem", new object[] { index }, out _);
+                            InstanceExtensions.TryInvokeMethod(instance, "LoadItem", new object[] { index }, out _);
                         }
                         break;
                     case Key.NumPad0:
@@ -90,6 +99,7 @@ namespace SpaceCG.Extensions
                     case Key.NumPad7:
                     case Key.NumPad8:
                     case Key.NumPad9:
+                        if (instance != null)
                         {
                             var index = key - Key.NumPad0;
 
@@ -101,23 +111,23 @@ namespace SpaceCG.Extensions
                             if (isShift) index += 10;
                             if (isControl) index += 10;
 
-                            InstanceExtensions.TryInvokeMethod(window, "LoadItem", new object[] { index }, out _);
+                            InstanceExtensions.TryInvokeMethod(instance, "LoadItem", new object[] { index }, out _);
                         }
                         break;
 
-                    case Key.Back: { InstanceExtensions.TryInvokeMethod(window, "BackItem", out _); } break;
-                    case Key.Home: { InstanceExtensions.TryInvokeMethod(window, "HomeItem", out _); } break;
+                    case Key.Back: if (instance != null) { InstanceExtensions.TryInvokeMethod(instance, "BackItem", out _); } break;
+                    case Key.Home: if (instance != null) { InstanceExtensions.TryInvokeMethod(instance, "HomeItem", out _); } break;
 
                     case Key.Down:
                     case Key.Right:
-                    case Key.PageDown: { InstanceExtensions.TryInvokeMethod(window, "NextItem", out _); } break;
+                    case Key.PageDown: if (instance != null) { InstanceExtensions.TryInvokeMethod(instance, "NextItem", out _); } break;
 
                     case Key.Up:
                     case Key.Left:
-                    case Key.PageUp: { InstanceExtensions.TryInvokeMethod(window, "PrevItem", out _); } break;
+                    case Key.PageUp: if (instance != null) { InstanceExtensions.TryInvokeMethod(instance, "PrevItem", out _); } break;
 
                     case Key.Enter:
-                    case Key.Space: { InstanceExtensions.TryInvokeMethod(window, "PlayPause", out _); } break;
+                    case Key.Space: if (instance != null) { InstanceExtensions.TryInvokeMethod(instance, "PlayPause", out _); } break;
 
                     case Key.F9: window.ChangeLanguage(string.Empty); break;
                     case Key.C: window.Language = XmlLanguage.GetLanguage("zh-CN"); break;
@@ -133,16 +143,11 @@ namespace SpaceCG.Extensions
 
                 //e.Handled = true;
             };
-            // 鼠标右键切换鼠标指针隐藏/显示，当鼠标右键点击三次时切换全屏/非全屏
-            window.PreviewMouseRightButtonDown += (sender, e) =>
-            {
-                //if (e.ClickCount >= 3) window.FullScreen();
-                window.Cursor = window.Cursor == Cursors.None ? Cursors.Arrow : Cursors.None;
-            };
 
-            // 基本的鼠标交互操作
-            char[] underline = new char[] { '_' };
-            char[] semicolon = new char[] { ';' };
+            if (instance == null) return;            
+            // 默认的鼠标交互操作
+            var underline = new char[] { '_' };
+            var semicolon = new char[] { ';' };
             window.PreviewMouseDown += (s, e) =>
             {
                 if (e.Source is FrameworkElement element && element.Cursor == Cursors.Hand)
@@ -162,16 +167,17 @@ namespace SpaceCG.Extensions
 
                             var methodName = array[0];
                             var parameters = array.Length > 1 ? array.Skip(1).ToArray() : null;
-                            var result = InstanceExtensions.TryInvokeMethod(window, methodName, parameters, out _);
+                            var result = InstanceExtensions.TryInvokeMethod(instance, methodName, parameters, out _);
                             //e.Handled = result;
                         }
                     }
 
-                    if (element.Tag != null && element.Tag is string elementTag && !string.IsNullOrWhiteSpace(elementTag) &&
-                        !double.TryParse(elementTag, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
+                    var elementTag = element.Tag;
+                    if (elementTag != null && elementTag is string elementText && !string.IsNullOrWhiteSpace(elementText) &&
+                        !double.TryParse(elementText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
                     {
-                        // Format: Method_parameter1;Method_parameter1_parameter2;Method_parameter1_parameter2_parameter3
-                        var methodInfos = elementTag.Split(semicolon, StringSplitOptions.RemoveEmptyEntries);
+                        // 支持调用多个方法 Format: Method_parameter1;Method_parameter1_parameter2;Method_parameter1_parameter2_parameter3
+                        var methodInfos = elementText.Split(semicolon, StringSplitOptions.RemoveEmptyEntries);
                         if (methodInfos.Length <= 0) return;
 
                         foreach (var methodInfo in methodInfos)
@@ -181,7 +187,7 @@ namespace SpaceCG.Extensions
 
                             var methodName = array[0];
                             var parameters = array.Length > 1 ? array.Skip(1).ToArray() : null;
-                            var result = InstanceExtensions.TryInvokeMethod(window, methodName, parameters, out _);
+                            var result = InstanceExtensions.TryInvokeMethod(instance, methodName, parameters, out _);
                             //e.Handled = result;
                         }
                     }
@@ -189,6 +195,9 @@ namespace SpaceCG.Extensions
                 }
             };
         }
+
+        /// <see cref="InitializeStandard(Window, object)"/>
+        public static void InitializeStandard(this Window window) => InitializeStandard(window, window);         
 
         /// <summary>
         /// 检查窗体是否处于全屏状态
@@ -299,42 +308,49 @@ namespace SpaceCG.Extensions
         }
 
         /// <summary>
-        /// 获取最顶层的可容纳多个子元素的容器。
+        /// 解析「单值 + 区间」形式的整数列表文本，例如 "1,2,5~9,20"。
+        /// <para>区间支持倒序（"9~5" 等价于 "5~9"）；无法解析的片段会被静默忽略。</para>
+        /// <para>复杂度：O(n)，n 为结果元素个数。</para>
         /// </summary>
-        /// <param name="element"></param>
-        /// <returns></returns>
-        public static Panel FindFirstContainer(DependencyObject element)
+        /// <param name="text">待解析文本，允许为 null/空白</param>
+        /// <returns>按出现顺序展开的整数列表；输入无效时返回空列表（永不返回 null）</returns>
+        public static IEnumerable<int> ParseIntRanges(this string text)
         {
-            while (element != null)
+            if (string.IsNullOrWhiteSpace(text)) Array.Empty<int>();
+
+            var results = new List<int>();
+            var commaSeparator = new char[] { ',' };
+            var rangeSeparator = new char[] { '~' };
+            var parts = text.Split(commaSeparator, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var part in parts)
             {
-                switch (element)
+                var trimmed = part.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed)) continue;
+
+                if (trimmed.Contains("~"))
                 {
-                    // 命中 Panel（含所有子类：Grid, StackPanel, WrapPanel, DockPanel 等）
-                    case Panel panel:
-                        return panel;
+                    var rangeParts = trimmed.Split(rangeSeparator, StringSplitOptions.RemoveEmptyEntries);
+                    if (rangeParts.Length != 2 || !int.TryParse(rangeParts[0], out var start) || !int.TryParse(rangeParts[1], out var end)) continue;
 
-                    // ContentControl 也可能包裹容器：ContentControl, Button, ListBoxItem 等
-                    case ContentControl contentControl:
-                        element = contentControl.Content as DependencyObject;
-                        continue;
-
-                    case Viewbox viewbox:
-                        element = viewbox.Child;
-                        continue;
-
-                    // Decorator 是所有单内容包装器的基类：Viewbox, Border, AdornerDecorator, InkCanvas 等
-                    case Decorator decorator:   
-                        element = decorator.Child;
-                        continue;
-
-                    default:
-                        return null;
+                    var from = Math.Min(start, end);
+                    var to = Math.Max(start, end);
+                    for (var i = from; i <= to; i++)
+                    {
+                        results.Add(i);
+                    }
+                }
+                else
+                {
+                    if (int.TryParse(trimmed, out var value))
+                    {
+                        results.Add(value);
+                    }
                 }
             }
 
-            return null;
+            return results;
         }
 
-        
     }
 }
