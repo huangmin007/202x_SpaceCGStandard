@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO.Ports;
 using System.Text.RegularExpressions;
-using SpaceCG.Extensions;
+using SpaceCG.Interop;
 using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.IO
@@ -62,7 +62,7 @@ namespace SpaceCG.IO
             if (baudRate <= 0) throw new ArgumentException("波特率必须大于0");
 
             this._portName = portName;
-            var actualPortName = SerialPortExtensions.GetPortName(_portName);
+            var actualPortName = SerialPortResolver.GetPortName(_portName);
 
             _serialPort = new SerialPort();
             if (!string.IsNullOrWhiteSpace(actualPortName))
@@ -102,7 +102,7 @@ namespace SpaceCG.IO
             if (arguments.Length >= 5 && Enum.TryParse(arguments[4], out stopBits)) { }
 
             this._portName = arguments[0];
-            var actualPortName = SerialPortExtensions.GetPortName(_portName);
+            var actualPortName = SerialPortResolver.GetPortName(_portName);
 
             _serialPort = new SerialPort();
             if (!string.IsNullOrWhiteSpace(actualPortName))
@@ -128,7 +128,7 @@ namespace SpaceCG.IO
             if (SerialPort.GetPortNames().Length == 0)
                 throw new Exception("没有找到可用的串口设备");
 
-            var portName = SerialPortExtensions.GetPortName(_portName);
+            var portName = SerialPortResolver.GetPortName(_portName);
             if (string.IsNullOrWhiteSpace(portName))
                 throw new Exception($"跟据指定名称 {_portName} 获取串口失败");
 

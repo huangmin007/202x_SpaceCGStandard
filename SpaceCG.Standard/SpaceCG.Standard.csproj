@@ -12,4 +12,6 @@
 </Description>
   </PropertyGroup>
 
+  <Import Project="..\SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems" Label="Shared" />
+
 </Project>

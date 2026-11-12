@@ -12,8 +12,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "0A_解决方案项", "0A_�
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard", "SpaceCG.Standard\SpaceCG.Standard.csproj", "{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.Devices", "SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj", "{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.LedRenderer", "SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.csproj", "{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.NModbus", "SpaceCG.Standard.NModbus\SpaceCG.Standard.NModbus.csproj", "{0B73ABCD-C313-4F35-86B2-F62CB9AB8221}"
@@ -26,7 +24,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceCG.Standard.LedRendere
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SP_SpaceCG.Diagnostics.Trace", "SP_SpaceCG.Standard.Trace\SP_SpaceCG.Diagnostics.Trace.shproj", "{0CEB36A3-2553-4687-9E89-72D7775643CF}"
 EndProject
-Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SP_SpaceCG.Extensions.SerialPortExtensions", "SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.shproj", "{225C3886-E75E-40E5-964A-EBA97098B1D7}"
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SP_SpaceCG.Interop.SerialPortResolver", "SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.shproj", "{2A3C573C-B4B4-4178-9C01-1500876477C8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -42,10 +40,6 @@ Global
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5328FFB1-B4E8-44A5-A6F4-F8FD3327B9AB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0D86D33B-7AFA-4D6A-ABCB-A2F1DB404446}.Release|Any CPU.Build.0 = Release|Any CPU
 		{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C5F99201-BCAC-401B-89EB-D8AA688AFF9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -74,9 +68,12 @@ Global
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{0b73abcd-c313-4f35-86b2-f62cb9ab8221}*SharedItemsImports = 5
+		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{0b73abcd-c313-4f35-86b2-f62cb9ab8221}*SharedItemsImports = 5
 		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{0ceb36a3-2553-4687-9e89-72d7775643cf}*SharedItemsImports = 13
-		SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.projitems*{225c3886-e75e-40e5-964a-eba97098b1d7}*SharedItemsImports = 13
-		SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.projitems*{c5f99201-bcac-401b-89eb-d8aa688aff9f}*SharedItemsImports = 5
+		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{2a3c573c-b4b4-4178-9c01-1500876477c8}*SharedItemsImports = 13
+		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}*SharedItemsImports = 5
+		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{c5f99201-bcac-401b-89eb-d8aa688aff9f}*SharedItemsImports = 5
 		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{c5f99201-bcac-401b-89eb-d8aa688aff9f}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal

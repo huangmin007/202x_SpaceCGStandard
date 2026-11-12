@@ -5,6 +5,7 @@
 	  <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
 	  <UseWPF>true</UseWPF>
 	  <RootNamespace>SpaceCG</RootNamespace>
+	  <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
   </PropertyGroup>
 
   <ItemGroup>

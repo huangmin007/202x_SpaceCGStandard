@@ -3,12 +3,12 @@
   <PropertyGroup>
     <MSBuildAllProjects Condition="'$(MSBuildVersion)' == '' Or '$(MSBuildVersion)' &lt; '16.0'">$(MSBuildAllProjects);$(MSBuildThisFileFullPath)</MSBuildAllProjects>
     <HasSharedItems>true</HasSharedItems>
-    <SharedGUID>225c3886-e75e-40e5-964a-eba97098b1d7</SharedGUID>
+    <SharedGUID>2a3c573c-b4b4-4178-9c01-1500876477c8</SharedGUID>
   </PropertyGroup>
   <PropertyGroup Label="Configuration">
-    <Import_RootNamespace>SP_SpaceCG.Extensions.SerialPortExtensions</Import_RootNamespace>
+    <Import_RootNamespace>SpaceCG</Import_RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)Extensions\SerialPortExtensions.GetPortName.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Interop\SerialPortResolver.cs" />
   </ItemGroup>
 </Project>

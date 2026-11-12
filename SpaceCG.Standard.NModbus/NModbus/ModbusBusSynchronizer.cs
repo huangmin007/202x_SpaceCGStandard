@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NModbus;
 using NModbus.Data;
+using SpaceCG.Interop;
 using SpaceCG.Extensions;
 using SpaceCG.NModbus.Data;
 using Trace = SpaceCG.Diagnostics.Trace;
@@ -359,7 +360,7 @@ namespace SpaceCG.NModbus
                 {
                     _serialPort.Close();
                     _serialPort.BaudRate = _secondArgs;
-                    _serialPort.PortName = SerialPortExtensions.GetPortName(_firstArgs);
+                    _serialPort.PortName = SerialPortResolver.GetPortName(_firstArgs);
 
                     _serialPort.Open();
                     _isConnected = true;

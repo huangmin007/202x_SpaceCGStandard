@@ -123,10 +123,6 @@
       <Project>{0b73abcd-c313-4f35-86b2-f62cb9ab8221}</Project>
       <Name>SpaceCG.Standard.NModbus</Name>
     </ProjectReference>
-    <ProjectReference Include="..\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj">
-      <Project>{0d86d33b-7afa-4d6a-abcb-a2f1db404446}</Project>
-      <Name>SpaceCG.Standard.Devices</Name>
-    </ProjectReference>
     <ProjectReference Include="..\SpaceCG.Standard.Wpf\SpaceCG.Standard.Wpf.csproj">
       <Project>{502505c3-d2bf-489b-96f7-acf1dc6753ba}</Project>
       <Name>SpaceCG.Standard.Wpf</Name>

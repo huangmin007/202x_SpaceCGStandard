@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using SpaceCG.Generic;
+using SpaceCG.Interop;
 using Trace = SpaceCG.Diagnostics.Trace;
 
 namespace SpaceCG.Extensions
@@ -312,7 +313,7 @@ namespace SpaceCG.Extensions
 
                 if (propertyName == nameof(SerialPort.PortName))
                 {
-                    propertyValue = GetPortName(propertyValue);
+                    propertyValue = SerialPortResolver.GetPortName(propertyValue);
                 }
 
                 if (!InstanceExtensions.TrySetPropertyValue(serialPort, propertyName, propertyValue))
@@ -343,7 +344,7 @@ namespace SpaceCG.Extensions
 
                 if (propertyName == nameof(SerialPort.PortName))
                 {
-                    propertyValue = GetPortName(propertyValue);
+                    propertyValue = SerialPortResolver.GetPortName(propertyValue);
                 }
 
                 if (!InstanceExtensions.TrySetPropertyValue(serialPort, propertyName, propertyValue))

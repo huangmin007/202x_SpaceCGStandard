@@ -6,7 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Trace = SpaceCG.Diagnostics.Trace;
 
-namespace SpaceCG.Extensions
+namespace SpaceCG.Interop
 {
     #region NativeMethods
     /// <summary>
@@ -72,7 +72,7 @@ namespace SpaceCG.Extensions
     }
     #endregion
 
-    internal static partial class SerialPortExtensions
+    public static partial class SerialPortResolver
     {        
         /// <summary>
         /// Windows 串口名称的正则表达式

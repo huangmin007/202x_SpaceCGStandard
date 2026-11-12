@@ -23,6 +23,6 @@
 
   <Import Project="..\SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems" Label="Shared" />
 
-  <Import Project="..\SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.projitems" Label="Shared" />
+  <Import Project="..\SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems" Label="Shared" />
 
 </Project>

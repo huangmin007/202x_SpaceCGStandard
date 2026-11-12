@@ -4,7 +4,7 @@ using System.IO.Ports;
 using System.Threading;
 using System.Threading.Tasks;
 using NModbus.IO;
-using SpaceCG.Extensions;
+using SpaceCG.Interop;
 
 namespace SpaceCG.NModbus.IO
 {
@@ -56,9 +56,9 @@ namespace SpaceCG.NModbus.IO
             
             try
             {
-                if (!SerialPortExtensions.PortNameRegexForWindows.IsMatch(serialPort.PortName))
+                if (!SerialPortResolver.PortNameRegexForWindows.IsMatch(serialPort.PortName))
                 {
-                    serialPort.PortName = SerialPortExtensions.GetPortName(_portName);
+                    serialPort.PortName = SerialPortResolver.GetPortName(_portName);
                 }
 
                 if (!serialPort.IsOpen) serialPort.Open();
@@ -80,7 +80,7 @@ namespace SpaceCG.NModbus.IO
 
             _portName = portName;
             _stopwatch = Stopwatch.StartNew();
-            _serialPort = new SerialPort(SerialPortExtensions.GetPortName(_portName), baudRate, parity, dataBits, stopBits);
+            _serialPort = new SerialPort(SerialPortResolver.GetPortName(_portName), baudRate, parity, dataBits, stopBits);
             _serialPort.NewLine = "\r\n";
 
             try
@@ -132,7 +132,7 @@ namespace SpaceCG.NModbus.IO
                     if (serialPort.IsOpen) continue;
                     if (cancellationToken.IsCancellationRequested) break;
 
-                    serialPort.PortName = SerialPortExtensions.GetPortName(portName);
+                    serialPort.PortName = SerialPortResolver.GetPortName(portName);
                     serialPort.Open();
                 }
                 catch (Exception ex)
