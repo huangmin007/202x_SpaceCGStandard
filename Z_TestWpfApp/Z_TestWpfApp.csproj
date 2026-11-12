@@ -115,13 +115,13 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SpaceCG.Standard.Devices.LedRenderer\SpaceCG.Standard.Devices.LedRenderer.csproj">
+    <ProjectReference Include="..\SpaceCG.Standard.LedRenderer\SpaceCG.Standard.LedRenderer.csproj">
       <Project>{c5f99201-bcac-401b-89eb-d8aa688aff9f}</Project>
-      <Name>SpaceCG.Standard.Devices.LedRenderer</Name>
+      <Name>SpaceCG.Standard.LedRenderer</Name>
     </ProjectReference>
-    <ProjectReference Include="..\SpaceCG.Standard.Devices.NModbus\SpaceCG.Standard.Devices.NModbus.csproj">
+    <ProjectReference Include="..\SpaceCG.Standard.NModbus\SpaceCG.Standard.NModbus.csproj">
       <Project>{0b73abcd-c313-4f35-86b2-f62cb9ab8221}</Project>
-      <Name>SpaceCG.Standard.Devices.NModbus</Name>
+      <Name>SpaceCG.Standard.NModbus</Name>
     </ProjectReference>
     <ProjectReference Include="..\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj">
       <Project>{0d86d33b-7afa-4d6a-abcb-a2f1db404446}</Project>

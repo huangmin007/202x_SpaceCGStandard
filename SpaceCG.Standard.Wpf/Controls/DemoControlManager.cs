@@ -10,6 +10,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Markup;
 using System.Windows.Threading;
+using SpaceCG.ComponentModel;
 using SpaceCG.Extensions;
 using SpaceCG.Net;
 
@@ -36,7 +37,7 @@ namespace SpaceCG.Controls
         }
     }
 
-    public class DemoControlManager : INotifyPropertyChanged
+    public class DemoControlManager : NotifyPropertyChangedBase
     {
         /// <summary>  默认的资源根目录。 </summary>
         private readonly static string RootResources = "Resources";
@@ -386,52 +387,6 @@ namespace SpaceCG.Controls
 
         /// <see cref="WindowExtensions.ChangeLanguage(Window, string)"/>
         public void ChangeLanguage(string language) => _window.ChangeLanguage(language);
-        #endregion
-
-
-        #region INotifyPropertyChanged
-        /// <inheritdoc /> 
-        public event PropertyChangedEventHandler PropertyChanged;
-        /// <summary>
-        /// 触发 PropertyChanged 事件。
-        /// </summary>
-        /// <param name="propertyName">属性名称，由 [CallerMemberName] 自动填充</param>
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-        /// <summary>
-        /// 设置字段值，若值变化则触发属性变更通知。
-        /// </summary>
-        /// <typeparam name="T">字段类型</typeparam>
-        /// <param name="field">字段的引用</param>
-        /// <param name="value">字段的新值</param>
-        /// <param name="propertyName">属性名称，由 [CallerMemberName] 自动填充</param>
-        protected void SetFieldValue<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
-        {
-            if (EqualityComparer<T>.Default.Equals(field, value)) return;
-
-            field = value;
-            this.OnPropertyChanged(propertyName);
-        }
-        /// <summary>
-        /// 设置字段值，若值变化则触发属性变更通知。
-        /// </summary>
-        /// <typeparam name="T">字段类型</typeparam>
-        /// <param name="field">字段的引用</param>
-        /// <param name="value">字段的新值</param>
-        /// <param name="propertyName">属性名称，由 [CallerMemberName] 自动填充</param>
-        /// <param name="dependentPropertyNames">依赖此属性的其它属性名称列表</param>
-        protected void SetFieldValue<T>(ref T field, T value, [CallerMemberName] string propertyName = null, params string[] dependentPropertyNames)
-        {
-            if (EqualityComparer<T>.Default.Equals(field, value)) return;
-
-            field = value;
-            this.OnPropertyChanged(propertyName);
-
-            foreach (var dependentPropertyName in dependentPropertyNames)
-                this.OnPropertyChanged(dependentPropertyName);
-        }
         #endregion
 
     }

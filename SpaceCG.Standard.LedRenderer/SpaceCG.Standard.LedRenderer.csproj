@@ -9,11 +9,8 @@
 	<Authors>huangmin@spacecg.cn</Authors>
     <Product>SpaceCG.Standard</Product>
     <Description>Led灯带渲染</Description>
+    <RootNamespace>SpaceCG</RootNamespace>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\SpaceCG.Standard.Devices\SpaceCG.Standard.Devices.csproj" />
-  </ItemGroup>
 
   <ItemGroup>
     <None Update="README.md">
@@ -23,5 +20,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <Import Project="..\SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems" Label="Shared" />
+
+  <Import Project="..\SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.projitems" Label="Shared" />
 
 </Project>

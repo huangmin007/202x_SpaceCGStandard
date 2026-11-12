@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
-    <RootNamespace>SpaceCG.NModbus</RootNamespace>
+    <RootNamespace>SpaceCG</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
