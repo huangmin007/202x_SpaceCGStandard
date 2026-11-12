@@ -14,6 +14,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using HidSharp;
 using SpaceCG;
 using SpaceCG.Controls;
 using SpaceCG.Device;
@@ -91,7 +92,17 @@ namespace Z_TestWpfApp
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            
+            DeviceList.Local.Changed += Local_Changed;
+        }
+
+        private void Local_Changed(object sender, DeviceListChangedEventArgs e)
+        {
+            Trace.WriteLine($"Device Changed: {e}");
+            var devices = DeviceList.Local.GetSerialDevices();
+            foreach(var device in devices)
+            {
+                Trace.WriteLine($"Device Changed: {device.DevicePath} {device.GetSerialNumber()}");
+            }
         }
 
         private void ImageSeq_RenderChanged(object sender, EventArgs e)

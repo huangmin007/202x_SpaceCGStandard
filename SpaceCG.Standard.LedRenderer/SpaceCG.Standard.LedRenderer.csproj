@@ -10,6 +10,8 @@
     <Product>SpaceCG.Standard</Product>
     <Description>Led灯带渲染</Description>
     <RootNamespace>SpaceCG</RootNamespace>
+    <AssemblyVersion>1.1.0</AssemblyVersion>
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

@@ -144,6 +144,12 @@ namespace SpaceCG.Drawing
             PixelFormat = pixelFormat;
         }
 
+        /// <summary>
+        /// 更新源对象和像素数据指针，用于重用 <see cref="DrawingEventArgs"/> 对象。
+        /// </summary>
+        /// <param name="sources"></param>
+        /// <param name="pixels"></param>
+        /// <param name="elapsedMilliseconds"></param>
         public void UpdateSource(object sources, IntPtr pixels, long elapsedMilliseconds)
         {
             Source = sources;

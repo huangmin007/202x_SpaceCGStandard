@@ -440,7 +440,9 @@ using SpaceCG.Extensions;
 
 ## `SocketExtensions`
 
-为 `TcpClient`、`UdpClient` 和 `SerialPort` 提供连接管理、数据接收与协议解析的扩展方法。该类为 `partial class`，跨 `SpaceCG.Standard` 和 `SpaceCG.Standard.Wpf` 两个项目实现。
+为 `TcpClient` 和 `UdpClient` 提供连接管理、数据接收与协议解析的扩展方法。
+
+> 历史说明：早期版本曾包含 `ReceiveParseAsync(this SerialPort, ...)` 串口扩展（当时跨 `SpaceCG.Standard.Wpf` 项目实现）；串口相关扩展现已迁移到 `SpaceCG.Standard.NModbus/Extensions/SerialPortExtensions.cs`（`Transceive` / `TransceiveAsync` / `ReceiveParseAsync` / `CreateInstance`）。
 
 ### 核心方法
 
@@ -451,7 +453,6 @@ using SpaceCG.Extensions;
 | `ConnectAsync(this TcpClient, ...)` | TCP 自动重连循环，断开时自动清理并重连（连接正常 200ms 检查，断开后 3s 重试） |
 | `ReceiveParseAsync(this TcpClient, ...)` | 带自动重连的 TCP 异步接收解析循环，整合连接管理、数据读取、协议解析 |
 | `ReceiveParseAsync(this UdpClient, ...)` | UDP 异步接收解析循环，从已绑定 UdpClient 循环接收数据报并解析 |
-| `ReceiveParseAsync(this SerialPort, ...)` | 串口异步接收解析循环，自动打开串口，读取数据并解析（Wpf 项目） |
 
 ### 使用示例
 
@@ -556,41 +557,17 @@ await task;
 client?.Dispose();
 ```
 
-#### 串口接收解析（Wpf 项目）
+#### 串口收发与解析
 
-```csharp
-using System.IO.Ports;
-using System.Text;
-using SpaceCG.Extensions;
-using SpaceCG.Generic;
-
-// 配置串口
-var serialPort = new SerialPort("COM3", 115200);
-
-// 创建协议解析器（以 CRLF 结尾的文本协议为例）
-var parser = new FooterProtocolParser(new byte[] { 0x0D, 0x0A });
-parser.FrameReceived += (sender, e) =>
-{
-    var text = Encoding.UTF8.GetString(e.FrameView.Array, e.FrameView.Offset, e.FrameView.Count);
-    Console.WriteLine($"收到: {text}");
-};
-
-// 启动接收解析循环
-var cts = new CancellationTokenSource();
-var task = serialPort.ReceiveParseAsync(parser, cts.Token);
-
-// 退出时取消
-cts.Cancel();
-await task;
-serialPort.Dispose();
-```
+串口扩展已迁至 `SpaceCG.Standard.NModbus`（`SpaceCG.NModbus.Extensions.SerialPortExtensions`），提供
+`Transceive` / `TransceiveAsync`（请求-响应收发）、`ReceiveParseAsync`（持续接收 + ProtocolParser 切帧）
+与 `CreateInstance`（配置字符串创建串口，支持经 `SerialPortResolver` 解析设备描述）。详见该项目的 README。
 
 ### 设计注意
 
 - 所有 `ReceiveParseAsync` 方法均将数据写入 `ProtocolParser` 并调用 `ProcessBuffer()`，匹配的帧通过 `FrameReceived` 事件抛出。
 - TCP 方法通过 `CancellationToken` 控制生命周期，取消时自动关闭连接并退出循环。
 - UDP 方法要求调用方预先绑定 `UdpClient`，`ReceiveAsync` 在 `Task.Run` 内执行同步 IO（`Socket.ReceiveFrom`）。
-- 串口方法自动管理 `Open`/`Close`，无数据时等待 10ms，未打开时等待 3s 后重试。
 
 ---
 

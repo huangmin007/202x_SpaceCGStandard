@@ -28,16 +28,19 @@
 
 ### 安装依赖
 
-本项目为 **SDK 风格类库**（`SpaceCG.Standard.Devices.LedRenderer.csproj`），`TargetFramework = net48`，`AllowUnsafeBlocks = True`。
+本项目为 **SDK 风格类库**（`SpaceCG.Standard.LedRenderer.csproj`），`TargetFramework = net48`，`AllowUnsafeBlocks = True`。
 
 引用方式：直接 `ProjectReference` 本项目，或通过本仓库生成的 NuGet 包（`GeneratePackageOnBuild`）引用。
 
 依赖项：
 - .NET Framework 4.8
 - System.Drawing
-- `System.IO.Ports`（通过 `SpaceCG.Standard.Devices` 间接使用）
-- 项目内 `SpaceCG.Standard.Devices`（提供 `SpaceCG.IO.ITransportChannel` / `TransportChannel` / `SerialPortExtensions`）
-- 项目内 `SpaceCG.Standard`（提供 `SpaceCG.Diagnostics.Trace`、`SpaceCG.Extensions` 等）
+- `System.IO.Ports`
+- 共享项目 `SP_SpaceCG.Interop.SerialPortResolver`（`SerialPortResolver.GetPortName`，编译期合并源码）
+- 共享项目 `SP_SpaceCG.Standard.Trace`（`SpaceCG.Diagnostics.Trace`，编译期合并源码）
+
+> 本项目**无项目引用**（不依赖 SpaceCG.Standard 程序集），所需的基础能力以共享项目源码形式合并。
+> WPF 截帧/场景编排/动画笔刷位于兄弟项目 `SpaceCG.Standard.LedRenderer.Wpf`（见其 [README](../SpaceCG.Standard.LedRenderer.Wpf/README.md)）。
 
 ### 最小示例
 
@@ -653,7 +656,7 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 | 类 | 说明 |
 |----|------|
 | `DrawingDesktop` | 实时捕获桌面指定区域（`Graphics.CopyFromScreen` + `LockBits`），输出 BGR 格式 |
-| `DrawingWpfElement` | 渲染 WPF 元素内容（位于 `SpaceCG.Standard.Wpf` 项目，命名空间 `SpaceCG.Drawing`） |
+| `DrawingWpfElement` | 渲染 WPF 元素内容（位于 `SpaceCG.Standard.LedRenderer.Wpf` 项目，命名空间 `SpaceCG.Drawing`） |
 | 自定义 | 实现 `IDrawingDisplay` 接口即可扩展 |
 
 ---
@@ -779,7 +782,7 @@ if (LedRenderBus.TryCreateInstance(xElement, out var renderBus, createLedStrips:
 |------|------|------|
 | `SystemExtensions.GetSerialDevices()` | `SpaceCG.Standard.Windows`（命名空间 `SpaceCG.Extensions`） | 枚举系统中所有可用串口设备（SetupAPI + CfgMgr32），返回 `IReadOnlyList<SerialDeviceInfo>` |
 | `SystemExtensions.GetPortName(string)` | `SpaceCG.Standard.Windows` | 根据模糊名称匹配串口号（如 `"CH340"` → `"COM3"`） |
-| `SerialPortExtensions.GetPortName(string)` | `SpaceCG.Standard.Devices` | 同上，`SerialPortTransport` 构造时调用它解析 `Params` 中的串口名 |
+| `SerialPortResolver.GetPortName(string)` | 共享项目 `SP_SpaceCG.Interop.SerialPortResolver`（命名空间 `SpaceCG.Interop`） | 根据设备描述/模糊模式解析串口号；`SerialPortTransport` 构造时调用它解析 `Params` 中的串口名 |
 
 ---
 
@@ -1097,6 +1100,8 @@ if (LedRenderBus.TryCreateInstance(doc.Root, out var renderBus, createLedStrips:
 
 ---
 
-*项目路径：`SpaceCG.Standard.Devices.LedRenderer`*
+*项目路径：`SpaceCG.Standard.LedRenderer`*
+
+*文档更新：2026-11-12*
 *目标框架：.NET Framework 4.8 | C# 7.3*
 *主要命名空间：`SpaceCG.Device`、`SpaceCG.Drawing`、`SpaceCG.Extensions`、`SpaceCG.IO`（依赖项目）*

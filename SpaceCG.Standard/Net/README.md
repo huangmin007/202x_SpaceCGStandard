@@ -429,7 +429,7 @@ public class HttpWebServer : HttpServerBase
 ### 使用示例
 
 ```csharp
-using SpaceCG.Net.Http;
+using SpaceCG.Net;
 
 // 以当前目录为根目录
 var server = new HttpWebServer();

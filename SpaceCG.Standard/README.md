@@ -8,7 +8,7 @@ SpaceCG 跨项目复用的 **.NET 基础库**：日志跟踪、通用数据结�
 | 语言版本 | C# 7.3 |
 | 根命名空间 | `SpaceCG` |
 | 第三方依赖 | **零**（仅使用 .NET Standard 2.0 自带 API） |
-| 版本 | `1.0.3`（`GeneratePackageOnBuild`，构建即产出 NuGet 包） |
+| 版本 | `1.0.5`（`GeneratePackageOnBuild`，构建即产出 NuGet 包） |
 | 其它开关 | `AllowUnsafeBlocks`、`GenerateDocumentationFile` |
 
 ---
@@ -123,7 +123,7 @@ SpaceCG.Standard/
 │   ├── NetworkExtensions.cs         #   本机 IPv4、子网掩码、广播地址
 │   ├── PathExtensions.cs            #   路径分隔符检测、相对路径
 │   ├── StringExtensions.cs          #   XML 转义、十六进制、参数文本解析
-│   ├── SocketExtensions.cs          #   TCP/UDP/串口连接管理与接收解析
+│   ├── SocketExtensions.cs          #   TCP/UDP 连接管理与接收解析（串口部分见 SpaceCG.Standard.NModbus）
 │   ├── TypeExtensions.cs            #   类型签名、参数转换、类型查找
 │   ├── XElementExtensions.cs        #   XML 模板引用 / 占位符 / 配置加载
 │   ├── XElementConfigExample.xml    #   XElementExtensions 配置示例
@@ -372,7 +372,7 @@ dotnet build SpaceCG.Standard\SpaceCG.Standard.csproj -c Release
 
 - 输出：`bin/Release/netstandard2.0/SpaceCG.Standard.dll` + `SpaceCG.Standard.xml`（XML 文档）。
 - `GeneratePackageOnBuild=True`：同时生成 `bin/Release/SpaceCG.Standard.<Version>.nupkg`，可推送到内部 NuGet 源。
-- 版本号在 `SpaceCG.Standard.csproj` 的 `<Version>` 中维护（当前 `1.0.3`）。
+- 版本号在 `SpaceCG.Standard.csproj` 的 `<Version>` 中维护（当前 `1.0.5`）。
 
 ---
 
@@ -401,12 +401,13 @@ dotnet build SpaceCG.Standard\SpaceCG.Standard.csproj -c Release
 
 | 项目 | 目标框架 | 说明 |
 |---|---|---|
-| `SpaceCG.Standard.Devices` | net48 | 设备通信基础：`ITransportChannel` 抽象 + 串口/TCP/UDP 实现、Modbus RTU |
-| `SpaceCG.Standard.Devices.LedRenderer` | net48 | 全彩 LED 灯带渲染（帧协议、灯带/总线模型、实时绘制） |
-| `SpaceCG.Standard.Devices.NModbus` | net48 | NModbus 从站/同步器 |
+| `SpaceCG.Standard.LedRenderer` | net48 | 全彩 LED 灯带渲染（帧协议、灯带/总线模型、传输通道）；导入共享项目 Trace / SerialPortResolver |
+| `SpaceCG.Standard.LedRenderer.Wpf` | net48 | 灯带渲染 WPF 层（截帧引擎 DrawingWpfElement、场景编排 LedRenderManager、动画笔刷工厂） |
+| `SpaceCG.Standard.NModbus` | net48 | NModbus 3.0.83 扩展层：总线同步器、数据区/点源、串口扩展 |
 | `SpaceCG.Standard.Windows` | net48 | Windows API 封装：设备枚举、热插拔监听 |
-| `SpaceCG.Standard.Wpf` | net48 | WPF 扩展（画刷/位图/LED 渲染控件/WPF 元素绘制） |
-| `Z_TestWpfApp` | net48 | 集成测试应用（RPC、LED 渲染、设备监听） |
+| `SpaceCG.Standard.Wpf` | net48 | WPF 控件库（ImageButtons、ImageSequence、OverlayContentWindow、Demo 导航框架、转换器、扩展方法） |
+| `SP_SpaceCG.Standard.Trace` / `SP_SpaceCG.Interop.SerialPortResolver` | 共享项目 | 跨平台日志 / Windows 串口号解析（源码编译期合并进消费项目） |
+| `Z_TestWpfApp` | net48 | 集成测试台（ImageSequence、ImageButtons、日志、串口、灯带场景） |
 
 依赖方向：上述项目均**单向依赖** `SpaceCG.Standard`，本库不反向依赖任何兄弟项目。
 

@@ -168,9 +168,9 @@ namespace SpaceCG.Controls
         /// <summary>
         /// 初始化控件，加载场景元素和 LED 灯带对象
         /// </summary>
-        /// <param name="drawingDisplay"></param>
-        /// <param name="ledDevices"></param>
-        /// <param name="sceneElement"></param>
+        /// <param name="drawingDisplay">绘制的显示配置</param>
+        /// <param name="ledDevices">led灯带设备配置</param>
+        /// <param name="sceneElement">场景效果配置</param>
         /// <exception cref="ArgumentNullException"></exception>
         public void InitializeComponent(XElement drawingDisplay, XElement ledDevices, XElement sceneElement)
         {

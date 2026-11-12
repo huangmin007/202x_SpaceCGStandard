@@ -336,7 +336,7 @@ namespace SpaceCG.Extensions
             if (config == null) throw new ArgumentNullException("config");
             if (!config.HasAttributes) throw new ArgumentException("配置串口参数错误，至少需要配置两个属性：PortName、BaudRate 属性");
 
-            SerialPort serialPort = new SerialPort();
+            var serialPort = new SerialPort();
             foreach (var attribute in config.Attributes())
             {
                 string propertyName = attribute.Name.LocalName;

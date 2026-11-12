@@ -13,4 +13,10 @@
     <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Controls\LedRenderManager_Example_Config.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

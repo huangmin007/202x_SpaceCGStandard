@@ -72,6 +72,9 @@ namespace SpaceCG.Interop
     }
     #endregion
 
+    /// <summary>
+    /// 串口设备信息解析器
+    /// </summary>
     public static partial class SerialPortResolver
     {        
         /// <summary>

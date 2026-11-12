@@ -329,7 +329,8 @@ SpaceCG.Standard.Windows/
 ├── SpaceCG.Standard.Windows.csproj  # 项目文件（.NET Framework 4.8）
 ├── README.md
 ├── Interop/
-│   └── NativeMethods.cs             # P/Invoke 声明占位 partial class（实际 P/Invoke 内嵌于下列两个文件）
+│   └── NativeMethods.cs             # P/Invoke 声明占位 partial class（public static partial；实际 P/Invoke 内嵌于下列两个文件，
+│                                    #   其 internal partial NativeMethods 声明与本文件合并后可访问性以 public 为准）
 ├── Extensions/
 │   └── SystemExtensions.cs          # 设备枚举查询（SetupAPI/CfgMgr32）
 └── Generic/
