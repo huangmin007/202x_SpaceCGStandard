@@ -3,7 +3,7 @@ using System.IO.Ports;
 using NModbus;
 using SpaceCG.NModbus.IO;
 
-namespace SpaceCG.NModbus
+namespace SpaceCG.Extensions
 {
     public static class ModbusFactoryExtensions
     {

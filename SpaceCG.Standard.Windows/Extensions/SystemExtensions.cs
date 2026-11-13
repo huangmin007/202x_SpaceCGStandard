@@ -2,208 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
 using Trace = SpaceCG.Diagnostics.Trace;
+using SpaceCG.WindowsAPI.SetupAPI;
+using SpaceCG.WindowsAPI.CfgMgr32;
 
 namespace SpaceCG.Extensions
 {
-    #region NativeMethods
-    /// <summary>
-    /// Windows SetupAPI P/Invoke 声明。
-    /// <para>集中管理所有原生函数导入、结构体和常量定义。</para>
-    /// </summary>
-    [SuppressUnmanagedCodeSecurity]
-    internal static partial class NativeMethods
-    {
-        #region 设备接口 GUID（readonly，按 ref 传递给 P/Invoke）
-        /// <summary>
-        /// 端口类设备 GUID（GUID_DEVCLASS_PORTS）。
-        /// <para>用于 SetupDiGetClassDevs 按设备类枚举，而非按接口枚举。</para>
-        /// </summary>
-        public static readonly Guid GUID_DEVCLASS_PORTS = new Guid("4D36E978-E325-11CE-BFC1-08002BE10318");
-
-        /// <summary>
-        /// 串口设备接口 GUID（GUID_DEVINTERFACE_COMPORT）。
-        /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_COMPORT = new Guid("86E0D1E0-8089-11D0-9CE4-08003E301F73");
-
-        /// <summary>
-        /// USB 设备接口 GUID（GUID_DEVINTERFACE_USB_DEVICE）。
-        /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_USB_DEVICE = new Guid("A5DCBF10-6530-11D2-901F-00C04FB951ED");
-
-        /// <summary>
-        /// 磁盘设备接口 GUID（GUID_DEVINTERFACE_DISK）。
-        /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_DISK = new Guid("53F56307-B6BF-11D0-94F2-00A0C91EFB8B");
-
-        /// <summary>
-        /// 卷设备接口 GUID（GUID_DEVINTERFACE_VOLUME）。
-        /// </summary>
-        public static readonly Guid GUID_DEVINTERFACE_VOLUME = new Guid("53F5630D-B6BF-11D0-94F2-00A0C91EFB8B");
-        #endregion
-
-        #region SetupAPI 标志位
-        internal const int DIGCF_PRESENT = 0x00000002;
-        internal const int DIGCF_DEVICEINTERFACE = 0x00000010;
-
-        internal const uint REG_SZ = 1;
-        internal const uint REG_EXPAND_SZ = 2;
-        internal const uint REG_BINARY = 3;
-        internal const uint REG_DWORD = 4;
-        internal const uint REG_MULTI_SZ = 7;
-
-        internal const uint SPDRP_DEVICEDESC = 0x00000000;
-        internal const uint SPDRP_HARDWAREID = 0x00000001;
-        internal const uint SPDRP_COMPATIBLEIDS = 0x00000002;
-        internal const uint SPDRP_SERVICE = 0x00000004;
-        internal const uint SPDRP_CLASS = 0x00000007;
-        internal const uint SPDRP_CLASSGUID = 0x00000008;
-        internal const uint SPDRP_DRIVER = 0x00000009;
-        internal const uint SPDRP_MFG = 0x0000000B;
-        internal const uint SPDRP_FRIENDLYNAME = 0x0000000C;
-        internal const uint SPDRP_LOCATION_INFORMATION = 0x0000000D;
-        internal const uint SPDRP_PHYSICAL_DEVICE_OBJECT_NAME = 0x0000000E;
-        internal const uint SPDRP_CAPABILITIES = 0x0000000F;
-        internal const uint SPDRP_UI_NUMBER = 0x00000010;
-        internal const uint SPDRP_UPPERFILTERS = 0x00000011;
-        internal const uint SPDRP_LOWERFILTERS = 0x00000012;
-        internal const uint SPDRP_BUSTYPEGUID = 0x00000013;
-        internal const uint SPDRP_LEGACYBUSTYPE = 0x00000014;
-        internal const uint SPDRP_BUSNUMBER = 0x00000015;
-        internal const uint SPDRP_ENUMERATOR_NAME = 0x00000016;
-        internal const uint SPDRP_SECURITY = 0x00000017;
-        internal const uint SPDRP_SECURITY_SDS = 0x00000018;
-        internal const uint SPDRP_DEVTYPE = 0x00000019;
-        internal const uint SPDRP_EXCLUSIVE = 0x0000001A;
-        internal const uint SPDRP_CHARACTERISTICS = 0x0000001B;
-        internal const uint SPDRP_ADDRESS = 0x0000001C;
-        internal const uint SPDRP_UI_NUMBER_DESC_FORMAT = 0x0000001D;
-        internal const uint SPDRP_DEVICE_POWER_DATA = 0x0000001E;
-        internal const uint SPDRP_REMOVAL_POLICY = 0x0000001F;
-        internal const uint SPDRP_REMOVAL_POLICY_HW_DEFAULT = 0x00000020;
-        internal const uint SPDRP_REMOVAL_POLICY_OVERRIDE = 0x00000021;
-        internal const uint SPDRP_INSTALL_STATE = 0x00000022;
-        internal const uint SPDRP_LOCATION_PATHS = 0x00000023;
-        internal const uint SPDRP_BASE_CONTAINERID = 0x00000024;
-        #endregion
-
-        #region SetupAPI 结构体定义
-        [StructLayout(LayoutKind.Sequential)]
-        internal struct SP_DEVICE_INTERFACE_DATA
-        {
-            public uint cbSize;
-            public Guid InterfaceClassGuid;
-            public uint Flags;
-            public IntPtr Reserved;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        internal struct SP_DEVINFO_DATA
-        {
-            public uint cbSize;
-            public Guid ClassGuid;
-            public uint DevInst;
-            public IntPtr Reserved;
-        }
-        #endregion
-
-        #region P/Invoke 函数声明
-        /// <summary>
-        /// 返回设备信息集句柄，包含本地计算机上指定设备类的所有设备信息元素。
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsw</para>
-        /// </summary>
-        /// <param name="classGuid">设备接口类或设备安装类的 GUID 指针（ref 编组为 GUID*）</param>
-        /// <param name="enumerator">设备实例 ID 过滤字符串，null 表示不按实例过滤</param>
-        /// <param name="hwndParent">父窗口句柄，通常为 IntPtr.Zero</param>
-        /// <param name="flags">过滤标志（DIGCF_*），如 DIGCF_PRESENT | DIGCF_DEVICEINTERFACE</param>
-        /// <returns>成功返回设备信息集句柄，失败返回 INVALID_HANDLE_VALUE（-1）</returns>
-        [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern IntPtr SetupDiGetClassDevs([In] ref Guid classGuid, [MarshalAs(UnmanagedType.LPWStr)] string enumerator, IntPtr hwndParent, uint flags);
-
-        /// <summary>
-        /// 枚举设备信息集中的设备信息元素。
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdienumdeviceinfo</para>
-        /// </summary>
-        /// <param name="DeviceInfoSet">SetupDiGetClassDevs 返回的设备信息集句柄</param>
-        /// <param name="MemberIndex">从 0 开始的索引，每次调用应递增</param>
-        /// <param name="DeviceInfoData">输出：填充的设备信息数据（调用前需设置 cbSize）</param>
-        /// <returns>成功返回 true，枚举完毕或失败返回 false（通过 GetLastError 获取错误码）</returns>
-        [DllImport("setupapi.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool SetupDiEnumDeviceInfo(IntPtr DeviceInfoSet, uint MemberIndex, ref SP_DEVINFO_DATA DeviceInfoData);
-
-        /// <summary>
-        /// 枚举设备信息集中的设备接口。
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdienumdeviceinterfaces</para>
-        /// </summary>
-        /// <param name="hDevInfoSet">SetupDiGetClassDevs 返回的设备信息集句柄</param>
-        /// <param name="devInfoData">可选的 SP_DEVINFO_DATA 过滤，通常为 IntPtr.Zero 表示不按设备过滤</param>
-        /// <param name="interfaceClassGuid">设备接口类 GUID 指针（ref 编组为 GUID*）</param>
-        /// <param name="memberIndex">从 0 开始的索引，每次调用应递增</param>
-        /// <param name="deviceInterfaceData">输出：填充的设备接口数据（调用前需设置 cbSize）</param>
-        /// <returns>成功返回 true，枚举完毕或失败返回 false（通过 GetLastError 获取错误码）</returns>
-        [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        internal static extern bool SetupDiEnumDeviceInterfaces(IntPtr hDevInfoSet, IntPtr devInfoData, [In] ref Guid interfaceClassGuid, uint memberIndex, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData);
-
-        /// <summary>
-        /// 获取设备接口详细信息（不返回 SP_DEVINFO_DATA）。
-        /// <para>重载 1/2：最后一个参数为 IntPtr.Zero。</para>
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw</para>
-        /// </summary>
-        [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern bool SetupDiGetDeviceInterfaceDetail(IntPtr hDevInfoSet, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData, IntPtr deviceInterfaceDetailData, uint deviceInterfaceDetailDataSize, out uint requiredSize, IntPtr deviceInfoData);
-
-        /// <summary>
-        /// 获取设备接口详细信息（同时返回 SP_DEVINFO_DATA）。
-        /// <para>重载 2/2：最后一个参数传入 SP_DEVINFO_DATA 引用。</para>
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw</para>
-        /// </summary>
-        [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern bool SetupDiGetDeviceInterfaceDetail(IntPtr hDevInfoSet, ref SP_DEVICE_INTERFACE_DATA deviceInterfaceData, IntPtr deviceInterfaceDetailData, uint deviceInterfaceDetailDataSize, out uint requiredSize, ref SP_DEVINFO_DATA deviceInfoData);
-
-        /// <summary>
-        /// 检索指定即插即用设备的注册表属性。
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceregistrypropertyw</para>
-        /// </summary>
-        /// <param name="deviceInfoSet">设备信息集句柄</param>
-        /// <param name="deviceInfoData">设备信息数据</param>
-        /// <param name="property">属性 ID（SPDRP_*）</param>
-        /// <param name="propertyRegDataType">输出：属性数据的注册表类型（REG_SZ / REG_MULTI_SZ 等）</param>
-        /// <param name="propertyBuffer">接收属性数据的缓冲区</param>
-        /// <param name="propertyBufferSize">缓冲区大小（字节）</param>
-        /// <param name="requiredSize">输出：实际需要的缓冲区大小（字节）</param>
-        /// <returns>成功返回 true，失败返回 false（通过 GetLastError 获取错误码）</returns>
-        [DllImport("setupapi.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        internal static extern bool SetupDiGetDeviceRegistryProperty(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, uint property, out uint propertyRegDataType, byte[] propertyBuffer, uint propertyBufferSize, out uint requiredSize);
-
-        /// <summary>
-        /// 删除设备信息集并释放所有关联的内存。
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdidestroydeviceinfolist</para>
-        /// </summary>
-        /// <param name="deviceInfoSet">要释放的设备信息集句柄</param>
-        /// <returns>成功返回 true，失败返回 false</returns>
-        [DllImport("setupapi.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool SetupDiDestroyDeviceInfoList(IntPtr deviceInfoSet);
-
-        /// <summary>
-        /// 获取指定设备实例的设备 ID 字符串。
-        /// <para>参考：https://learn.microsoft.com/zh-cn/windows/win32/api/cfgmgr32/nf-cfgmgr32-cm_get_device_idw</para>
-        /// </summary>
-        /// <param name="dnDevInst">设备实例句柄（SP_DEVINFO_DATA.DevInst）</param>
-        /// <param name="buffer">接收设备 ID 字符串的 StringBuilder 缓冲区</param>
-        /// <param name="bufferLen">缓冲区大小（字符数）</param>
-        /// <param name="ulFlags">标志位，通常为 0</param>
-        /// <returns>成功返回 CR_SUCCESS(0)，失败返回 CR_* 错误码</returns>
-        [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode)]
-        internal static extern int CM_Get_Device_ID(uint dnDevInst, StringBuilder buffer, int bufferLen, int ulFlags);
-        #endregion
-    }
-    #endregion
-
     #region 设备数据模型
     /// <summary>
     /// Windows 设备基础信息。
@@ -215,13 +21,13 @@ namespace SpaceCG.Extensions
         /// <summary>设备实例句柄（SP_DEVINFO_DATA.DevInst）</summary>
         public uint DevInst { get; internal set; }
 
-        /// <summary>设备实例 ID（CM_Get_Device_ID）</summary>
+        /// <summary>设备实例 ID（CfgMgr32.CM_Get_Device_ID）</summary>
         public string InstanceId { get; internal set; }
 
         /// <summary>设备友好名称（SPDRP_FRIENDLYNAME）</summary>
         public string FriendlyName { get; internal set; }
 
-        /// <summary>设备路径（SetupDiGetDeviceInterfaceDetail.DevicePath）</summary>
+        /// <summary>设备路径（SetupAPI.SetupDiGetDeviceInterfaceDetail.DevicePath）</summary>
         public string DevicePath { get; internal set; }
 
         /// <summary>设备安装类 GUID（SP_DEVINFO_DATA.ClassGuid）</summary>
@@ -285,7 +91,7 @@ namespace SpaceCG.Extensions
     }
 
     /// <summary>
-    /// 物理磁盘设备信息（GUID_DEVINTERFACE_DISK）。
+    /// 物理磁盘设备信息（SetupAPI.GUID_DEVINTERFACE_DISK）。
     /// <para>仅包含枚举阶段可获取的轻量属性。重量属性（SerialNumber/SizeBytes 等）需额外 API 调用。</para>
     /// </summary>
     public sealed class DiskDeviceInfo : DeviceInfo
@@ -298,7 +104,7 @@ namespace SpaceCG.Extensions
     }
 
     /// <summary>
-    /// 逻辑卷设备信息（GUID_DEVINTERFACE_VOLUME）。
+    /// 逻辑卷设备信息（SetupAPI.GUID_DEVINTERFACE_VOLUME）。
     /// <para>仅包含枚举阶段可获取的轻量属性。重量属性（DriveLetter/Label/FileSystem 等）需额外 API 调用。</para>
     /// </summary>
     public sealed class VolumeDeviceInfo : DeviceInfo
@@ -326,28 +132,28 @@ namespace SpaceCG.Extensions
 
         #region SetupAPI 核心函数
         /// <summary>
-        /// 通用设备接口枚举引擎，封装 SetupDiEnumDeviceInterfaces 标准调用流程。
+        /// 通用设备接口枚举引擎，封装 SetupAPI.SetupDiEnumDeviceInterfaces 标准调用流程。
         /// <para>适用于通过设备接口 GUID 枚举的设备类型：USB、Disk、Volume 等。</para>
-        /// <para>调用链：SetupDiGetClassDevs → SetupDiEnumDeviceInterfaces → SetupDiGetDeviceInterfaceDetail → 逐个 selector 回调。</para>
-        /// <para>内部自动处理句柄生命周期（try-finally + SetupDiDestroyDeviceInfoList）。</para>
+        /// <para>调用链：SetupAPI.SetupDiGetClassDevs → SetupAPI.SetupDiEnumDeviceInterfaces → SetupAPI.SetupDiGetDeviceInterfaceDetail → 逐个 selector 回调。</para>
+        /// <para>内部自动处理句柄生命周期（try-finally + SetupAPI.SetupDiDestroyDeviceInfoList）。</para>
         /// </summary>
         /// <typeparam name="T">返回的设备信息类型</typeparam>
         /// <param name="classGuid">设备接口类 GUID</param>
         /// <param name="selector">工厂函数，接收 (hDevInfoSet, devInfoData, devicePath)，返回目标对象或 null（跳过）</param>
         /// <returns>设备信息列表；枚举异常或设备为空时返回空列表</returns>
-        internal static IReadOnlyList<T> EnumerateDeviceInterfaces<T>(Guid classGuid, Func<IntPtr, NativeMethods.SP_DEVINFO_DATA, string, T> selector)
+        internal static IReadOnlyList<T> EnumerateDeviceInterfaces<T>(Guid classGuid, Func<IntPtr, SP_DEVINFO_DATA, string, T> selector)
         {
-            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)(NativeMethods.DIGCF_PRESENT | NativeMethods.DIGCF_DEVICEINTERFACE));
+            IntPtr hDevInfoSet = SetupAPI.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)(DIGCF.PRESENT | DIGCF.DEVICEINTERFACE));
             if (hDevInfoSet == IntPtr.Zero || hDevInfoSet == InvalidHandle) return Array.Empty<T>();
 
             var devices = new List<T>(16);
             try
             {
                 uint index = 0;
-                var interfaceData = new NativeMethods.SP_DEVICE_INTERFACE_DATA();
+                var interfaceData = new SP_DEVICE_INTERFACE_DATA();
                 interfaceData.cbSize = (uint)Marshal.SizeOf(interfaceData);
 
-                while (NativeMethods.SetupDiEnumDeviceInterfaces(hDevInfoSet, IntPtr.Zero, ref classGuid, index, ref interfaceData))
+                while (SetupAPI.SetupDiEnumDeviceInterfaces(hDevInfoSet, IntPtr.Zero, ref classGuid, index, ref interfaceData))
                 {
                     index++;
                     if (TryGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, out string devicePath, out var devInfoData))
@@ -367,37 +173,37 @@ namespace SpaceCG.Extensions
             }
             finally
             {
-                NativeMethods.SetupDiDestroyDeviceInfoList(hDevInfoSet);
+                SetupAPI.SetupDiDestroyDeviceInfoList(hDevInfoSet);
             }
 
             return devices;
         }
 
         /// <summary>
-        /// 通用设备信息枚举引擎，封装 SetupDiEnumDeviceInfo 标准调用流程。
+        /// 通用设备信息枚举引擎，封装 SetupAPI.SetupDiEnumDeviceInfo 标准调用流程。
         /// <para>适用于通过设备安装类 GUID 枚举的设备类型：Ports 等。</para>
         /// <para>与 <see cref="EnumerateDeviceInterfaces{T}"/> 的区别：不获取 DevicePath，
-        /// 因为 SetupDiEnumDeviceInfo 不遍历接口层，仅枚举设备节点。</para>
-        /// <para>调用链：SetupDiGetClassDevs → SetupDiEnumDeviceInfo → 逐个 selector 回调。</para>
-        /// <para>内部自动处理句柄生命周期（try-finally + SetupDiDestroyDeviceInfoList）。</para>
+        /// 因为 SetupAPI.SetupDiEnumDeviceInfo 不遍历接口层，仅枚举设备节点。</para>
+        /// <para>调用链：SetupAPI.SetupDiGetClassDevs → SetupAPI.SetupDiEnumDeviceInfo → 逐个 selector 回调。</para>
+        /// <para>内部自动处理句柄生命周期（try-finally + SetupAPI.SetupDiDestroyDeviceInfoList）。</para>
         /// </summary>
         /// <typeparam name="T">返回的设备信息类型</typeparam>
         /// <param name="classGuid">设备安装类 GUID</param>
         /// <param name="selector">工厂函数，接收 (hDevInfoSet, devInfoData)，返回目标对象或 null（跳过）</param>
         /// <returns>设备信息列表；枚举异常或设备为空时返回空列表</returns>
-        internal static IReadOnlyList<T> EnumerateDeviceInfos<T>(Guid classGuid, Func<IntPtr, NativeMethods.SP_DEVINFO_DATA, T> selector)
+        internal static IReadOnlyList<T> EnumerateDeviceInfos<T>(Guid classGuid, Func<IntPtr, SP_DEVINFO_DATA, T> selector)
         {
-            IntPtr hDevInfoSet = NativeMethods.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)NativeMethods.DIGCF_PRESENT);
+            IntPtr hDevInfoSet = SetupAPI.SetupDiGetClassDevs(ref classGuid, null, IntPtr.Zero, (uint)DIGCF.PRESENT);
             if (hDevInfoSet == IntPtr.Zero || hDevInfoSet == InvalidHandle) return Array.Empty<T>();
 
             var devices = new List<T>(16);
             try
             {
                 uint index = 0;
-                var devInfo = new NativeMethods.SP_DEVINFO_DATA();
-                devInfo.cbSize = (uint)Marshal.SizeOf(typeof(NativeMethods.SP_DEVINFO_DATA));
+                var devInfo = new SP_DEVINFO_DATA();
+                devInfo.cbSize = (uint)Marshal.SizeOf(typeof(SP_DEVINFO_DATA));
 
-                while (NativeMethods.SetupDiEnumDeviceInfo(hDevInfoSet, index, ref devInfo))
+                while (SetupAPI.SetupDiEnumDeviceInfo(hDevInfoSet, index, ref devInfo))
                 {
                     index++;
                     T device = selector(hDevInfoSet, devInfo);
@@ -414,7 +220,7 @@ namespace SpaceCG.Extensions
             }
             finally
             {
-                NativeMethods.SetupDiDestroyDeviceInfoList(hDevInfoSet);
+                SetupAPI.SetupDiDestroyDeviceInfoList(hDevInfoSet);
             }
 
             return devices;
@@ -422,7 +228,7 @@ namespace SpaceCG.Extensions
 
         /// <summary>
         /// 获取设备接口详细信息和设备信息数据。
-        /// <para>封装 SetupDiGetDeviceInterfaceDetail 两次调用模式：
+        /// <para>封装 SetupAPI.SetupDiGetDeviceInterfaceDetail 两次调用模式：
         /// 第一次传入空缓冲区获取 requiredSize，第二次分配缓冲区并获取实际数据。</para>
         /// <para>使用 Marshal.AllocHGlobal 分配非托管内存，通过 finally 确保释放。</para>
         /// </summary>
@@ -431,13 +237,13 @@ namespace SpaceCG.Extensions
         /// <param name="devicePath">输出：设备路径字符串（如 "\\?\USB#VID_1A86&PID_7523#..."）</param>
         /// <param name="devInfoData">输出：设备信息数据（调用前 cbSize 已由本方法内部设置）</param>
         /// <returns>成功返回 true；失败返回 false，devicePath 为 null</returns>
-        internal static bool TryGetDeviceInterfaceDetail(IntPtr hDevInfoSet, ref NativeMethods.SP_DEVICE_INTERFACE_DATA interfaceData, out string devicePath, out NativeMethods.SP_DEVINFO_DATA devInfoData)
+        internal static bool TryGetDeviceInterfaceDetail(IntPtr hDevInfoSet, ref SP_DEVICE_INTERFACE_DATA interfaceData, out string devicePath, out SP_DEVINFO_DATA devInfoData)
         {
             devicePath = null;
             devInfoData = default;
 
             // 第一次调用：获取所需缓冲区大小
-            NativeMethods.SetupDiGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, IntPtr.Zero, 0, out uint requiredSize, IntPtr.Zero);
+            SetupAPI.SetupDiGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, IntPtr.Zero, 0, out uint requiredSize, IntPtr.Zero);
             if (requiredSize == 0) return false;
 
             IntPtr detailBuffer = Marshal.AllocHGlobal((int)requiredSize);
@@ -446,10 +252,10 @@ namespace SpaceCG.Extensions
                 // 写入 SP_DEVICE_INTERFACE_DETAIL_DATA 的 cbSize（x86: 6, x64: 8）
                 Marshal.WriteInt32(detailBuffer, DetailDataCbSize);
 
-                devInfoData = new NativeMethods.SP_DEVINFO_DATA();
+                devInfoData = new SP_DEVINFO_DATA();
                 devInfoData.cbSize = (uint)Marshal.SizeOf(devInfoData);
 
-                bool success = NativeMethods.SetupDiGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, detailBuffer, requiredSize, out requiredSize, ref devInfoData);
+                bool success = SetupAPI.SetupDiGetDeviceInterfaceDetail(hDevInfoSet, ref interfaceData, detailBuffer, requiredSize, out requiredSize, ref devInfoData);
                 if (!success) return false;
 
                 IntPtr pDevicePath = IntPtr.Add(detailBuffer, DetailDataCbSize);
@@ -463,7 +269,7 @@ namespace SpaceCG.Extensions
         }
         
         /// <summary>
-        /// 通过 CM_Get_Device_ID 获取指定设备实例的完整设备 ID 字符串。
+        /// 通过 CfgMgr32.CM_Get_Device_ID 获取指定设备实例的完整设备 ID 字符串。
         /// <para>返回格式如 "USB\VID_1A86&amp;PID_7523\5&amp;2C8A7B6F&amp;0&amp;3"。</para>
         /// </summary>
         /// <param name="devInst">设备实例句柄（SP_DEVINFO_DATA.DevInst）</param>
@@ -471,7 +277,7 @@ namespace SpaceCG.Extensions
         internal static string GetDeviceInstanceId(uint devInst)
         {
             var buffer = new StringBuilder(256);
-            int result = NativeMethods.CM_Get_Device_ID(devInst, buffer, buffer.Capacity, 0);
+            int result = CfgMgr32.CM_Get_Device_ID(devInst, buffer, buffer.Capacity, 0);
             return result == 0 ? buffer.ToString() : null;
         }
 
@@ -484,11 +290,11 @@ namespace SpaceCG.Extensions
         /// <param name="property">属性 ID（SPDRP_*）</param>
         /// <param name="regType">输出：注册表值类型（REG_SZ / REG_MULTI_SZ / REG_DWORD 等）</param>
         /// <returns>属性数据字节数组；获取失败返回 null</returns>
-        internal static byte[] GetPropertyBuffer(IntPtr deviceInfoSet, ref NativeMethods.SP_DEVINFO_DATA deviceInfoData, uint property, out uint regType)
+        internal static byte[] GetPropertyBuffer(IntPtr deviceInfoSet, ref SP_DEVINFO_DATA deviceInfoData, uint property, out uint regType)
         {
             regType = 0;
             byte[] buffer = new byte[256];
-            bool success = NativeMethods.SetupDiGetDeviceRegistryProperty(deviceInfoSet, ref deviceInfoData, property, out regType, buffer, (uint)buffer.Length, out uint requiredSize);
+            bool success = SetupAPI.SetupDiGetDeviceRegistryProperty(deviceInfoSet, ref deviceInfoData, property, out regType, buffer, (uint)buffer.Length, out uint requiredSize);
 
             if (success && requiredSize > 0)
             {
@@ -499,7 +305,7 @@ namespace SpaceCG.Extensions
             if (requiredSize > 0)
             {
                 buffer = new byte[requiredSize];
-                success = NativeMethods.SetupDiGetDeviceRegistryProperty(deviceInfoSet, ref deviceInfoData, property, out regType, buffer, (uint)buffer.Length, out requiredSize);
+                success = SetupAPI.SetupDiGetDeviceRegistryProperty(deviceInfoSet, ref deviceInfoData, property, out regType, buffer, (uint)buffer.Length, out requiredSize);
                 if (success && requiredSize > 0)
                 {
                     Array.Resize(ref buffer, (int)requiredSize);
@@ -517,11 +323,11 @@ namespace SpaceCG.Extensions
         /// <param name="devInfoData">设备信息数据</param>
         /// <param name="property">属性 ID（SPDRP_*）</param>
         /// <returns>属性字符串；属性不存在或类型不匹配返回 null</returns>
-        internal static string GetStringProperty(IntPtr hDevInfoSet, ref NativeMethods.SP_DEVINFO_DATA devInfoData, uint property)
+        internal static string GetStringProperty(IntPtr hDevInfoSet, ref SP_DEVINFO_DATA devInfoData, uint property)
         {
             var buffer = GetPropertyBuffer(hDevInfoSet, ref devInfoData, property, out uint regType);
             if (buffer == null || buffer.Length == 0) return null;
-            if (regType != NativeMethods.REG_SZ && regType != NativeMethods.REG_EXPAND_SZ) return null;
+            if (regType != SetupAPI.REG_SZ && regType != SetupAPI.REG_EXPAND_SZ) return null;
 
             var length = buffer.Length / 2;
             string result;
@@ -547,12 +353,12 @@ namespace SpaceCG.Extensions
         /// <param name="devInfoData">设备信息数据</param>
         /// <param name="property">属性 ID（SPDRP_*）</param>
         /// <returns>字符串数组；属性不存在或类型不匹配返回空数组</returns>
-        internal static string[] GetMultiStringProperty(IntPtr hDevInfoSet, ref NativeMethods.SP_DEVINFO_DATA devInfoData, uint property)
+        internal static string[] GetMultiStringProperty(IntPtr hDevInfoSet, ref SP_DEVINFO_DATA devInfoData, uint property)
         {
             var buffer = GetPropertyBuffer(hDevInfoSet, ref devInfoData, property, out uint regType);
 
             if (buffer == null || buffer.Length == 0) return Array.Empty<string>();
-            if (regType != NativeMethods.REG_MULTI_SZ) return Array.Empty<string>();
+            if (regType != SetupAPI.REG_MULTI_SZ) return Array.Empty<string>();
 
             var length = buffer.Length / 2;
             string result;
@@ -575,12 +381,12 @@ namespace SpaceCG.Extensions
         /// <param name="devInfoData">设备信息数据</param>
         /// <param name="property">属性 ID（SPDRP_*）</param>
         /// <returns>属性值；属性不存在、类型不匹配或长度不足返回 null</returns>
-        internal static uint? GetUInt32Property(IntPtr hDevInfoSet, ref NativeMethods.SP_DEVINFO_DATA devInfoData, uint property)
+        internal static uint? GetUInt32Property(IntPtr hDevInfoSet, ref SP_DEVINFO_DATA devInfoData, uint property)
         {
             var buffer = GetPropertyBuffer(hDevInfoSet, ref devInfoData, property, out uint regType);
 
             if (buffer == null || buffer.Length == 0) return null;
-            if (regType != NativeMethods.REG_DWORD) return null;
+            if (regType != SetupAPI.REG_DWORD) return null;
 
             if (buffer.Length < 4) return null;
             return BitConverter.ToUInt32(buffer, 0);
@@ -593,7 +399,7 @@ namespace SpaceCG.Extensions
         /// <param name="devInfoData">设备信息数据</param>
         /// <param name="property">属性 ID（SPDRP_*）</param>
         /// <returns>解析后的 GUID；解析失败返回 Guid.Empty</returns>
-        internal static Guid GetGuidProperty(IntPtr hDevInfoSet, ref NativeMethods.SP_DEVINFO_DATA devInfoData, uint property)
+        internal static Guid GetGuidProperty(IntPtr hDevInfoSet, ref SP_DEVINFO_DATA devInfoData, uint property)
         {
             var value = GetStringProperty(hDevInfoSet, ref devInfoData, property);
             if(string.IsNullOrWhiteSpace(value)) return Guid.Empty;
@@ -607,23 +413,23 @@ namespace SpaceCG.Extensions
         /// <summary>
         /// 填充核心属性（每个设备枚举必然调用的最小集）。
         /// </summary>
-        internal static void FillCoreInfo(IntPtr hDevInfoSet, ref NativeMethods.SP_DEVINFO_DATA devInfo, DeviceInfo device)
+        internal static void FillCoreInfo(IntPtr hDevInfoSet, ref SP_DEVINFO_DATA devInfo, DeviceInfo device)
         {
             device.DevInst = devInfo.DevInst;
             device.ClassGuid = devInfo.ClassGuid;
             device.InstanceId = GetDeviceInstanceId(devInfo.DevInst);
-            device.FriendlyName = GetStringProperty(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_FRIENDLYNAME);
-            device.ClassName = GetStringProperty(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_CLASS);
-            device.HardwareIds = GetMultiStringProperty(hDevInfoSet, ref devInfo, NativeMethods.SPDRP_HARDWAREID);
+            device.FriendlyName = GetStringProperty(hDevInfoSet, ref devInfo, (uint)SPDRP.FRIENDLYNAME);
+            device.ClassName = GetStringProperty(hDevInfoSet, ref devInfo, (uint)SPDRP.CLASS);
+            device.HardwareIds = GetMultiStringProperty(hDevInfoSet, ref devInfo, (uint)SPDRP.HARDWAREID);
         }
         #endregion
 
         #region 公共查询方法
         /// <summary>
         /// 枚举系统中所有可用的串口设备信息。
-        /// <para>基于 GUID_DEVCLASS_PORTS 设备安装类枚举（SetupDiEnumDeviceInfo，不遍历接口层，无法获取 DevicePath）。</para>
+        /// <para>基于 SetupAPI.GUID_DEVCLASS_PORTS 设备安装类枚举（SetupAPI.SetupDiEnumDeviceInfo，不遍历接口层，无法获取 DevicePath）。</para>
         /// </summary>
-        public static IReadOnlyList<SerialDeviceInfo> GetSerialDevices() => EnumerateDeviceInfos(NativeMethods.GUID_DEVCLASS_PORTS, (hDevInfoSet, devInfo) =>
+        public static IReadOnlyList<SerialDeviceInfo> GetSerialDevices() => EnumerateDeviceInfos(SetupAPI.GUID_DEVCLASS_PORTS, (hDevInfoSet, devInfo) =>
         {
             var deviceInfo = new SerialDeviceInfo();
             FillCoreInfo(hDevInfoSet, ref devInfo, deviceInfo);
@@ -663,9 +469,9 @@ namespace SpaceCG.Extensions
 
         /// <summary>
         /// 枚举系统中所有可用的 USB 设备信息。
-        /// <para>基于 GUID_DEVINTERFACE_USB_DEVICE 枚举设备接口。</para>
+        /// <para>基于 SetupAPI.GUID_DEVINTERFACE_USB_DEVICE 枚举设备接口。</para>
         /// </summary>
-        public static IReadOnlyList<UsbDeviceInfo> GetUsbDevices() => EnumerateDeviceInterfaces(NativeMethods.GUID_DEVINTERFACE_USB_DEVICE, (hDevInfoSet, devInfo, devPath) =>
+        public static IReadOnlyList<UsbDeviceInfo> GetUsbDevices() => EnumerateDeviceInterfaces(SetupAPI.GUID_DEVINTERFACE_USB_DEVICE, (hDevInfoSet, devInfo, devPath) =>
         {
             var deviceInfo = new UsbDeviceInfo();
             deviceInfo.DevicePath = devPath;
@@ -681,10 +487,10 @@ namespace SpaceCG.Extensions
 
         /// <summary>
         /// 枚举系统中所有可用的物理磁盘设备信息（轻量属性）。
-        /// <para>基于 GUID_DEVINTERFACE_DISK 枚举设备接口。</para>
+        /// <para>基于 SetupAPI.GUID_DEVINTERFACE_DISK 枚举设备接口。</para>
         /// <para>重量属性（SerialNumber/SizeBytes 等）需通过 CreateFile + DeviceIoControl 额外填充。</para>
         /// </summary>
-        public static IReadOnlyList<DiskDeviceInfo> GetDiskDevices() => EnumerateDeviceInterfaces(NativeMethods.GUID_DEVINTERFACE_DISK, (hDevInfoSet, devInfo, devPath) =>
+        public static IReadOnlyList<DiskDeviceInfo> GetDiskDevices() => EnumerateDeviceInterfaces(SetupAPI.GUID_DEVINTERFACE_DISK, (hDevInfoSet, devInfo, devPath) =>
         {
             var deviceInfo = new DiskDeviceInfo();
             deviceInfo.DevicePath = devPath;
@@ -704,10 +510,10 @@ namespace SpaceCG.Extensions
 
         /// <summary>
         /// 枚举系统中所有可用的逻辑卷设备信息（轻量属性）。
-        /// <para>基于 GUID_DEVINTERFACE_VOLUME 枚举设备接口。</para>
+        /// <para>基于 SetupAPI.GUID_DEVINTERFACE_VOLUME 枚举设备接口。</para>
         /// <para>重量属性（DriveLetter/Label/FileSystem 等）需通过 GetVolumePathNamesForVolumeName 等 API 额外填充。</para>
         /// </summary>
-        public static IReadOnlyList<VolumeDeviceInfo> GetVolumeDevices() => EnumerateDeviceInterfaces(NativeMethods.GUID_DEVINTERFACE_VOLUME, (hDevInfoSet, devInfo, devPath) =>
+        public static IReadOnlyList<VolumeDeviceInfo> GetVolumeDevices() => EnumerateDeviceInterfaces(SetupAPI.GUID_DEVINTERFACE_VOLUME, (hDevInfoSet, devInfo, devPath) =>
         {
             var deviceInfo = new VolumeDeviceInfo();
             deviceInfo.DevicePath = devPath;

@@ -9,12 +9,10 @@ using SpaceCG.Interop;
 namespace SpaceCG.NModbus.IO
 {
     /// <summary>
-    ///     Concrete Implementor - http://en.wikipedia.org/wiki/Bridge_Pattern
+    /// Concrete Implementor - http://en.wikipedia.org/wiki/Bridge_Pattern
     /// </summary>
     public class SerialPortAdapter : IStreamResource, IDisposable
     {
-        private const string NewLine = "\r\n";
-
         private Stopwatch _stopwatch;
         private SerialPort _serialPort;
         public int InfiniteTimeout => Timeout.Infinite;
@@ -47,7 +45,7 @@ namespace SpaceCG.NModbus.IO
 
         private readonly string _portName;
 
-        public SerialPortAdapter(SerialPort serialPort)
+        internal SerialPortAdapter(SerialPort serialPort)
         {
             _serialPort = serialPort;
             _serialPort.NewLine = "\r\n";
@@ -122,8 +120,8 @@ namespace SpaceCG.NModbus.IO
                 
                 try
                 {
-                    // 等待 1 秒后，重新尝试打开串口
-                    for (int i = 0; i < 10; i++)
+                    // 等待 2 秒后，重新尝试打开串口
+                    for (int i = 0; i < 20; i++)
                     {
                         if (serialPort == null || cancellationToken.IsCancellationRequested) break;
                         await Task.Delay(100, cancellationToken);
@@ -150,7 +148,6 @@ namespace SpaceCG.NModbus.IO
         public int Read(byte[] buffer, int offset, int count)
         {
             //Trace.WriteLine($"Read Count:{count}");
-
             var sleepCount = 0;
             var beginMilliseconds = _stopwatch.ElapsedMilliseconds;
             var readTimeout = _serialPort.ReadTimeout <= 0 ? 3000 : _serialPort.ReadTimeout;

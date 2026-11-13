@@ -7,6 +7,7 @@ using System.IO;
 using System.IO.Compression;
 using System.IO.Ports;
 using System.Linq;
+using System.Runtime.Remoting.Contexts;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,6 +51,8 @@ namespace Z_TestWpfApp
         {
             base.OnClosing(e);
             zipArchive?.Dispose();
+
+            _monitor?.Dispose();
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -90,9 +93,16 @@ namespace Z_TestWpfApp
             }
         }
 
+        private DeviceWatcher _monitor;
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            DeviceList.Local.Changed += Local_Changed;
+            _monitor = new DeviceWatcher();   // 默认 AutoDispatch
+            _monitor.DeviceChanged += (s, ev) =>
+            {
+                // 已在 UI 线程（通过 SynchronizationContext.Post 回到 Start 调用线程），可直接操作控件
+                Trace.WriteLine($"[{ev.Category}] {(ev.IsArrival ? "接入" : "移除")} {ev.DeviceName} {ev.DevicePath}\r\n");
+            };
+            _monitor.Start();
         }
 
         private void Local_Changed(object sender, DeviceListChangedEventArgs e)

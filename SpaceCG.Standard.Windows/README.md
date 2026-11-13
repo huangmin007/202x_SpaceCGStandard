@@ -1,6 +1,6 @@
 # SpaceCG.Standard.Windows
 
-`SpaceCG.Standard.Windows` 项目封装 Windows 原生 API，提供**即插即用设备枚举查询**和**设备热插拔监听**两大核心功能，基于 SetupAPI、CfgMgr32 和 Win32 消息窗口实现。
+`SpaceCG.Standard.Windows` 项目封装 Windows 原生 API，提供**即插即用设备枚举查询**和**设备热插拔监听**两大核心功能，基于 SetupAPI 与 CfgMgr32 实现，并提供按 Win32 DLL 分组的 API 声明库（`SpaceCG.WindowsAPI.*`）。
 
 - **目标框架**：.NET Framework 4.8（C# 7.3）
 - **依赖**：`SpaceCG.Standard`（ProjectReference）
@@ -15,8 +15,14 @@
 | 命名空间 | 文件 | 职责 |
 |:---|:---|:---|
 | `SpaceCG.Extensions` | `Extensions/SystemExtensions.cs` | 设备枚举查询：USB、串口、磁盘、卷 |
-| `SpaceCG.Generic` | `Generic/DeviceWatcher.cs` | 设备热插拔监听：WM_DEVICECHANGE 事件通知 |
-| `SpaceCG.Interop` | `Interop/NativeMethods.cs` | P/Invoke 声明占位 partial class |
+| `SpaceCG.Device` | `Device/DeviceWatcher.cs` | 设备热插拔监听：基于 CfgMgr32 的 CM_Register_Notification（Windows 8+） |
+| `SpaceCG.WindowsAPI` | `WinDef.cs`、`API_Template.cs` | Win32 公共基础类型（POINT/SIZE/RECT/FILETIME 等，WinDef.h） |
+| `SpaceCG.WindowsAPI.Kernel32` | `Kernel32/*.cs` | kernel32.dll：模块加载、内存操作、文件 I/O、系统时间、FormatMessage |
+| `SpaceCG.WindowsAPI.User32` | `User32/*.cs` | user32.dll：窗口管理、消息、输入（RawInput/SendInput/Pointer）、钩子、热键、DPI、设备通知（Dbt.h） |
+| `SpaceCG.WindowsAPI.Gdi` | `GDI/WinGDI.cs` | gdi32/user32：显示设备枚举、DC |
+| `SpaceCG.WindowsAPI.SetupAPI` | `SetupAPI/*.cs` | setupapi.dll：设备信息集枚举（SetupDi* / SP_* 结构 / DIGCF / SPDRP） |
+| `SpaceCG.WindowsAPI.CfgMgr32` | `SetupAPI/CfgMgr32.cs` | cfgmgr32.dll：PnP 设备通知（CM_Register_Notification）、设备 ID 与接口列表查询 |
+| `SpaceCG.WindowsAPI.HID` | `HID/*.cs` | hid.dll：HID 设备属性/能力/报文 |
 
 ---
 
@@ -30,13 +36,12 @@
 | [`SerialDeviceInfo`](#设备信息数据模型) | sealed class | `SpaceCG.Extensions` | 串口设备信息（COM 端口号） |
 | [`DiskDeviceInfo`](#设备信息数据模型) | sealed class | `SpaceCG.Extensions` | 物理磁盘设备信息 |
 | [`VolumeDeviceInfo`](#设备信息数据模型) | sealed class | `SpaceCG.Extensions` | 逻辑卷设备信息 |
-| [`DeviceWatcher`](#devicewatcher) | sealed class | `SpaceCG.Generic` | **设备热插拔监听器**：后台消息窗口 |
-| [`DeviceChangedEventArgs`](#设备变更事件参数) | abstract class | `SpaceCG.Generic` | 设备变更事件参数抽象基类 |
-| [`VolumeDeviceChangedEventArgs`](#设备变更事件参数) | sealed class | `SpaceCG.Generic` | 卷设备变更事件参数（含驱动器号） |
-| [`PortDeviceChangedEventArgs`](#设备变更事件参数) | sealed class | `SpaceCG.Generic` | 端口设备变更事件参数（含 COM 号） |
-| [`InterfaceDeviceChangedEventArgs`](#设备变更事件参数) | sealed class | `SpaceCG.Generic` | 设备接口变更事件参数（含设备路径） |
-| [`DeviceBroadcastType`](#devicebroadcasttype) | enum | `SpaceCG.Generic` | 设备广播类型枚举（WM_DEVICECHANGE wParam） |
-| [`DeviceType`](#devicetype) | enum | `SpaceCG.Generic` | 设备类型枚举（DEV_BROADCAST_HDR dbch_devicetype） |
+| [`DeviceWatcher`](#devicewatcher) | sealed class | `SpaceCG.Device` | **设备热插拔监听器**：CfgMgr32 PnP 通知（Windows 8+） |
+| [`DeviceChangedEventArgs`](#devicewatcher) | sealed class | `SpaceCG.Device` | 设备变更事件参数（不可变） |
+| [`DeviceChangeType`](#devicewatcher) | enum | `SpaceCG.Device` | 设备变化类型（接入 / 移除） |
+| [`DeviceCategory`](#devicewatcher) | enum | `SpaceCG.Device` | 设备类别（按接口类 GUID 归类） |
+| [`DeviceBroadcastType`](#devicebroadcasttype) | enum | `SpaceCG.WindowsAPI.User32` | 设备广播类型枚举（WM_DEVICECHANGE wParam） |
+| [`DeviceType`](#devicetype) | enum | `SpaceCG.WindowsAPI.User32` | 设备类型枚举（DEV_BROADCAST_HDR dbch_devicetype） |
 
 ---
 
@@ -165,88 +170,55 @@ foreach (var vol in volumeDevices)
 
 ## `DeviceWatcher`
 
-基于独立后台消息窗口（Message-only Window）的设备热插拔监听器。在独立 STA 线程中创建隐藏窗口，注册三类设备通知，通过事件回调通知设备插入/移除。
+基于 CfgMgr32 `CM_Register_Notification` 的设备热插拔监听器（纯 C#，仅 Windows，需 Windows 8+）。P/Invoke 声明位于 `SpaceCG.WindowsAPI.CfgMgr32`。
 
 ### 关键成员
 
 | 成员 | 说明 |
 |:---|:---|
-| `DeviceArrived` | 事件：设备插入时触发（`EventHandler<DeviceChangedEventArgs>`） |
-| `DeviceRemoved` | 事件：设备移除时触发（`EventHandler<DeviceChangedEventArgs>`） |
-| `Handle` | 窗口句柄（`IntPtr`），启动后可用 |
-| `Start()` | 创建消息窗口并启动消息循环（后台线程） |
-| `Dispose()` | 优雅关闭：PostMessage(WM_CLOSE) + 等待线程退出 |
+| `DeviceChanged` | 事件：设备接入/移除时触发（`EventHandler<DeviceChangedEventArgs>`） |
+| `VolumeInterfaceClass` 等静态 GUID | 常用设备接口类 GUID（Volume / ComPort / UsbDevice / Hid） |
+| `DeviceWatcher(IEnumerable<Guid>)` | 构造：指定订阅的接口类；null/空 = 订阅全部接口类 |
+| `Start()` | 启动监听；事件回调 marshal 回 Start() 调用线程（有 SynchronizationContext 时） |
+| `Dispose()` | 停止监听并释放原生通知句柄；禁止在事件回调内调用（会死锁） |
+| `GetPresentInterfaces(Guid)` | 静态：枚举当前已存在的接口符号链接（注册不会为已存在接口发通知，需先注册后枚举） |
 
-### 使用示例
+### `DeviceChangedEventArgs` 属性
+
+| 属性 | 说明 |
+|:---|:---|
+| `ChangeType` / `IsArrival` | 接入 / 移除 |
+| `Category` | 设备类别（Serial / Disk / UsbDevice / Hid / Other） |
+| `InterfaceClassGuid` | 设备接口类 GUID |
+| `DeviceName` | 显示名称：COM3 / E:\ / 接口符号链接路径 |
+| `DevicePath` | 设备接口符号链接（即时层原始信息） |
+
+### 使用示例（WPF，在 UI 线程创建并 Start，事件自动回到 UI 线程）
 
 ```csharp
-using SpaceCG.Generic;
-using System;
+using SpaceCG.Device;
 
-var watcher = new DeviceWatcher();
-
-// 订阅设备插入事件
-watcher.DeviceArrived += (sender, e) =>
+_watcher = new DeviceWatcher();
+_watcher.DeviceChanged += (sender, e) =>
 {
-    Console.WriteLine($"设备插入: {e.EventType}");
-
-    if (e is PortDeviceChangedEventArgs portArgs)
-    {
-        Console.WriteLine($"  串口: {portArgs.PortName} ({portArgs.PortFriendlyName})");
-    }
-    else if (e is VolumeDeviceChangedEventArgs volumeArgs)
-    {
-        Console.WriteLine($"  卷: {volumeArgs.DriveLetter}  {(volumeArgs.IsNetworkDrive ? "网络" : "本地")}");
-        if (volumeArgs.Drive != null)
-            Console.WriteLine($"    标签={volumeArgs.Drive.VolumeLabel}  文件系统={volumeArgs.Drive.DriveFormat}");
-    }
-    else if (e is InterfaceDeviceChangedEventArgs interfaceArgs)
-    {
-        Console.WriteLine($"  设备接口: {interfaceArgs.DevicePath}  GUID={interfaceArgs.ClassGuid}");
-    }
+    LogText.AppendText($"[{e.Category}] {(e.IsArrival ? "接入" : "移除")} {e.DeviceName}\r\n");
 };
-
-// 订阅设备移除事件
-watcher.DeviceRemoved += (sender, e) =>
-{
-    Console.WriteLine($"设备移除: {e.EventType}");
-
-    if (e is PortDeviceChangedEventArgs portArgs)
-    {
-        Console.WriteLine($"  串口已拔出: {portArgs.PortName}");
-    }
-    else if (e is VolumeDeviceChangedEventArgs volumeArgs)
-    {
-        Console.WriteLine($"  卷已移除: {volumeArgs.DriveLetter}");
-    }
-    else if (e is InterfaceDeviceChangedEventArgs interfaceArgs)
-    {
-        Console.WriteLine($"  设备接口已移除: {interfaceArgs.DevicePath}");
-    }
-};
-
-// 启动监听
-watcher.Start();
-Console.WriteLine("设备监听已启动，按任意键退出...");
-Console.ReadKey();
-
-// 优雅关闭
-watcher.Dispose();
+_watcher.Start();
+// 窗口关闭时：_watcher.Dispose();
 ```
 
 ### 设计特性
 
-- **独立线程**：在后台 STA 线程中创建消息窗口，不阻塞调用方线程
-- **自动注册通知**：启动时自动注册磁盘（`GUID_DEVINTERFACE_DISK`）、串口（`GUID_DEVINTERFACE_COMPORT`）、所有设备接口（`DEVICE_NOTIFY_ALL_INTERFACE_CLASSES`）三类通知
-- **优雅关闭**：`Dispose()` 通过 `PostMessage(WM_CLOSE)` 通知消息循环退出，等待后台线程结束后释放资源
-- **类型化事件参数**：通过 `DeviceChangedEventArgs` 多态体系，根据设备类型提供不同的事件参数子类
-- **IDisposable 模式**：实现 `IDisposable`，建议使用 `using` 语句管理生命周期
+- **双层事件**：即时层（原生回调线程，符号链接路径）+ 识别层（延时快照 diff，补全 COM3 / 盘符等友好名称）；同一设备可能先后触发两次
+- **回调非阻塞**：原生回调只做纯内存解析与事件派发，友好名称补全由线程池延时执行
+- **多实例安全**：pContext 传入 GCHandle 还原实例；delegate 保存在实例字段防 GC
+- **SafeHandle 管理**：HCMNOTIFICATION 句柄由 SafeHandle 派生类释放（CM_Unregister_Notification）
 
 ---
 
 ## `DeviceBroadcastType`
 
-设备广播类型枚举，对应 `WM_DEVICECHANGE` 消息的 `wParam` 值。
+设备广播类型枚举（`SpaceCG.WindowsAPI.User32`，Dbt.h），对应 `WM_DEVICECHANGE` 消息的 `wParam` 值。
 
 | 枚举值 | 值 | 说明 |
 |:---|:---:|:---|
@@ -257,18 +229,19 @@ watcher.Dispose();
 | `DBT_DEVICEQUERYREMOVEFAILED` | 0x8002 | 设备移除请求被取消 |
 | `DBT_CONFIGCHANGED` | 0x0018 | 当前配置已更改 |
 | `DBT_CUSTOMEVENT` | 0x8006 | 自定义事件 |
-| `DBT_DEVINSTENUMERATED` | 0x8012 | 设备实例已枚举 |
-| `DBT_DEVINSTSTARTED` | 0x8013 | 设备实例已启动 |
-| `DBT_DEVINSTREMOVED` | 0x8014 | 设备实例已移除 |
-| `DBT_DEVINSTPROPERTYCHANGED` | 0x8015 | 设备实例属性已更改 |
+| `DBT_DEVINSTENUMERATED` | 0x8007 | 设备实例已枚举 |
+| `DBT_DEVINSTSTARTED` | 0x8008 | 设备实例已启动 |
+| `DBT_DEVINSTREMOVED` | 0x8009 | 设备实例已移除 |
+| `DBT_DEVINSTPROPERTYCHANGED` | 0x800A | 设备实例属性已更改 |
+| `DBT_USERDEFINED` | 0xFFFF | 用户自定义事件 |
 
-> 注意：`DeviceWatcher` 当前仅通过事件暴露 `DBT_DEVICEARRIVAL` 和 `DBT_DEVICEREMOVECOMPLETE` 两种类型。
+> 注意：`DeviceWatcher` 仅派发设备接口的到达/移除事件，其余 DBT_* 事件不触发回调。
 
 ---
 
 ## `DeviceType`
 
-设备类型枚举，对应 `DEV_BROADCAST_HDR.dbch_devicetype` 字段。
+设备类型枚举（`SpaceCG.WindowsAPI.User32`，Dbt.h），对应 `DEV_BROADCAST_HDR.dbch_devicetype` 字段。
 
 | 枚举值 | 值 | 说明 |
 |:---|:---:|:---|
@@ -283,58 +256,24 @@ watcher.Dispose();
 
 ---
 
-## 设备变更事件参数
-
-事件参数通过 `is` 模式匹配判断具体设备类型：
-
-```csharp
-watcher.DeviceArrived += (sender, e) =>
-{
-    // e.EventType — DeviceBroadcastType（插入/移除）
-    // e.DeviceType — DeviceType（卷/端口/接口）
-
-    switch (e)
-    {
-        case VolumeDeviceChangedEventArgs vol:
-            // vol.DriveLetter — 驱动器号（如 "C:"）
-            // vol.IsNetworkDrive — 是否为网络驱动器
-            // vol.Drive — DriveInfo 对象（插入时有值，拔出时可能为 null）
-            break;
-
-        case PortDeviceChangedEventArgs port:
-            // port.PortName — 串口号（如 "COM3"）
-            // port.PortFriendlyName — 端口友好名称
-            break;
-
-        case InterfaceDeviceChangedEventArgs iface:
-            // iface.DevicePath — 设备路径（可用于 CreateFile）
-            // iface.ClassGuid — 设备接口类 GUID
-            break;
-    }
-};
-```
-
-| 事件参数类 | DeviceType | 关键属性 | 说明 |
-|:---|:---|:---|:---|
-| `VolumeDeviceChangedEventArgs` | `DBT_DEVTYP_VOLUME` | `DriveLetter`, `IsNetworkDrive`, `Drive` | 卷插入/移除事件 |
-| `PortDeviceChangedEventArgs` | `DBT_DEVTYP_PORT` | `PortName`, `PortFriendlyName` | 端口插入/移除事件 |
-| `InterfaceDeviceChangedEventArgs` | `DBT_DEVTYP_DEVICEINTERFACE` | `DevicePath`, `ClassGuid` | 设备接口插入/移除事件 |
-
----
-
 ## 项目结构
 
 ```
 SpaceCG.Standard.Windows/
-├── SpaceCG.Standard.Windows.csproj  # 项目文件（.NET Framework 4.8）
+├── SpaceCG.Standard.Windows.csproj  # 项目文件（.NET Framework 4.8，SDK-style）
 ├── README.md
-├── Interop/
-│   └── NativeMethods.cs             # P/Invoke 声明占位 partial class（public static partial；实际 P/Invoke 内嵌于下列两个文件，
-│                                    #   其 internal partial NativeMethods 声明与本文件合并后可访问性以 public 为准）
+├── WinDef.cs                        # WinDef.h 公共基础类型（POINT/SIZE/RECT/FILETIME/委托）
+├── API_Template.cs                  # WinAPI 声明模板（供新增 API 复制）
+├── Device/
+│   └── DeviceWatcher.cs             # 设备热插拔监听（CfgMgr32 CM_Register_Notification）
 ├── Extensions/
 │   └── SystemExtensions.cs          # 设备枚举查询（SetupAPI/CfgMgr32）
-└── Generic/
-    └── DeviceWatcher.cs             # 设备热插拔监听（Win32 消息窗口 + WM_DEVICECHANGE）
+├── Kernel32/                        # kernel32.dll（Kernel32、FileSystem、SystemTime、FormatMessage）
+├── User32/                          # user32.dll（窗口/消息/输入/钩子/DPI/设备通知 Dbt.h）
+├── SetupAPI/                        # setupapi.dll（SetupAPI、SetupAPIDef）+ CfgMgr32.cs
+├── GDI/                             # gdi32（WinGDI）
+├── HID/                             # hid.dll（HID、HIDExtension）
+└── .hFiles/                         # Win32 头文件参考副本（不参与编译）
 ```
 
 ---
@@ -354,8 +293,8 @@ SpaceCG.Standard.Windows/
 | 1 | **DiskNumber 为近似值** | `DiskNumber` 从 InstanceId 末尾数字提取，不保证与磁盘管理器编号一致。精确值需 `CreateFile(DevicePath) + IOCTL_STORAGE_GET_DEVICE_NUMBER` |
 | 2 | **重量属性未纳入模型** | 磁盘的 SerialNumber、SizeBytes 和卷的 DriveLetter、LabelName、FileSystem 等属性未纳入数据模型，需调用方自行通过 CreateFile/DeviceIoControl 或 GetVolumePathNamesForVolumeName 等 API 填充 |
 | 3 | **`GetSerialDevices` 无 DevicePath** | 当前使用 `GUID_DEVCLASS_PORTS` 设备类枚举（`SetupDiEnumDeviceInfo`），不走接口层，因此 `DevicePath` 始终为 null。旧版 `GUID_DEVINTERFACE_COMPORT` 接口枚举方案因不稳定已被废弃 |
-| 4 | **`DeviceWatcher` 需 STA 线程** | `DeviceWatcher` 内部创建 STA 线程运行消息循环，调用方无需关心。但如果在 UI 线程（WPF/WinForms）中使用，事件回调将切换到后台线程，更新 UI 需使用 `Dispatcher.Invoke` 或 `Control.Invoke` |
+| 4 | **`DeviceWatcher` 事件线程** | 事件回调在 Start() 调用线程触发（存在 SynchronizationContext 时，如 WPF UI 线程）；无同步上下文时在 CfgMgr32 原生回调线程触发，跨线程 UI 更新需自行 Dispatch。禁止在事件回调内调用 `Dispose()`（CM_Unregister_Notification 会等待未决回调，死锁） |
 | 5 | **`GetPortName` 回退行为** | 若枚举未匹配到任何设备，`GetPortName` 返回原始 `searchPattern` 而非 `null`。调用方需自行判断返回值是否为有效 COM 端口 |
 | 6 | **设备路径中 `&` 为 XML 转义** | `HardwareId` 和 `InstanceId` 中 `&` 为 Windows SetupAPI 原生的设备 ID 分隔符，非 XML 实体引用。在 XML 上下文中使用时需手动转义 |
-| 7 | **`DeviceWatcher` 不支持取消设备移除** | 当前仅处理 `DBT_DEVICEARRIVAL` 和 `DBT_DEVICEREMOVECOMPLETE`，未实现 `DBT_DEVICEQUERYREMOVE` 的阻止移除功能 |
+| 7 | **`DeviceWatcher` 不支持取消设备移除** | 仅派发设备接口到达/移除事件，未实现 `DBT_DEVICEQUERYREMOVE` 的阻止移除功能 |
 | 8 | **P/Invoke `Guid` 参数** | 所有 SetupAPI P/Invoke 的 `Guid` 参数均使用 `ref Guid` 编组为 `GUID*`，x86/x64 下均正确。注意调用处需显式加 `ref` 关键字 |

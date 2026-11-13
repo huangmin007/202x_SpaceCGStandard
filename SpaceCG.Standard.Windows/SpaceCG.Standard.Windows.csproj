@@ -2,10 +2,23 @@
 
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SpaceCG.Standard\SpaceCG.Standard.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include=".hFiles\Dbt.h" />
+    <None Include=".hFiles\fileapi.h" />
+    <None Include=".hFiles\SetupAPI.h" />
+    <None Include=".hFiles\WinBase.h" />
+    <None Include=".hFiles\WinDef.h" />
+    <None Include=".hFiles\Windows.h" />
+    <None Include=".hFiles\wingdi.h" />
+    <None Include=".hFiles\winnt.h" />
+    <None Include=".hFiles\WinUser.h" />
   </ItemGroup>
 
 </Project>

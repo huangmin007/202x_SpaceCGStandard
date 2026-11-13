@@ -7,11 +7,9 @@
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <Company>SpaceCG.CN</Company>
-    <Version>1.0.5</Version>
+    <Version>1.0.6</Version>
     <Description>SpaceCG.Standard
 </Description>
   </PropertyGroup>
-
-  <Import Project="..\SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems" Label="Shared" />
 
 </Project>

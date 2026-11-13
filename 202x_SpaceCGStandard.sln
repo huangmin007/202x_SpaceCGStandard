@@ -68,12 +68,7 @@ Global
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
-		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{0b73abcd-c313-4f35-86b2-f62cb9ab8221}*SharedItemsImports = 5
-		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{0b73abcd-c313-4f35-86b2-f62cb9ab8221}*SharedItemsImports = 5
 		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{0ceb36a3-2553-4687-9e89-72d7775643cf}*SharedItemsImports = 13
 		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{2a3c573c-b4b4-4178-9c01-1500876477c8}*SharedItemsImports = 13
-		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{5328ffb1-b4e8-44a5-a6f4-f8fd3327b9ab}*SharedItemsImports = 5
-		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{c5f99201-bcac-401b-89eb-d8aa688aff9f}*SharedItemsImports = 5
-		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{c5f99201-bcac-401b-89eb-d8aa688aff9f}*SharedItemsImports = 5
 	EndGlobalSection
 EndGlobal
