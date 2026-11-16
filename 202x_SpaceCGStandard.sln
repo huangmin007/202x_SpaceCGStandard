@@ -26,6 +26,8 @@ Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SP_SpaceCG.Diagnostics.Trac
 EndProject
 Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SP_SpaceCG.Interop.SerialPortResolver", "SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.shproj", "{2A3C573C-B4B4-4178-9C01-1500876477C8}"
 EndProject
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "SP_SpaceCG.Extensions.SerialPortExtensions", "SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.shproj", "{7B54A78F-621F-4BE2-A23E-5A837F317157}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -68,7 +70,10 @@ Global
 		SolutionGuid = {06F00DC8-BFB1-46B3-8794-6E41F8A80EFA}
 	EndGlobalSection
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{0b73abcd-c313-4f35-86b2-f62cb9ab8221}*SharedItemsImports = 5
 		SP_SpaceCG.Standard.Trace\SP_SpaceCG.Standard.Trace.projitems*{0ceb36a3-2553-4687-9e89-72d7775643cf}*SharedItemsImports = 13
 		SP_SpaceCG.Interop.SerialPortResolver\SP_SpaceCG.Interop.SerialPortResolver.projitems*{2a3c573c-b4b4-4178-9c01-1500876477c8}*SharedItemsImports = 13
+		SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.projitems*{7b54a78f-621f-4be2-a23e-5a837f317157}*SharedItemsImports = 13
+		SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.projitems*{e2cf9c8a-adf0-4a43-a2d4-d1251155552f}*SharedItemsImports = 4
 	EndGlobalSection
 EndGlobal

@@ -142,17 +142,40 @@ namespace SpaceCG.NModbus.IO
 
         public void DiscardInBuffer()
         {
-            _serialPort.DiscardInBuffer();
+            if (_serialPort == null) return;
+            if (!_serialPort.IsOpen) return;
+
+            Exception exception = null;
+            try
+            {
+                _serialPort.DiscardInBuffer();
+            }
+            catch (Exception ex)
+            {
+                exception = ex;
+            }
+
+            if (exception != null)
+            {
+                Trace.WriteLine($"DiscardInBuffer Exception: {exception.GetType()} {exception.Message}");
+
+                try { _serialPort.Close(); }
+                catch { }
+                throw exception;
+            }
         }
 
         public int Read(byte[] buffer, int offset, int count)
         {
             //Trace.WriteLine($"Read Count:{count}");
+            if (_serialPort == null) return -1;
+
             var sleepCount = 0;
             var beginMilliseconds = _stopwatch.ElapsedMilliseconds;
-            var readTimeout = _serialPort.ReadTimeout <= 0 ? 3000 : _serialPort.ReadTimeout;
+            var readTimeout = _serialPort?.ReadTimeout <= 0 ? 1000 : _serialPort?.ReadTimeout;
 
-            while (true)
+            Exception exception = null;
+            while (_connectedTask != null && _connectedTask.IsCanceled == false)
             {
                 if (_stopwatch.ElapsedMilliseconds - beginMilliseconds > readTimeout)
                     throw new TimeoutException("Read Timeout");
@@ -165,13 +188,50 @@ namespace SpaceCG.NModbus.IO
                 }
 
                 //Trace.WriteLine($"SleepCount::{sleepCount}  {count}");
-                return _serialPort.Read(buffer, offset, count);
+                try
+                {
+                    return _serialPort.Read(buffer, offset, count);
+                }
+                catch (Exception ex)
+                {
+                    exception = ex;
+                }
+
+                if (exception != null)
+                {
+                    Trace.WriteLine($"Read Exception: {exception.GetType()} {exception.Message}");
+
+                    try { _serialPort.Close(); }
+                    catch { }
+                    throw exception;
+                }
             }
+
+            return -1;
         }
 
         public void Write(byte[] buffer, int offset, int count)
         {
-            _serialPort.Write(buffer, offset, count);
+            if (_serialPort == null) return;
+
+            Exception exception = null;
+            try
+            {
+                _serialPort.Write(buffer, offset, count);
+            }
+            catch (Exception ex)
+            {
+                exception = ex;                
+            }
+
+            if (exception != null)
+            {
+                Trace.WriteLine($"Write Exception: {exception.GetType()} {exception.Message}");
+
+                try { _serialPort.Close(); }
+                catch { }
+                throw exception;
+            }
         }
 
         public void Dispose()
@@ -205,7 +265,6 @@ namespace SpaceCG.NModbus.IO
                 _serialPort = null;
 
                 _stopwatch.Stop();
-                _stopwatch = null;
             }
         }
 

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NModbus;
@@ -31,7 +32,7 @@ namespace SpaceCG.NModbus
         /// <summary>待同步寄存器块，键为 (PointType, SlaveAddress, StartAddress) 打包的 32 位标识。</summary>
         private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegistersQueue;
 
-        //private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegisterBlockQueue;
+        private readonly ConcurrentDictionary<uint, RegisterPoint> _readRegistersBlockQueue;
 
         /// <summary>离散输入值变化时触发。</summary>
         public event EventHandler<RegisterPointChangedEventArgs<bool>> CoilInputsValueChanged;
@@ -45,10 +46,10 @@ namespace SpaceCG.NModbus
         /// <summary> 使用接口类型写入寄存器值。 </summary>
         public bool UseInterfaceWritePoints { get; set; } = false;
 
-        /// <summary> 采样频率/秒 </summary>
+        /// <summary> 采样频率/秒，所有需要同步的寄存器读取的频率。 </summary>
         public int SampleRate { get; private set; } = 0;
         /// <summary>本地数据存储，读到的远端数据回写到这里。</summary>
-        public ISlaveDataStore LocalDataStore => _localDataStore;
+        //public ISlaveDataStore LocalDataStore => _localDataStore;
         /// <summary>已注册的待同步寄存器块。</summary>
         public IEnumerable<RegisterPoint> SyncRegisters => _readRegistersQueue.Values;
 
@@ -71,18 +72,46 @@ namespace SpaceCG.NModbus
             _writeCoilQueue = new ConcurrentQueue<RegisterPoint<bool>>();
             _writeHoldingQueue = new ConcurrentQueue<RegisterPoint<ushort>>();
             _readRegistersQueue = new ConcurrentDictionary<uint, RegisterPoint>();
+            _readRegistersBlockQueue = new ConcurrentDictionary<uint, RegisterPoint>();
         }
 
-        /// <summary>注册一个待同步的寄存器块；相同标识的块会被忽略。</summary>
-        /// <remarks>标识 = (PointType &lt;&lt; 24) | (SlaveAddress &lt;&lt; 16) | StartAddress。</remarks>
-        /// <param name="registers">寄存器块配置。</param>
-        public void AddRegisters(RegisterPoint registers)
+        /// <summary>注册一个待同步的寄存器块。</summary>
+        /// <param name="register">寄存器块配置。</param>
+        public void AddRegister(RegisterPoint register)
         {
-            if (registers == null) throw new ArgumentNullException(nameof(registers));
-            if (_readRegistersQueue.TryAdd(registers.Key, registers))
+            if (register == null) 
+                throw new ArgumentNullException(nameof(register));
+
+            if (!_readRegistersQueue.TryAdd(register.Key, register))
+                throw new OverflowException($"已存在相同标识的寄存器块：{register}");
+
+            // 将多个相同设备的连续寄存器合并为一个，以减少读写次数
+            for (var i = 0; i < _readRegistersBlockQueue.Count; i++)
             {
-                Trace.TraceInformation($"{this} 添加寄存器块：{registers}");
+                var reg = _readRegistersBlockQueue.ElementAt(i).Value;
+
+                if (reg.PointType != register.PointType) continue;
+                if (reg.SlaveAddress != register.SlaveAddress) continue;
+
+                // 在后面
+                if (register.StartAddress == reg.StartAddress + reg.NumberOfPoints)
+                {
+                    reg.NumberOfPoints = (ushort)(reg.NumberOfPoints + register.NumberOfPoints);
+                    return;
+                }
+
+                // 在前面
+                if (register.StartAddress + register.NumberOfPoints == reg.StartAddress)
+                {
+                    reg.StartAddress = register.StartAddress;
+                    reg.LocalStartAddress = register.LocalStartAddress;
+                    reg.NumberOfPoints = (ushort)(reg.NumberOfPoints + register.NumberOfPoints);
+                    return;
+                }
             }
+
+            // 添加新的
+            _readRegistersBlockQueue.TryAdd(register.Key, register.Clone());
         }
 
         #region Start & Stop Sync
@@ -115,7 +144,7 @@ namespace SpaceCG.NModbus
         }
         #endregion
 
-        #region 特殊写入数据存储，不能产生事件
+        #region 静态方法，实例方法写入数据存储，不产生事件
         /// <summary>
         /// 使用 Public WritePoints 方法，不能产生 Write 事件。
         /// </summary>
@@ -123,7 +152,7 @@ namespace SpaceCG.NModbus
         /// <param name="pointSource"></param>
         /// <param name="localAddress"></param>
         /// <param name="values"></param>
-        private static void WritePoints<T>(IPointSource<T> pointSource, ushort localAddress, T[] values) where T : struct
+        internal static void InstanceWritePoints<T>(IPointSource<T> pointSource, ushort localAddress, T[] values) where T : struct
         {
             if (pointSource is PointSource<T> pSource)
             {
@@ -137,6 +166,28 @@ namespace SpaceCG.NModbus
             {
                 pointSource.WritePoints(localAddress, values);
             }
+        }
+        #endregion
+
+        #region 静态方法 对象两个集合数据是否一样
+        internal static bool Equals<T>(T[] a, T[] b, int index, int count) where T : struct
+        {
+            if (a == null || b == null) return false;
+
+            if (a.Length != b.Length) return false;
+            if (index < 0 || count <= 0) return false;
+            if (index + count > a.Length) return false;
+
+            var comparer = EqualityComparer<T>.Default;
+
+            if (count == 1) return comparer.Equals(a[index], b[index]);
+
+            for (int i = index; i < index + count; i++)
+            {
+                if (!comparer.Equals(a[i], b[i])) return false;
+            }
+
+            return true;
         }
         #endregion
 
@@ -155,7 +206,7 @@ namespace SpaceCG.NModbus
                 if (UseInterfaceWritePoints)
                     pointSource.WritePoints(registers.LocalStartAddress, newValues);
                 else
-                    WritePoints(pointSource, registers.LocalStartAddress, newValues);
+                    InstanceWritePoints(pointSource, registers.LocalStartAddress, newValues);
                 return;
             }
 
@@ -163,36 +214,42 @@ namespace SpaceCG.NModbus
             if (UseInterfaceWritePoints)
                 pointSource.WritePoints(registers.LocalStartAddress, newValues);
             else
-                WritePoints(pointSource, registers.LocalStartAddress, newValues);
+                InstanceWritePoints(pointSource, registers.LocalStartAddress, newValues);
 
-            var nLength = newValues.Length;
-            var oLength = oldValues.Length;
-            if (nLength == oLength)
+            // 数据全部相同
+            if (Equals(newValues, oldValues, 0, newValues.Length)) return;
+
+            // _readRegistersQueue
+            foreach (var item in _readRegistersQueue)
             {
-                var isSame = true;
-                var comparer = EqualityComparer<T>.Default;
-                for (int i = 0; i < nLength; i++)
+                var reg = item.Value;
+
+                if (reg.PointType != registers.PointType) continue;
+                if (reg.SlaveAddress != registers.SlaveAddress) continue;
+
+                if (reg.StartAddress >= registers.StartAddress && reg.StartAddress < registers.StartAddress + registers.NumberOfPoints)
                 {
-                    if (!comparer.Equals(newValues[i], oldValues[i])) { isSame = false; break; }
+                    var count = reg.NumberOfPoints;
+                    var index = reg.StartAddress - registers.StartAddress;
+
+                    if (Equals(newValues, oldValues, index, count)) continue;
+
+                    var context = _syncContext;
+                    var eventArgs = new RegisterPointChangedEventArgs<T>(reg, newValues.Skip(index).Take(count).ToArray(), oldValues.Skip(index).Take(count).ToArray());
+                    if (context == null)
+                    {
+                        eventHandler.Invoke(this, eventArgs);
+                        continue;
+                    }
+                    context.Post(state => eventHandler.Invoke(this, state as RegisterPointChangedEventArgs<T>), eventArgs);
                 }
-                if (isSame) return;
             }
-
-            var eventArgs = new RegisterPointChangedEventArgs<T>(registers, newValues, oldValues);
-            var context = _syncContext;
-            if (context == null)
-            {
-                eventHandler.Invoke(this, eventArgs);
-                return;
-            }
-
-            context.Post(state => eventHandler.Invoke(this, state as RegisterPointChangedEventArgs<T>), eventArgs);
         }
 
         /// <summary>
         /// 设备同步线程主体（每设备一个）：先下发写入队列中的请求，再轮询读取已注册的寄存器块并回写本地数据存储，直到收到取消信号。
         /// </summary>
-        /// <param name="state">线程启动参数，实际类型为 <see cref="ModbusBusSynchronizer"/>。</param>
+        /// <param name="state">线程启动参数，实际类型为 <see cref="ModbusSynchronizer"/>。</param>
         private static void SyncLoop(object state)
         {
             var busSync = (state as ModbusSynchronizer);
@@ -218,7 +275,6 @@ namespace SpaceCG.NModbus
                     stopwatch.Restart();
                 }
 
-                sampleRate++;
                 if (exceptionCount > 3)
                 {
                     exceptionCount = 0;
@@ -228,6 +284,7 @@ namespace SpaceCG.NModbus
                     continue;
                 }
 
+                sampleRate++;
                 var master = busSync._modbusMaster;
 
                 #region Write Bool Queue
@@ -285,10 +342,10 @@ namespace SpaceCG.NModbus
 
                 #region Read Registers Queue
                 var tickCount = Environment.TickCount;
-                var readRCount = busSync._readRegistersQueue.Count;
-                foreach (var kv in busSync._readRegistersQueue)
+                var readRCount = busSync._readRegistersBlockQueue.Count;
+                foreach (var kv in busSync._readRegistersBlockQueue)
                 {
-                    if (cancellationToken.IsCancellationRequested) break;
+                    if (master == null || cancellationToken.IsCancellationRequested) break;
 
                     var registers = kv.Value;
                     // 如果上次异常时间在2秒内，则跳过
@@ -318,6 +375,7 @@ namespace SpaceCG.NModbus
                                 busSync.UpdateAndDispatcherChanged(busSync.CoilInputsValueChanged, localStore.CoilInputs, registers, inputValues);
                                 break;
                         }
+
                         exceptionCount = 0;
                         registers.LastExceptionTime = 0;
                     }
@@ -326,7 +384,7 @@ namespace SpaceCG.NModbus
                         exceptionCount++;
                         registers.LastExceptionTime = Environment.TickCount;
                         Trace.TraceError($"{labelName}({registers}) 同步寄存器异常：(IOException){ex.Message}");
-                        Thread.Sleep(10);
+                        Thread.Sleep(2);
                         break;
                     }
                     catch (Exception ex)
@@ -336,12 +394,9 @@ namespace SpaceCG.NModbus
                         Trace.TraceWarning($"{labelName}({registers}) 同步寄存器 {registers.PointType}/{registers.StartAddress} 异常：({ex.GetType()}){ex.Message}");
                         continue;
                     }
-
-                    if (registers.Sleep > 0) Thread.Sleep(registers.Sleep);
                 }
                 #endregion
 
-                //Thread.Sleep(1);
                 if (sampleRate % 2 == 0) Thread.Sleep(1);
             }
 
@@ -350,19 +405,77 @@ namespace SpaceCG.NModbus
 
         #region Read Registers
         /// <summary>
-        /// 读取多个保持寄存器（FC03）到本地缓存。
+        /// 从本地缓存存储中读取寄存器的值。
         /// </summary>
-        /// <param name="startAddress"></param>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="register"></param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        /// <exception cref="ArgumentException"></exception>
+        public T[] ReadRegister<T>(RegisterPoint register) where T : struct
+        {
+            if (typeof(T) != typeof(bool) || typeof(T) != typeof(ushort))
+                throw new InvalidOperationException("数据类型不匹配。");
+
+            if (!_readRegistersQueue.ContainsKey(register.Key))
+                throw new InvalidOperationException("不存在的缓存寄存器。");
+
+            if (register.PointType != RegisterType.CoilInputs)
+                return _localDataStore.CoilInputs.ReadPoints(register.StartAddress, register.NumberOfPoints) as T[];
+
+            if (register.PointType != RegisterType.CoilDiscretes)
+                return _localDataStore.CoilDiscretes.ReadPoints(register.StartAddress, register.NumberOfPoints) as T[];
+
+            if (register.PointType == RegisterType.InputRegisters)
+                return _localDataStore.InputRegisters.ReadPoints(register.StartAddress, register.NumberOfPoints) as T[];
+
+            if (register.PointType == RegisterType.HoldingRegisters)
+                return _localDataStore.HoldingRegisters.ReadPoints(register.StartAddress, register.NumberOfPoints) as T[];
+
+            throw new ArgumentException("寄存器类型不匹配。");
+        }
+        /// <summary>
+        /// 从本地缓存读取多个线圈。
+        /// </summary>
+        /// <param name="localStartAddress"></param>
         /// <param name="numberOfPoints"></param>
         /// <returns></returns>
-        public ushort[] ReadHoldingRegisters(ushort startAddress, ushort numberOfPoints)
-        {
-            var lastValues = _localDataStore.HoldingRegisters.ReadPoints(startAddress, numberOfPoints);
-            return lastValues;
-        }
+        public bool[] ReadCoils(ushort localStartAddress, ushort numberOfPoints) => _localDataStore.CoilDiscretes.ReadPoints(localStartAddress, numberOfPoints);        
+        /// <summary>
+        /// 从本地缓存读取多个线圈。
+        /// </summary>
+        /// <param name="localStartAddress"></param>
+        /// <param name="numberOfPoints"></param>
+        /// <returns></returns>
+        public bool[] ReadInputs(ushort localStartAddress, ushort numberOfPoints) => _localDataStore.CoilInputs.ReadPoints(localStartAddress, numberOfPoints);
+        /// <summary>
+        /// 从本地缓存读取多个保持寄存器。
+        /// </summary>
+        /// <param name="localStartAddress"></param>
+        /// <param name="numberOfPoints"></param>
+        /// <returns></returns>
+        public ushort[] ReadHoldingRegisters(ushort localStartAddress, ushort numberOfPoints) => _localDataStore.HoldingRegisters.ReadPoints(localStartAddress, numberOfPoints);        
+        /// <summary>
+        /// 从本地缓存读取多个输入寄存器。
+        /// </summary>
+        /// <param name="localStartAddress"></param>
+        /// <param name="numberOfPoints"></param>
+        /// <returns></returns>
+        public ushort[] ReadInputRegisters(ushort localStartAddress, ushort numberOfPoints) => _localDataStore.InputRegisters.ReadPoints(localStartAddress, numberOfPoints);
         #endregion
 
         #region Write Registers
+        /// <summary>写单个线圈（FC15）到写入队列。</summary>
+        /// <param name="slaveAddress">目标从站地址（UnitId）。</param>
+        /// <param name="coilAddress">目标线圈地址。</param>
+        /// <param name="value">待写入值。</param>
+        public void WriteSingleCoil(byte slaveAddress, ushort coilAddress, bool value)
+        {
+            if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
+                throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
+
+            _writeCoilQueue.Enqueue(new RegisterPoint<bool>(slaveAddress, RegisterType.CoilDiscretes, coilAddress, new bool[] { value }, 0));
+        }
         /// <summary>写单个保持寄存器（FC16）到写入队列。</summary>
         /// <param name="slaveAddress">目标从站地址（UnitId）。</param>
         /// <param name="registerAddress">目标寄存器地址。</param>
@@ -370,9 +483,7 @@ namespace SpaceCG.NModbus
         public void WriteSingleRegister(byte slaveAddress, ushort registerAddress, ushort value)
         {
             if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
-            {
                 throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
-            }
 
             _writeHoldingQueue.Enqueue(new RegisterPoint<ushort>(slaveAddress, RegisterType.HoldingRegisters, registerAddress, new ushort[] { value }, 0));
         }
@@ -383,25 +494,10 @@ namespace SpaceCG.NModbus
         public void WriteMultipleRegisters(byte slaveAddress, ushort startAddress, ushort[] data)
         {
             if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
-            {
                 throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
-            }
-            Trace.TraceInformation($"{this} > WriteMultipleRegisters SlaveAddress:{slaveAddress} StartAddress:{startAddress} NumberOfPoints:{data.Length}");
+
             _writeHoldingQueue.Enqueue(new RegisterPoint<ushort>(slaveAddress, RegisterType.HoldingRegisters, startAddress, data, 0));
-        }
-        /// <summary>写单个线圈（FC15）到写入队列。</summary>
-        /// <param name="slaveAddress">目标从站地址（UnitId）。</param>
-        /// <param name="coilAddress">目标线圈地址。</param>
-        /// <param name="value">待写入值。</param>
-        public void WriteSingleCoil(byte slaveAddress, ushort coilAddress, bool value)
-        {
-            if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
-            {
-                throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
-            }
-            Trace.TraceInformation($"{this} > WriteSingleCoil SlaveAddress:{slaveAddress} CoilAddress:{coilAddress}");
-            _writeCoilQueue.Enqueue(new RegisterPoint<bool>(slaveAddress, RegisterType.CoilDiscretes, coilAddress, new bool[] { value }, 0));
-        }
+        }        
         /// <summary>写多个线圈（FC15）到写入队列。</summary>
         /// <param name="slaveAddress">目标从站地址（UnitId）。</param>
         /// <param name="startAddress">目标起始地址。</param>
@@ -409,10 +505,8 @@ namespace SpaceCG.NModbus
         public void WriteMultipleCoils(byte slaveAddress, ushort startAddress, bool[] data)
         {
             if (_syncTask == null || _syncTask.IsCanceled || _syncTask.IsCompleted)
-            {
                 throw new InvalidOperationException("同步线程未启动，请先启动同步线程。");
-            }
-            Trace.TraceInformation($"{this} > WriteMultipleCoils SlaveAddress:{slaveAddress} StartAddress:{startAddress}");
+
             _writeCoilQueue.Enqueue(new RegisterPoint<bool>(slaveAddress, RegisterType.CoilDiscretes, startAddress, data, 0));
         }
         #endregion
@@ -428,9 +522,10 @@ namespace SpaceCG.NModbus
             _writeCoilQueue.Clear();
             _writeHoldingQueue.Clear();
             _readRegistersQueue.Clear();
+            _readRegistersBlockQueue.Clear();
 
             try { _modbusMaster?.Dispose(); }
-            finally { _modbusMaster = null; }
+            finally { }
         }
 
         /// <inheritdoc /> 

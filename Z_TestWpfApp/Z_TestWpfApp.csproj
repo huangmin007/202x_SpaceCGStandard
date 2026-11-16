@@ -50,6 +50,7 @@
     <Reference Include="System.Drawing" />
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Management" />
     <Reference Include="System.Xml" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Core" />
@@ -139,5 +140,6 @@
       <Name>SpaceCG.Standard</Name>
     </ProjectReference>
   </ItemGroup>
+  <Import Project="..\SP_SpaceCG.Extensions.SerialPortExtensions\SP_SpaceCG.Extensions.SerialPortExtensions.projitems" Label="Shared" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

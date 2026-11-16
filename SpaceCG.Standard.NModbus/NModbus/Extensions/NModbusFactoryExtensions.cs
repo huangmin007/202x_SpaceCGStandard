@@ -3,9 +3,12 @@ using System.IO.Ports;
 using NModbus;
 using SpaceCG.NModbus.IO;
 
-namespace SpaceCG.Extensions
+namespace SpaceCG.NModbus
 {
-    public static class ModbusFactoryExtensions
+    /// <summary>
+    /// NModbus Factory Extensions
+    /// </summary>
+    public static class NModbusFactoryExtensions
     {
         public static IModbusSerialMaster CreateRtuMaster(this IModbusFactory factory, SerialPort serialPort)
         {
@@ -55,8 +58,7 @@ namespace SpaceCG.Extensions
         /// <returns></returns>
         public static IModbusSerialMaster CreateRtuMaster(this IModbusFactory factory, string portName, int baudRate, Parity parity = Parity.None, int dataBits = 8, StopBits stopBits = StopBits.One)
         {
-            var serialPort = new SerialPort(portName, baudRate, parity, dataBits, stopBits);
-            var serialPortAdapter = new SerialPortAdapter(serialPort);
+            var serialPortAdapter = new SerialPortAdapter(portName, baudRate, parity, dataBits, stopBits);
             return factory.CreateRtuMaster(serialPortAdapter);
         }
 

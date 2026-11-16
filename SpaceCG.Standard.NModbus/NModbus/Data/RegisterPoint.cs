@@ -39,18 +39,16 @@ namespace SpaceCG.NModbus.Data
         public RegisterType PointType { get; private set; }
 
         /// <summary>远端寄存器起始地址，按配置约定需 &gt; 0。</summary>
-        public ushort StartAddress { get; private set; }
+        public ushort StartAddress { get; internal set; }
 
         /// <summary>读取点数量，需 &gt; 0。</summary>
-        public ushort NumberOfPoints { get; private set; }
+        public ushort NumberOfPoints { get; internal set; }
 
         /// <summary>写入本地数据存储的目标起始地址。</summary>
-        public ushort LocalStartAddress { get; private set; }
+        public ushort LocalStartAddress { get; internal set; }
 
         /// <summary> 最后一次读取异常的时间，用于控制重试间隔。</summary>
         internal long LastExceptionTime { get; set; }
-
-        internal int Sleep { get; set; } = 0;
 
         /// <summary>创建空实例，供解析成功后逐属性赋值。</summary>
         internal RegisterPoint()
@@ -62,8 +60,8 @@ namespace SpaceCG.NModbus.Data
         /// <param name="pointType">寄存器区类型。</param>
         /// <param name="startAddress">远端起始地址。</param>
         /// <param name="numberOfPoints">读取点数，需大于 0。</param>
-        /// <param name="localAddress">写入本地存储的起始地址。</param>
-        public RegisterPoint(byte slaveAddress, RegisterType pointType, ushort startAddress, ushort numberOfPoints, ushort localAddress)
+        /// <param name="localStartAddress">写入本地存储的起始地址。</param>
+        public RegisterPoint(byte slaveAddress, RegisterType pointType, ushort startAddress, ushort numberOfPoints, ushort localStartAddress)
         {
             if (!Enum.IsDefined(typeof(RegisterType), pointType))
                 throw new ArgumentOutOfRangeException(nameof(pointType), pointType, "非法的寄存器区类型。");
@@ -73,9 +71,20 @@ namespace SpaceCG.NModbus.Data
 
             PointType = pointType;
             SlaveAddress = slaveAddress;
-            LocalStartAddress = localAddress;
             StartAddress = startAddress;
             NumberOfPoints = numberOfPoints;
+            LocalStartAddress = localStartAddress;
+        }
+
+        /// <summary>
+        /// 返回对象的深度副本。
+        /// </summary>
+        /// <returns></returns>
+        internal RegisterPoint Clone()
+        {
+            var register = new RegisterPoint(SlaveAddress, PointType, StartAddress, NumberOfPoints, LocalStartAddress);
+            register.Name = Name;
+            return register;
         }
 
         /// <summary>判断两个对象是否来自同一段远端寄存器（从站地址、区类型、远端起始地址相同），不比较点数与本地地址。</summary>
@@ -249,22 +258,16 @@ namespace SpaceCG.NModbus.Data
             }
 
             registers = new RegisterPoint();
-
             registers.PointType = pointType;
             registers.SlaveAddress = slaveAddress;
             registers.StartAddress = startAddress;
 
             registers.NumberOfPoints = numberOfPoints;
             registers.LocalStartAddress = localStartAddress;
-
             registers.Name = element.Attribute(nameof(Name))?.Value;
-
-            if (int.TryParse(element.Attribute(nameof(Sleep))?.Value, out var _sleep) && _sleep > 0)
-                registers.Sleep = _sleep;
 
             return true;
         }
-
     }
 
     /// <summary>
@@ -288,9 +291,9 @@ namespace SpaceCG.NModbus.Data
         /// <param name="pointType">寄存器区类型。</param>
         /// <param name="startAddress">远端起始地址。</param>
         /// <param name="values">寄存器值，顺序与连续地址一一对应。</param>
-        /// <param name="localAddress">写入本地存储的起始地址。</param>
-        public RegisterPoint(byte slaveAddress, RegisterType pointType, ushort startAddress, T[] values, ushort localAddress = 0)
-            : base(slaveAddress, pointType, startAddress, GetNumberOfPoints(values), localAddress)
+        /// <param name="localStartAddress">写入本地存储的起始地址。</param>
+        public RegisterPoint(byte slaveAddress, RegisterType pointType, ushort startAddress, T[] values, ushort localStartAddress = 0)
+            : base(slaveAddress, pointType, startAddress, GetNumberOfPoints(values), localStartAddress)
         {
             Values = values;
         }

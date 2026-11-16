@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using NModbus.IO;
+using SpaceCG.Extensions;
 
 namespace SpaceCG.NModbus.IO
 {
@@ -66,7 +67,7 @@ namespace SpaceCG.NModbus.IO
             while (!cancellationToken.IsCancellationRequested)
             {
                 // 连接状态检查
-                if (_tcpClient.Connected)
+                if (_tcpClient.IsConnected())
                 {
                     try { await Task.Delay(100, cancellationToken).ConfigureAwait(false); }
                     catch (Exception ex) when (ex is OperationCanceledException || ex is ObjectDisposedException) { break; }
@@ -137,10 +138,10 @@ namespace SpaceCG.NModbus.IO
                 try { _cts?.Cancel(); }
                 catch { }
 
-                try 
+                try
                 {
                     _connectedTask?.Wait(300);
-                    _connectedTask?.Dispose(); 
+                    _connectedTask?.Dispose();
                 }
                 finally
                 {
@@ -154,7 +155,41 @@ namespace SpaceCG.NModbus.IO
                 finally { _tcpClient = null; }
             }
         }
-
-
     }
+
+#if false
+    internal static partial class SocketExtensions
+    {
+        /// <summary>
+        /// 检查 <see cref="Socket"/> 是否处于已连接状态。
+        /// </summary>
+        /// <param name="socket"></param>
+        /// <returns></returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsConnected(this Socket socket)
+        {
+            if (socket == null) return false;
+
+            try
+            {
+                if (!socket.Connected) return false;
+                return !(socket.Poll(0, SelectMode.SelectRead) && socket.Available == 0);
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>
+        /// 检查 <see cref="TcpClient"/> 是否处于已连接状态。
+        /// </summary>
+        /// <param name="tcpClient">要检查的 TCP 客户端。</param>
+        /// <returns>如果连接正常返回 <c>true</c>；如果已断开或客户端为 <c>null</c> 则返回 <c>false</c>。</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static bool IsConnected(this TcpClient tcpClient)
+        {
+            if (tcpClient == null || tcpClient.Client == null) return false;
+            return tcpClient.Client.IsConnected();
+        }
+    }
+#endif
+
 }

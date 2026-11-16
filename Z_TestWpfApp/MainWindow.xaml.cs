@@ -16,6 +16,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using HidSharp;
+using NModbus;
 using SpaceCG;
 using SpaceCG.Controls;
 using SpaceCG.Device;
@@ -23,6 +24,8 @@ using SpaceCG.Diagnostics;
 using SpaceCG.Extensions;
 using SpaceCG.Generic;
 using SpaceCG.IO;
+using SpaceCG.NModbus;
+using SpaceCG.NModbus.Data;
 using Trace = System.Diagnostics.Trace;
 
 namespace Z_TestWpfApp
@@ -38,6 +41,9 @@ namespace Z_TestWpfApp
         private readonly ConcurrentDictionary<int, string> BitmapFiles = new ConcurrentDictionary<int, string>();
 
         private DemoControlManager demoControlManager;
+        private DeviceWatcher _monitor;
+        private IModbusMaster _master;
+        private ModbusSynchronizer _modbusSynchronizer;
 
         public MainWindow()
         {
@@ -53,6 +59,9 @@ namespace Z_TestWpfApp
             zipArchive?.Dispose();
 
             _monitor?.Dispose();
+
+            _modbusSynchronizer?.Dispose();
+            _master?.Dispose();
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -90,19 +99,62 @@ namespace Z_TestWpfApp
                 case Key.D5:
                     this.Language = System.Windows.Markup.XmlLanguage.GetLanguage("zh-CN");
                     break;
+
+                case Key.D6:
+                    Trace.WriteLine($"SampleRate:{_modbusSynchronizer.SampleRate}");
+                    break;
             }
         }
 
-        private DeviceWatcher _monitor;
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             _monitor = new DeviceWatcher();   // 默认 AutoDispatch
             _monitor.DeviceChanged += (s, ev) =>
             {
                 // 已在 UI 线程（通过 SynchronizationContext.Post 回到 Start 调用线程），可直接操作控件
-                Trace.WriteLine($"[{ev.Category}] {(ev.IsArrival ? "接入" : "移除")} {ev.DeviceName} {ev.DevicePath}\r\n");
+                //Trace.WriteLine($"[{ev.Category}] {(ev.IsArrival ? "接入" : "移除")} {ev.DeviceName} {ev.DevicePath}\r\n");
             };
             _monitor.Start();
+
+            var factory = new ModbusFactory();
+            _master = factory.CreateRtuMaster("CH A", 38400);
+            _modbusSynchronizer = new ModbusSynchronizer(_master, null);
+            _modbusSynchronizer.CoilInputsValueChanged += ModbusSynchronizer_CoilInputsValueChanged;
+            for (ushort address = 0; address < 8; address++)
+            {
+                _modbusSynchronizer.AddRegister(new RegisterPoint(0x01, RegisterType.CoilInputs, address, 1, address));
+            }
+            _modbusSynchronizer.StartSync();
+
+            //Task.Run(SyncLoop, CancellationToken.None);
+        }
+
+        private void SyncLoop()
+        {
+            var sampleRate = 0;
+            var stopwatch = Stopwatch.StartNew();
+
+            while (true)
+            {
+                var elapsed = stopwatch.ElapsedMilliseconds;
+                if (elapsed >= 1000)
+                {
+                    Trace.WriteLine($"SampleRate:{sampleRate}");
+                    sampleRate = 0;
+                    stopwatch.Restart();
+                }
+
+                var values = _master.ReadInputs(0x01, 0, 8);
+                sampleRate++;
+
+                Trace.WriteLine($"Values:{string.Join(",", values)}");
+                if (sampleRate % 2 == 0) Thread.Sleep(1);
+            }
+        }
+
+        private void ModbusSynchronizer_CoilInputsValueChanged(object sender, RegisterPointChangedEventArgs<bool> e)
+        {
+            Trace.WriteLine($"Coil Inputs Changed:{e.RegisterPoint} {string.Join(",", e.NewValue)}");
         }
 
         private void Local_Changed(object sender, DeviceListChangedEventArgs e)
