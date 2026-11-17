@@ -42,8 +42,13 @@ namespace Z_TestWpfApp
 
         private DemoControlManager demoControlManager;
         private DeviceWatcher _monitor;
+
         private IModbusMaster _master;
         private ModbusSynchronizer _modbusSynchronizer;
+
+        private SerialPort _serialPort;
+
+        private ElementOverlayWindow _foregroundWindow;
 
         public MainWindow()
         {
@@ -51,6 +56,21 @@ namespace Z_TestWpfApp
             Trace.Listeners.Add(new LoggerTraceListener(true));
 
             demoControlManager = new DemoControlManager(this);
+
+
+            var btn = new Button()
+            {
+                Width = 100,
+                Height = 100,
+            };
+            btn.Click += (s0, e0) =>
+            {
+                Trace.WriteLine("Hello World!");
+            };
+            _foregroundWindow = new ElementOverlayWindow(button0);
+            //_foregroundWindow.OverlayContent = btn;
+            //_foregroundWindow.Show();
+
         }
 
         protected override void OnClosing(CancelEventArgs e)
@@ -62,6 +82,8 @@ namespace Z_TestWpfApp
 
             _modbusSynchronizer?.Dispose();
             _master?.Dispose();
+
+            _serialPort?.Dispose();
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
@@ -116,40 +138,21 @@ namespace Z_TestWpfApp
             };
             _monitor.Start();
 
-            var factory = new ModbusFactory();
-            _master = factory.CreateRtuMaster("CH A", 38400);
-            _modbusSynchronizer = new ModbusSynchronizer(_master, null);
-            _modbusSynchronizer.CoilInputsValueChanged += ModbusSynchronizer_CoilInputsValueChanged;
-            for (ushort address = 0; address < 8; address++)
+            //var factory = new ModbusFactory();
+            //_master = factory.CreateRtuMaster("CH A", 38400);
+            //_modbusSynchronizer = new ModbusSynchronizer(_master, null);
+            //_modbusSynchronizer.CoilInputsValueChanged += ModbusSynchronizer_CoilInputsValueChanged;
+            //for (ushort address = 0; address < 8; address++)
             {
-                _modbusSynchronizer.AddRegister(new RegisterPoint(0x01, RegisterType.CoilInputs, address, 1, address));
+                //_modbusSynchronizer.AddRegister(new RegisterPoint(0x01, RegisterType.CoilInputs, address, 1, address));
             }
-            _modbusSynchronizer.StartSync();
-
+            //_modbusSynchronizer.StartSync();
             //Task.Run(SyncLoop, CancellationToken.None);
-        }
 
-        private void SyncLoop()
-        {
-            var sampleRate = 0;
-            var stopwatch = Stopwatch.StartNew();
+            _serialPort = new SerialPort(SerialPortExtensions.GetPortName("CH A"), 38400);
+            _serialPort.AutoReconnection();
+            _serialPort.Open();
 
-            while (true)
-            {
-                var elapsed = stopwatch.ElapsedMilliseconds;
-                if (elapsed >= 1000)
-                {
-                    Trace.WriteLine($"SampleRate:{sampleRate}");
-                    sampleRate = 0;
-                    stopwatch.Restart();
-                }
-
-                var values = _master.ReadInputs(0x01, 0, 8);
-                sampleRate++;
-
-                Trace.WriteLine($"Values:{string.Join(",", values)}");
-                if (sampleRate % 2 == 0) Thread.Sleep(1);
-            }
         }
 
         private void ModbusSynchronizer_CoilInputsValueChanged(object sender, RegisterPointChangedEventArgs<bool> e)

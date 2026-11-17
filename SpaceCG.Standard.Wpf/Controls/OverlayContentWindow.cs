@@ -18,6 +18,7 @@ namespace SpaceCG.Controls
     /// </para>
     /// <para>线程安全级别：线程不安全，必须在 UI 线程上创建和操作。</para>
     /// </summary>
+    [Obsolete("请使用 ElementOverlayWindow。")]
     public class OverlayContentWindow : Window
     {
         private readonly Window referenceWindow;
@@ -47,7 +48,7 @@ namespace SpaceCG.Controls
         /// <returns>成功返回 true</returns>
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+        static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
         #endregion
 
         /// <summary>

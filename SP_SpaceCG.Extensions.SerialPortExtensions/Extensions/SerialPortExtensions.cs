@@ -83,7 +83,7 @@ namespace SpaceCG.Extensions
             if (config.Count < 2 || !config.ContainsKey(nameof(SerialPort.PortName)) || !config.ContainsKey(nameof(SerialPort.BaudRate)))
                 throw new ArgumentException("配置串口参数错误，至少需要配置两个参数： PortName 和 BaudRate 参数");
 
-            SerialPort serialPort = new SerialPort();
+            var serialPort = new SerialPort();
             foreach (var attribute in config)
             {
                 var propertyName = attribute.Key;
@@ -117,8 +117,8 @@ namespace SpaceCG.Extensions
             SerialPort serialPort = new SerialPort();
             foreach (var attribute in config.Attributes())
             {
-                string propertyName = attribute.Name.LocalName;
-                string propertyValue = attribute.Value;
+                var propertyName = attribute.Name.LocalName;
+                var propertyValue = attribute.Value;
 
                 if (propertyName == nameof(SerialPort.PortName))
                 {
@@ -387,7 +387,7 @@ namespace SpaceCG.Extensions
         #endregion
 
 
-#if false
+#if true
         /// <summary>
         /// 串口设备热插拔自动重新连接
         /// <para>使用 ManagementEventWatcher WQL 事件监听模式</para>
@@ -396,31 +396,51 @@ namespace SpaceCG.Extensions
         public static void AutoReconnection(this SerialPort serialPort)
         {
             if (serialPort == null) throw new ArgumentException("参数不能为空");
-            Trace.TraceInformation("ManagementEventWatcher WQL Event Listen SerialPort Name:{0}", serialPort.PortName);
+            Trace.TraceInformation($"ManagementEventWatcher WQL Event Listen SerialPort Name: {serialPort.PortName}");
 
-            TimeSpan withinInterval = TimeSpan.FromSeconds(1);
-            string wql_condition = $"TargetInstance isa 'Win32_PnPEntity' AND TargetInstance.Name LIKE '%({serialPort.PortName.ToUpper()})'";
+            var withinInterval = TimeSpan.FromSeconds(1);
+            var wql_condition = $"TargetInstance isa 'Win32_PnPEntity' AND TargetInstance.Name LIKE '%({serialPort.PortName.ToUpper()})'";
 
-            ManagementScope scope = new ManagementScope(@"\\.\Root\CIMV2")
+            var scope = new ManagementScope(@"\\.\Root\CIMV2")
             {
                 Options = new ConnectionOptions() { EnablePrivileges = true },
             };
 
-            ManagementEventWatcher CreationEvent = new ManagementEventWatcher(scope, new WqlEventQuery("__InstanceCreationEvent", withinInterval, wql_condition));
-            CreationEvent.EventArrived += (s, e) =>
+            var creationEvent = new ManagementEventWatcher(scope, new WqlEventQuery("__InstanceCreationEvent", withinInterval, wql_condition));
+            creationEvent.EventArrived += (s, e) =>
             {
-                if (!serialPort.IsOpen) serialPort.Open();
-                Trace.TraceInformation("Instance Creation Event SerialPort Name:{0}", serialPort.PortName);
+                Trace.TraceInformation($"Instance Creation Event SerialPort Name: {serialPort.PortName}");
+                try
+                {
+                    if (!serialPort.IsOpen) serialPort.Open();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError($"串口通道 ({serialPort.PortName}) 打开失败：({ex.GetType()}){ex.Message}");
+                }
             };
-            ManagementEventWatcher DeletionEvent = new ManagementEventWatcher(scope, new WqlEventQuery("__InstanceDeletionEvent", withinInterval, wql_condition));
-            DeletionEvent.EventArrived += (s, e) =>
+            var deletionEvent = new ManagementEventWatcher(scope, new WqlEventQuery("__InstanceDeletionEvent", withinInterval, wql_condition));
+            deletionEvent.EventArrived += (s, e) =>
             {
-                if (serialPort.IsOpen) serialPort.Close();
-                Trace.TraceError("Instance Deletion Event SerialPort Name:{0}", serialPort.PortName);
+                Trace.TraceInformation($"Instance Deletion Event SerialPort Name: {serialPort.PortName}");
+                try
+                {
+                    if (serialPort.IsOpen) serialPort.Close();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError($"串口通道 ({serialPort.PortName}) 关闭失败：({ex.GetType()}){ex.Message}");
+                }
             };
 
-            CreationEvent.Start();
-            DeletionEvent.Start();
+            creationEvent.Start();
+            deletionEvent.Start();
+
+            serialPort.Disposed += (s, e) =>
+            {
+                creationEvent?.Dispose();
+                deletionEvent?.Dispose();
+            };
         }
 #endif
 

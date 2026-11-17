@@ -9,47 +9,50 @@
         Title="MainWindow" Height="450" Width="800" Loaded="Window_Loaded" >
     <Grid>
 
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-        <Grid Grid.Column="0">
-            <Canvas x:Name="Canvas_Leds" Margin="0" >
-                <Canvas.Resources>
-                    <Style TargetType="Rectangle">
-                        <Setter Property="Width" Value="260" />
-                        <Setter Property="Height" Value="19" />
-                        <Setter Property="Fill" Value="#00002A33"/>
-                        <Setter Property="StrokeThickness" Value="0"/>
-                        <Setter Property="VerticalAlignment" Value="Top" />
-                        <Setter Property="HorizontalAlignment" Value="Left" />
-                    </Style>
-                </Canvas.Resources>
-                <d:Rectangle Fill="Red" Canvas.Left="20" />
-            </Canvas>
+            <Grid Grid.Column="0">
+                <Canvas x:Name="Canvas_Leds" Margin="0" >
+                    <Canvas.Resources>
+                        <Style TargetType="Rectangle">
+                            <Setter Property="Width" Value="260" />
+                            <Setter Property="Height" Value="19" />
+                            <Setter Property="Fill" Value="#00002A33"/>
+                            <Setter Property="StrokeThickness" Value="0"/>
+                            <Setter Property="VerticalAlignment" Value="Top" />
+                            <Setter Property="HorizontalAlignment" Value="Left" />
+                        </Style>
+                    </Canvas.Resources>
+                    <d:Rectangle Fill="Red" Canvas.Left="20" />
+                </Canvas>
+            </Grid>
+
+            <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_Gif_Test\bin\Debug\net8.0-windows\gif -->
+            <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\出场序列帧 循环序列帧 -->
+            <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs -->
+            <!-- D:\SpaceCG\0A_Projects\202x\202x_SpaceCGStandard\Z_TestWpfApp\bin\Debug\Resources\bear -->
+            <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WPF_Animations\bin\Debug\net6.0-windows\Resources\KeyFrames -->
+            <sg:ImageSequence x:Name="imageSeq" FilePath="D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs.zip" AutoPlay="False" CacheStep="0" RenderChanged="ImageSeq_RenderChanged" />
+
+            <Grid Grid.Column="1">
+                <Rectangle Name="Rectangle_0" Fill="Blue" Margin="100" />
+
+                <TextBox Text="Hello...." Name="TextBox_0" Width="100" Height="60" />
+
+                <StackPanel Orientation="Vertical" Margin="20">
+                    <sg:ImageToggleButton x:Name="button2" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                    <sg:ImageRadioButton x:Name="button1" GroupName="A" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                    <sg:ImageRadioButton x:Name="button0" GroupName="A" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                    <sg:ImageRadioButton x:Name="button3" GroupName="B" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                    <sg:ImageRadioButton x:Name="button4" GroupName="B" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
+                </StackPanel>
+            </Grid>
         </Grid>
         
-        <Grid Grid.Column="1">
-            <Rectangle Name="Rectangle_0" Fill="Blue" Margin="100" />
-
-            <TextBox Text="Hello...." Name="TextBox_0" Width="100" Height="60" />
-
-            <StackPanel Orientation="Vertical" Margin="20">
-                <sg:ImageToggleButton x:Name="button2" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
-                <sg:ImageRadioButton x:Name="button1" GroupName="A" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
-                <sg:ImageRadioButton x:Name="button0" GroupName="A" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
-                <sg:ImageRadioButton x:Name="button3" GroupName="B" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
-                <sg:ImageRadioButton x:Name="button4" GroupName="B" NormalSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Normal\江西吉水基地.png" CheckedSource="D:\SpaceCG\0A_Projects\2025\2025_SpaceCGProjects\CO_Production_Control\bin\Debug\Resources\Buttons\Select\江西吉水基地.png" />
-            </StackPanel>
-        </Grid>
-
-        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_Gif_Test\bin\Debug\net8.0-windows\gif -->
-        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\出场序列帧 循环序列帧 -->
-        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs -->
-        <!-- D:\SpaceCG\0A_Projects\202x\202x_SpaceCGStandard\Z_TestWpfApp\bin\Debug\Resources\bear -->
-        <!-- D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WPF_Animations\bin\Debug\net6.0-windows\Resources\KeyFrames -->
-        <sg:ImageSequence x:Name="imageSeq" FilePath="D:\SpaceCG\0A_Projects\2024\2024_WPF_Animation\WPF_Animation\WpfApp_KFs\bin\Debug\net6.0-windows\Car_KFs.zip" AutoPlay="False" CacheStep="0" RenderChanged="ImageSeq_RenderChanged" />
 
     </Grid>
 </Window>
