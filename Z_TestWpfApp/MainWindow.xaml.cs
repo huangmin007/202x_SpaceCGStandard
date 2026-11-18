@@ -149,12 +149,11 @@ namespace Z_TestWpfApp
             //_modbusSynchronizer.StartSync();
             //Task.Run(SyncLoop, CancellationToken.None);
 
-            _serialPort = new SerialPort(SerialPortExtensions.GetPortName("CH A"), 38400);
-            _serialPort.AutoReconnection();
-            _serialPort.Open();
-
+            //_serialPort = new SerialPort(SerialPortExtensions.GetPortName("CH A"), 38400);
+            //_serialPort.AutoReconnection();
+            //_serialPort.Open();
         }
-
+        
         private void ModbusSynchronizer_CoilInputsValueChanged(object sender, RegisterPointChangedEventArgs<bool> e)
         {
             Trace.WriteLine($"Coil Inputs Changed:{e.RegisterPoint} {string.Join(",", e.NewValue)}");

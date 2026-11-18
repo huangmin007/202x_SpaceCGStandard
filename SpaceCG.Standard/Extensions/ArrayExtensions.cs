@@ -45,19 +45,16 @@ namespace SpaceCG.Extensions
 
         #region IndexOf 系列函数
         /// <summary>
-        /// 在字节数组中查找指定字节模式首次出现的位置。
-        /// <para>搜索区间为 [<paramref name="startIndex"/>, <paramref name="startIndex"/> + <paramref name="count"/>)。
-        /// 采用头尾双过滤策略：先同时比对首尾字节，只有两者都命中才进入内循环逐字节比对。随机数据下误入内循环概率约 1/65536，适合实时数据流分析等高性能场景。</para>
-        /// <para>与 <see cref="IndexOf{T}"/> 泛型版本不同，本重载直接使用 CPU 原生的 <c>byte == byte</c> 比较（单条 CMP 指令），避免虚调用开销，
-        /// 且在 .NET Framework 4.8 下可享受 JIT 的边界检查消除和自动向量化优化。</para>
+        /// 在数组中查找指定数据模式首次出现的位置。搜索区间为 [<paramref name="startIndex"/>, <paramref name="startIndex"/> + <paramref name="count"/>)。
+        /// <para>采用头尾双过滤策略：先同时比对首尾元素，只有两者都命中才进入内循环逐元素比对。随机数据下误入内循环概率约 1/65536，适合实时数据流分析等高性能场景。</para>
         /// <para>时间复杂度：平均 O(n)；空间复杂度 O(1)。</para>
         /// </summary>
-        /// <param name="source">要搜索的一维从零开始的数组。</param>
-        /// <param name="pattern">待查找的字节模式，不能为空数组。</param>
+        /// <param name="source">要搜索的一维数组。</param>
+        /// <param name="pattern">待查找的元素数组，不能为空数组。</param>
         /// <param name="startIndex">从零开始的搜索索引（从 0 开始）。</param>
         /// <param name="count">要搜索的节中的元素数。必须大于 0。
         /// 若 <c>index + count</c> 超出 <paramref name="source"/> 末尾，则自动截断到数组末尾。</param>
-        /// <returns>找到时返回首次出现的起始索引；未找到或参数无效返回 -1。</returns>
+        /// <returns>找到时返回首次出现的起始索引，未找到或参数无效返回 -1。</returns>
         public static int IndexOf(this byte[] source, byte[] pattern, int startIndex, int count)
         {
             // 参数有效性检查：null 或空数组直接返回 -1
@@ -155,17 +152,19 @@ namespace SpaceCG.Extensions
         }
         /// <inheritdoc cref="IndexOf(byte[], byte[], int, int)"/> 
         public static int IndexOf(this ArraySegment<byte> source, byte[] pattern) => IndexOf(source, pattern, 0, source.Count);
+        #endregion
 
+        #region 泛型版本 IndexOf
         /// <summary>
-        /// 在泛型数组中查找指定模式首次出现的位置。
+        /// 在数组中查找指定元素数组首次出现的位置。
         /// <para>采用头尾双过滤策略：先同时比对首尾元素，只有两者都命中才进入内循环逐元素比对。</para>
         /// <para>时间复杂度：平均 O(n)；空间复杂度 O(1)。</para>
         /// </summary>
         /// <typeparam name="T">数组元素类型，必须实现 <see cref="IEquatable{T}"/></typeparam>
-        /// <param name="source">源数组</param>
-        /// <param name="pattern">待查找的元素模式</param>
-        /// <param name="startIndex">搜索起始索引</param>
-        /// <param name="count">要搜索的元素数量</param>
+        /// <param name="source">要搜索的源数组</param>
+        /// <param name="pattern">待查找的字节模式，不能为空数组</param>
+        /// <param name="startIndex">搜索起始位置</param>
+        /// <param name="count">要搜索的节中的元素数</param>
         /// <returns>找到时返回首次出现的起始索引；未找到或参数无效返回 -1。</returns>
         public static int IndexOf<T>(this T[] source, T[] pattern, int startIndex, int count) where T : IEquatable<T>
         {
@@ -226,7 +225,43 @@ namespace SpaceCG.Extensions
 
             return -1;
         }
+        /// <summary>
+        /// 在 <see cref="ArraySegment{T}"/> 的字节序列中查找指定字节模式的首次出现位置。
+        /// <para>搜索区间为视图内 [<paramref name="startIndex"/>, <paramref name="startIndex"/> + <paramref name="count"/>)。
+        /// 返回相对于视图起始（即 <see cref="ArraySegment{T}.Offset"/>）的偏移索引。</para>
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="source">要搜索的源字节序列视图。</param>
+        /// <param name="pattern">待查找的字节模式，不能为空数组。</param>
+        /// <param name="startIndex">搜索起始位置，相对于视图起始的偏移（从 0 开始）。传入 0 表示从视图的第一个字节开始搜索。</param>
+        /// <param name="count">要搜索的元素数量，必须大于 0。</param>
+        /// <returns> 模式首次出现相对于视图起始的偏移索引；未找到或参数无效返回 -1。</returns> 
+        public static int IndexOf<T>(this ArraySegment<T> source, T[] pattern, int startIndex, int count) where T : IEquatable<T>
+        {
+            if (source.Array == null || pattern == null) return -1;
+
+            var sourceLength = source.Count;
+            var patternLength = pattern.Length;
+
+            // 索引与长度边界检查
+            if (startIndex < 0 || startIndex >= sourceLength) return -1;
+            if (sourceLength == 0 || patternLength == 0 || count <= 0) return -1;
+
+            var searchLength = Math.Min(count, sourceLength - startIndex);
+            if (searchLength < patternLength) return -1;
+
+            // ArraySegment 内偏移转换为底层数组绝对索引
+            var absoluteStartIndex = source.Offset + startIndex;
+
+            // 委托给 byte[] 重载（返回绝对索引）
+            var absoluteResultIndex = IndexOf(source.Array, pattern, absoluteStartIndex, searchLength);
+            if (absoluteResultIndex < 0) return -1;
+
+            // 转换回 ArraySegment 内相对索引
+            return absoluteResultIndex - source.Offset;
+        }
         #endregion
+
 
         #region LastIndexOf 系列函数
         /// <summary>
@@ -413,6 +448,7 @@ namespace SpaceCG.Extensions
             return -1;
         }
         #endregion
+
 
         #region SequenceEqual 优化
         /// <summary>
