@@ -20,11 +20,11 @@ namespace SpaceCG.Controls
     public sealed class ImageSequence : Image
     {
         /// <summary> 待渲染队列默认长度 </summary>
-        private const int DefaultRenderFrameCount = 8;
+        public const int DefaultRenderFrameCount = 8;
         /// <summary> 支持的图像扩展类型 </summary>
-        private static readonly string[] SupportImageExtensions = new string[] { ".png", ".jpg", ".jpeg", ".bmp" };
+        public static readonly string[] SupportImageExtensions = new string[] { ".png", ".jpg", ".jpeg", ".bmp" };
         /// <summary> 位图帧格式转换字典，需要转换的帧格式。(原格式)=(目标格式，目标调色板) </summary>
-        private static readonly ConcurrentDictionary<PixelFormat, (PixelFormat Format, BitmapPalette Palette)> FormatConvertedDict = new ConcurrentDictionary<PixelFormat, (PixelFormat, BitmapPalette)>()
+        public static readonly ConcurrentDictionary<PixelFormat, (PixelFormat Format, BitmapPalette Palette)> FormatConvertedDict = new ConcurrentDictionary<PixelFormat, (PixelFormat, BitmapPalette)>()
         {
             [PixelFormats.Indexed1] = (PixelFormats.Bgra32, null),
             [PixelFormats.Indexed2] = (PixelFormats.Bgra32, null),
@@ -32,7 +32,28 @@ namespace SpaceCG.Controls
             [PixelFormats.Indexed8] = (PixelFormats.Bgra32, null),
         };
 
-        /// <summary> Frame Render Changed Event  </summary>
+        /// <summary>
+        /// 解码缓存帧条件代理：输入帧索引（0-based），返回 true 表示缓存该帧的解码结果。
+        /// <para>代理在后台解码线程被调用（每帧一次，O(1) 期望），实现必须线程安全，禁止直接访问 UI 元素或依赖属性（需要 UI 数据时应在赋值前捕获快照）。</para>
+        /// </summary>
+        /// <param name="frameIndex">帧索引（0-based）</param>
+        public delegate bool CacheFramePredicate(int frameIndex);
+
+        /// <summary> 全缓存条件。长序列慎用，否则内存占用过大。 </summary>
+        public static readonly CacheFramePredicate CacheAll = _ => true;
+        /// <summary> 生成 "每 step 帧缓存一帧" 的条件代理 </summary>
+        /// <param name="step">缓存步长。0 = 不缓存；1 = 全缓存；2 = 缓存 0, 2, 4…；3 = 缓存 0, 3, 6…</param>
+        /// <param name="offset">起始偏移。CacheEvery(2, 1) → 缓存 1, 3, 5…；CacheEvery(10) → 缓存 0, 10, 20…</param>
+        public static CacheFramePredicate CacheEvery(int step, int offset = 0)
+        {
+            if (step <= 0) return null;
+            if (step == 1) return CacheAll;
+
+            // 双重取模防负数（index < offset 时 C# 的 % 返回负值）
+            return index => ((index - offset) % step + step) % step == 0;
+        }
+
+        /// <summary> Frame Render Changed Event </summary>
         public event EventHandler<EventArgs> RenderChanged;
 
         #region Dependency Properties
@@ -128,7 +149,7 @@ namespace SpaceCG.Controls
                 var step = (int)baseValue;
                 return step < 0 ? 0 : step;
             }));
-        /// <summary> 帧的缓存步长。默认为 0，0=不缓存，1=全缓存，N=缓存 frameIndex % N == 0 的帧 </summary>
+        /// <summary> 解码帧的缓存步长。默认为 0，0=不缓存，1=全缓存，N=缓存 frameIndex % N == 0 的帧 </summary>
         public int CacheStep
         {
             get => (int)GetValue(CacheStepProperty);
@@ -189,15 +210,15 @@ namespace SpaceCG.Controls
         private volatile int decodeFrameIndex = -1;
 
         private volatile int fps = 25;
-        private volatile int renderInterval = 40;
-        private volatile int avgDecodeTimeMs = 0;
+        private int renderInterval = 40;
         private double nextRenderTime = 0.0;
+        private volatile int avgDecodeTimeMs = 0;
 
         private Int32Rect dirtyRect;
         private WriteableBitmap writeableBitmap;
 
         private Task decodeTask;
-        private ZipArchive zipArchive;
+        private volatile ZipArchive zipArchive;
         private CancellationTokenSource cancellationTokenSource;
         private readonly Stopwatch renderStopwatch = new Stopwatch();
 
@@ -210,15 +231,9 @@ namespace SpaceCG.Controls
 
         /// <summary> 序列图像文件名称 </summary>
         public IEnumerable<string> FileNames => BitmapFileNames.Values;
-
+        
         /// <summary>
-        /// 缓存帧条件代理：输入帧索引（0-based），返回 true 表示缓存该帧的解码结果。
-        /// <para>代理在后台解码线程被调用（每帧一次，O(1) 期望），实现必须线程安全，禁止直接访问 UI 元素或依赖属性（需要 UI 数据时应在赋值前捕获快照）。</para>
-        /// </summary>
-        /// <param name="frameIndex">帧索引（0-based）</param>
-        public delegate bool CacheFramePredicate(int frameIndex);
-        /// <summary>
-        /// 缓存条件代理，控制哪些帧的解码结果进入内存缓存，降低长序列的内存占用。默认 null = 不缓存。
+        /// 解码缓存条件代理，控制哪些帧的解码结果进入内存缓存，降低长序列的内存占用。默认 null = 不缓存。
         /// <para>变更只影响后续解码的帧，不清空既有缓存帧；需要清空缓存时调用 <see cref="ClearCache"/>。</para>
         /// </summary>
         public CacheFramePredicate CacheCondition
@@ -227,20 +242,6 @@ namespace SpaceCG.Controls
             set => cacheCondition = value;
         }
         private volatile CacheFramePredicate cacheCondition;
-
-        /// <summary> 全缓存条件。长序列慎用，否则内存占用过大。 </summary>
-        public static readonly CacheFramePredicate CacheAll = _ => true;
-        /// <summary> 生成 "每 step 帧缓存一帧" 的条件代理 </summary>
-        /// <param name="step">缓存步长。0 = 不缓存；1 = 全缓存；2 = 缓存 0, 2, 4…；3 = 缓存 0, 3, 6…</param>
-        /// <param name="offset">起始偏移。CacheEvery(2, 1) → 缓存 1, 3, 5…；CacheEvery(10) → 缓存 0, 10, 20…</param>
-        public static CacheFramePredicate CacheEvery(int step, int offset = 0)
-        {
-            if (step <= 0) return null;
-            if (step == 1) return CacheAll;
-
-            // 双重取模防负数（index < offset 时 C# 的 % 返回负值）
-            return index => ((index - offset) % step + step) % step == 0;
-        }
 
         public ImageSequence()
         {
@@ -349,8 +350,6 @@ namespace SpaceCG.Controls
         private async Task LoopDecodeFrameAsync(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
-            var renderFrameCount = DefaultRenderFrameCount;
-
             var averageElapsed = 0.0d;
             var elapsedQueue = new Queue<long>();
 
@@ -364,6 +363,7 @@ namespace SpaceCG.Controls
                     continue;
                 }
 
+                var renderFrameCount = DefaultRenderFrameCount;
                 if (RenderFrames.Count >= renderFrameCount)
                 {
                     try { await Task.Delay(2, cancellationToken); }
@@ -371,6 +371,7 @@ namespace SpaceCG.Controls
                     continue;
                 }
 
+                // Seek Position
                 if (seekFrameIndex >= 0 && seekFrameIndex < frameCount)
                 {
                     RenderFrames.Clear();
@@ -403,7 +404,7 @@ namespace SpaceCG.Controls
                         var elapsed = stopwatch.ElapsedMilliseconds;
                         RenderFrames.Enqueue((position, bitmapFrame));
 
-                        // 缓存条件
+                        // 解码缓存条件
                         var condition = cacheCondition;
                         if (condition != null && condition.Invoke(position))
                         {
@@ -499,11 +500,11 @@ namespace SpaceCG.Controls
 
             var pixelFormat = firstFrame.Format;
             var bitmapPalette = firstFrame.Palette;
-            Trace.TraceInformation($"{FilePath} FrameCount:{frameCount} PixelFormat:{pixelFormat} Size:{w}x{h}");
+            Trace.TraceInformation($"{FilePath} FrameCount:{frameCount} PixelFormat:{pixelFormat} Palette:{bitmapPalette} Size:{w}x{h}");
 
             writeableBitmap = new WriteableBitmap(w, h, firstFrame.DpiX, firstFrame.DpiY, pixelFormat, bitmapPalette);
             this.Source = writeableBitmap;
-            
+
             for (var i = 0; i < fileNames.Length; i++)
             {
                 BitmapFileNames.TryAdd(i, fileNames[i]);
@@ -570,9 +571,9 @@ namespace SpaceCG.Controls
             CompositionTarget.Rendering -= CompositionTarget_Rendering;
 
             renderStopwatch.Stop();
-            BitmapFileNames.Clear();
             CacheFrames.Clear();
             RenderFrames.Clear();
+            BitmapFileNames.Clear();
 
             zipArchive?.Dispose();
             zipArchive = null;
@@ -588,10 +589,7 @@ namespace SpaceCG.Controls
             decodeFrameIndex = 0;
             writeableBitmap = null;
 
-            try
-            {
-                cancellationTokenSource?.Cancel();
-            }
+            try { cancellationTokenSource?.Cancel(); }
             catch { }
 
             try
